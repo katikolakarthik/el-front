@@ -262,19 +262,24 @@ return (
 <button onClick={() => setActiveAssignment(null)}>Back</button>
 <h3>{activeAssignment.moduleName}</h3>
 
-<div className="subassignments-list">    
-        {activeAssignment.subAssignments.map((sub, idx) => (    
-          <div key={idx} className="subassignment-item">    
-            <div className="subassignment-content">    
-              <h4>{sub.subModuleName}</h4>    
-              {sub.assignmentPdf && (    
-                <a href={sub.assignmentPdf} target="_blank" rel="noopener noreferrer">View PDF</a>    
-              )}    
-            </div>    
-            <button onClick={() => handleStart(activeAssignment._id, sub._id)}>Start</button>    
-          </div>    
-        ))}    
-      </div>    
+<div className="subassignments-list">
+  {activeAssignment.subAssignments.map((sub, idx) => (
+    <div key={idx} className="subassignment-item">
+      <div className="subassignment-content">
+        <h4>{sub.subModuleName}</h4>
+        {sub.assignmentPdf && (
+          <a href={sub.assignmentPdf} target="_blank" rel="noopener noreferrer">View PDF</a>
+        )}
+      </div>
+      <button
+        onClick={() => handleStart(activeAssignment._id, sub._id)}
+        disabled={sub.isCompleted}   // ✅ disable when completed
+      >
+        {sub.isCompleted ? "Completed" : "Start"}
+      </button>
+    </div>
+  ))}
+</div>
     </div>    
   );    
 }    
@@ -306,9 +311,15 @@ return (
       {renderQuestions(questionSource)}    
     </div>    
 
-    <button className="submit-button" onClick={handleSubmit}>    
-      Submit Assignment    
-    </button>    
+  <button
+  className="submit-button"
+  onClick={handleSubmit}
+  disabled={activeSubAssignment?.isCompleted || activeAssignment?.isCompleted} // ✅ disable if done
+>
+  {activeSubAssignment?.isCompleted || activeAssignment?.isCompleted
+    ? "Already Submitted"
+    : "Submit Assignment"}
+</button>
   </div>    
 );
 
@@ -321,21 +332,28 @@ return (
 
 {assignments.length > 0 ? (    
     <div className="assignments-list">    
-      {assignments.map((assignment, index) => (    
-        <div key={index} className="assignment-item">    
-          <div className="assignment-content">    
-            <h3>{assignment.moduleName}</h3>    
-            <p>Assigned on: {formatDate(assignment.assignedDate)}</p>    
-            {assignment.assignmentPdf && (    
-              <a href={assignment.assignmentPdf} target="_blank" rel="noopener noreferrer">View PDF</a>    
-            )}    
-          </div>    
+{assignments.map((assignment, index) => (
+  <div key={index} className="assignment-item">
+    <div className="assignment-content">
+      <h3>{assignment.moduleName}</h3>
+      <p>Assigned on: {formatDate(assignment.assignedDate)}</p>
+      {assignment.assignmentPdf && (
+        <a href={assignment.assignmentPdf} target="_blank" rel="noopener noreferrer">View PDF</a>
+      )}
+    </div>
 
-          <button onClick={() => handleStart(assignment._id)}>    
-            {assignment.subAssignments?.length > 0 ? 'View Sections' : 'Start'}    
-          </button>    
-        </div>    
-      ))}    
+    <button
+      onClick={() => handleStart(assignment._id)}
+      disabled={assignment.isCompleted}   // ✅ disable when completed
+    >
+      {assignment.isCompleted
+        ? "Completed"
+        : assignment.subAssignments?.length > 0
+          ? "View Sections"
+          : "Start"}
+    </button>
+  </div>
+))}
     </div>    
   ) : (    
     <div className="no-assignments"><FiClock /><p>No new assignments available</p></div>    
