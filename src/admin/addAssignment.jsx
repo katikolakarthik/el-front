@@ -172,7 +172,7 @@ export default function AddAssignment() {
       const data = await res.json();
       console.log("✅ Assignment saved:", data);
       alert("Assignment saved successfully!");
-      navigate("/assignments");
+      navigate("/admin/assignments");
     } catch (err) {
       console.error("❌ Error:", err);
       alert(`Error saving assignment: ${err.message}`);
