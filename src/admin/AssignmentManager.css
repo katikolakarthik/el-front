@@ -1,0 +1,304 @@
+/* Main container styles */
+.assignment-manager-container {
+  padding: 2rem;
+  max-width: 1200px;
+  margin: 0 auto;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+/* Loading and error states */
+.loading, .error, .no-assignments {
+  text-align: center;
+  padding: 2rem;
+  font-size: 1.2rem;
+}
+
+.error {
+  color: #d32f2f;
+}
+
+/* Title styles */
+.manager-title {
+  color: #2c3e50;
+  text-align: center;
+  margin-bottom: 2rem;
+  font-size: 2rem;
+}
+
+/* Delete all button */
+.delete-all-button {
+  background-color: #d32f2f;
+  color: white;
+  border: none;
+  padding: 0.8rem 1.5rem;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 1rem;
+  margin-bottom: 2rem;
+  display: block;
+  width: 100%;
+  max-width: 250px;
+  margin-left: auto;
+  margin-right: auto;
+  transition: background-color 0.3s;
+}
+
+.delete-all-button:hover {
+  background-color: #b71c1c;
+}
+
+/* Module card styles */
+.module-card {
+  background-color: #ffffff;
+  border-radius: 8px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+  padding: 1.5rem;
+  margin-bottom: 2rem;
+}
+
+.module-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.5rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+.module-name {
+  color: #2c3e50;
+  margin: 0;
+  font-size: 1.5rem;
+}
+
+.delete-module-button {
+  background-color: #d32f2f;
+  color: white;
+  border: none;
+  padding: 0.5rem 1rem;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  transition: background-color 0.3s;
+}
+
+.delete-module-button:hover {
+  background-color: #b71c1c;
+}
+
+/* Assigned students section */
+.assigned-students-section {
+  margin-bottom: 1.5rem;
+}
+
+.section-title {
+  color: #34495e;
+  margin-bottom: 0.8rem;
+  font-size: 1.2rem;
+}
+
+.student-list {
+  list-style-type: none;
+  padding: 0;
+  margin: 0;
+}
+
+.student-item {
+  padding: 0.5rem 0;
+  border-bottom: 1px solid #f0f0f0;
+  display: flex;
+  gap: 0.5rem;
+}
+
+.student-name {
+  font-weight: 500;
+}
+
+.student-course {
+  color: #7f8c8d;
+}
+
+/* Sub-assignments section */
+.sub-assignments-section {
+  margin-top: 1.5rem;
+}
+
+.sub-assignment-list {
+  list-style-type: none;
+  padding: 0;
+  margin: 0;
+}
+
+.sub-assignment-item {
+  background-color: #f8f9fa;
+  border-radius: 6px;
+  padding: 1rem;
+  margin-bottom: 1rem;
+  border: 1px solid #e0e0e0;
+}
+
+.sub-assignment-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.8rem;
+}
+
+.sub-module-name {
+  font-weight: 600;
+  color: #2c3e50;
+  font-size: 1.1rem;
+}
+
+.delete-sub-button {
+  background-color: #d32f2f;
+  color: white;
+  border: none;
+  padding: 0.4rem 0.8rem;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.8rem;
+  transition: background-color 0.3s;
+}
+
+.delete-sub-button:hover {
+  background-color: #b71c1c;
+}
+
+/* PDF link styles */
+.pdf-link-container {
+  margin-bottom: 0.8rem;
+}
+
+.pdf-link {
+  color: #2980b9;
+  text-decoration: none;
+  font-weight: 500;
+  transition: color 0.3s;
+}
+
+.pdf-link:hover {
+  color: #1a5276;
+  text-decoration: underline;
+}
+
+/* Questions section */
+.questions-section {
+  margin-top: 1rem;
+}
+
+.questions-title {
+  color: #34495e;
+  font-size: 1rem;
+  margin-bottom: 0.5rem;
+}
+
+.question-list {
+  list-style-type: none;
+  padding: 0;
+  margin: 0;
+}
+
+.question-item {
+  background-color: #ffffff;
+  border-radius: 4px;
+  padding: 0.8rem;
+  margin-bottom: 0.5rem;
+  border-left: 3px solid #3498db;
+}
+
+.question-text {
+  display: block;
+  margin-bottom: 0.3rem;
+}
+
+.question-options, .question-answer {
+  font-size: 0.9rem;
+  color: #555;
+  margin-left: 0.5rem;
+}
+
+.question-answer {
+  color: #27ae60;
+  font-weight: 500;
+}
+
+/* Confirmation modal styles */
+.confirmation-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+}
+
+.confirmation-modal {
+  background-color: #ffffff;
+  padding: 2rem;
+  border-radius: 8px;
+  max-width: 500px;
+  width: 90%;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+}
+
+.confirmation-message {
+  font-size: 1.1rem;
+  margin-bottom: 1.5rem;
+  color: #2c3e50;
+  line-height: 1.5;
+}
+
+.modal-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 1rem;
+}
+
+.confirm-button, .cancel-button {
+  padding: 0.6rem 1.2rem;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  transition: all 0.3s;
+}
+
+.confirm-button {
+  background-color: #d32f2f;
+  color: white;
+}
+
+.confirm-button:hover {
+  background-color: #b71c1c;
+}
+
+.cancel-button {
+  background-color: #bdc3c7;
+  color: #2c3e50;
+}
+
+.cancel-button:hover {
+  background-color: #95a5a6;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .assignment-manager-container {
+    padding: 1rem;
+  }
+  
+  .module-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 1rem;
+  }
+  
+  .delete-all-button {
+    max-width: 100%;
+  }
+}

@@ -1,0 +1,305 @@
+/* AssignmentFlow.css */
+.new-assignments-container {
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 20px;
+  color: #333;
+  background-color: #f9f5f0; /* Soft pottery-like background */
+  border-radius: 8px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+}
+
+.assignments-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #5d4037; /* Earthy brown like clay */
+  border-bottom: 2px solid #8d6e63; /* Pottery glaze color */
+  padding-bottom: 10px;
+  margin-bottom: 20px;
+}
+
+.assignments-list {
+  display: grid;
+  gap: 15px;
+}
+
+.assignment-item {
+  background: white;
+  border-left: 4px solid #a1887f; /* Pottery accent */
+  padding: 15px 20px;
+  border-radius: 4px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.assignment-item:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+
+.assignment-content {
+  flex: 1;
+}
+
+.assignment-content h3 {
+  margin: 0 0 5px 0;
+  color: #4e342e; /* Darker pottery color */
+}
+
+.assignment-content p {
+  margin: 5px 0;
+  color: #666;
+  font-size: 0.9em;
+}
+
+.assignment-content a {
+  color: #5d4037;
+  text-decoration: none;
+  font-weight: 500;
+  display: inline-block;
+  margin-top: 8px;
+}
+
+.assignment-content a:hover {
+  text-decoration: underline;
+}
+
+.assignment-item button {
+  background-color: #8d6e63; /* Pottery color */
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: 500;
+  transition: background-color 0.2s;
+}
+
+.assignment-item button:hover {
+  background-color: #6d4c41; /* Darker pottery color */
+}
+
+.no-assignments {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  justify-content: center;
+  padding: 30px;
+  color: #666;
+  background: white;
+  border-radius: 4px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.assignments-loading,
+.assignments-error {
+  text-align: center;
+  padding: 30px;
+  color: #666;
+}
+
+/* Assignment Detail View */
+.assignment-detail {
+  background: white;
+  padding: 20px;
+  border-radius: 8px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+}
+
+.assignment-detail button {
+  background-color: #8d6e63;
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 4px;
+  cursor: pointer;
+  margin-bottom: 20px;
+}
+
+.assignment-detail button:hover {
+  background-color: #6d4c41;
+}
+
+.assignment-detail h3 {
+  color: #4e342e;
+  margin-top: 0;
+  border-bottom: 1px solid #d7ccc8;
+  padding-bottom: 10px;
+}
+
+.subassignments-list {
+  display: grid;
+  gap: 15px;
+  margin-top: 20px;
+}
+
+.subassignment-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 15px;
+  background-color: #f5f5f5;
+  border-radius: 4px;
+}
+
+.subassignment-content h4 {
+  margin: 0 0 5px 0;
+  color: #4e342e;
+}
+
+.subassignment-item a {
+  color: #5d4037;
+  text-decoration: none;
+  font-weight: 500;
+}
+
+.subassignment-item a:hover {
+  text-decoration: underline;
+}
+
+.subassignment-item button {
+  background-color: #8d6e63;
+  color: white;
+  border: none;
+  padding: 6px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+/* Questions Section */
+.questions-section {
+  margin-top: 30px;
+  padding-top: 20px;
+  border-top: 1px solid #d7ccc8;
+}
+
+.questions-section h4 {
+  color: #4e342e;
+  margin-bottom: 15px;
+}
+
+.question-block {
+  margin-bottom: 20px;
+}
+
+.question-block label {
+  display: block;
+  margin-bottom: 8px;
+  font-weight: 500;
+  color: #5d4037;
+}
+
+.question-block input[type="text"],
+.question-block textarea {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid #d7ccc8;
+  border-radius: 4px;
+  font-family: inherit;
+}
+
+.question-block textarea {
+  min-height: 100px;
+  resize: vertical;
+}
+
+.question-block input[type="radio"] {
+  margin-right: 8px;
+}
+
+.question-block p {
+  margin-bottom: 10px;
+  color: #4e342e;
+}
+
+.submit-button {
+  background-color: #5d4037;
+  color: white;
+  border: none;
+  padding: 10px 20px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: 500;
+  margin-top: 20px;
+  transition: background-color 0.2s;
+}
+
+.submit-button:hover {
+  background-color: #3e2723;
+}
+
+/* Action buttons at bottom */
+.action-buttons {
+  display: flex;
+  gap: 10px;
+  margin-top: 20px;
+  padding-top: 20px;
+  border-top: 1px solid #d7ccc8;
+}
+
+.action-buttons button {
+  background-color: #8d6e63;
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.action-buttons button:hover {
+  background-color: #6d4c41;
+}
+
+/* Add these to your AssignmentFlow.css */
+.question-block {
+  margin-bottom: 1.5rem;
+  padding: 1rem;
+  background: #f8f9fa;
+  border-radius: 8px;
+}
+
+.text-input, .text-area {
+  width: 100%;
+  padding: 0.5rem;
+  margin-top: 0.5rem;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+}
+
+.text-area {
+  min-height: 100px;
+}
+
+.options-container {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.option-label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+}
+
+.submit-button {
+  background-color: #4CAF50;
+  color: white;
+  padding: 0.8rem 1.5rem;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 1rem;
+  margin-top: 1.5rem;
+}
+
+.submit-button:hover {
+  background-color: #45a049;
+}

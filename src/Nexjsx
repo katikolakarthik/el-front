@@ -1,0 +1,261 @@
+import React, { useState, useEffect } from "react";
+import { FaTrash, FaEdit, FaPlus } from "react-icons/fa";
+import axios from "axios";
+import "./student.css";
+
+const API_URL = "https://el-backend-ashen.vercel.app/admin";
+
+export default function Students() {
+  const [students, setStudents] = useState([]);
+  const [formData, setFormData] = useState({
+    id: "",
+    name: "",
+    password: "",
+    courseName: "",
+    paidAmount: "",
+    remainingAmount: "",
+    enrolledDate: "",
+    profileImage: null,
+  });
+  const [isEditing, setIsEditing] = useState(false);
+  const [showForm, setShowForm] = useState(false);
+
+  useEffect(() => {
+    fetchStudents();
+  }, []);
+
+  const fetchStudents = async () => {
+    try {
+      const res = await axios.get(`${API_URL}/students/summary`);
+      setStudents(res.data);
+    } catch (err) {
+      console.error("Error fetching students:", err);
+    }
+  };
+
+  const handleChange = (e) => {
+    const { name, value, files } = e.target;
+    if (name === "profileImage") {
+      setFormData({ ...formData, profileImage: files[0] });
+    } else {
+      setFormData({ ...formData, [name]: value });
+    }
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+
+    const form = new FormData();
+    Object.keys(formData).forEach((key) => {
+      if (formData[key] !== null && formData[key] !== "") {
+        form.append(key, formData[key]);
+      }
+    });
+
+    try {
+      if (isEditing) {
+        await axios.put(`${API_URL}/student/${formData.id}`, form, {
+          headers: { "Content-Type": "multipart/form-data" },
+        });
+        setIsEditing(false);
+      } else {
+        await axios.post(`${API_URL}/add-student`, form, {
+          headers: { "Content-Type": "multipart/form-data" },
+        });
+      }
+
+      setFormData({
+        id: "",
+        name: "",
+        password: "",
+        courseName: "",
+        paidAmount: "",
+        remainingAmount: "",
+        enrolledDate: "",
+        profileImage: null,
+      });
+      setShowForm(false);
+      fetchStudents();
+    } catch (err) {
+      console.error("Error saving student:", err);
+    }
+  };
+
+  const handleEdit = (student) => {
+    setFormData({
+      id: student.id,
+      name: student.name || "",
+      password: "",
+      courseName: student.courseName || "",
+      paidAmount: student.paidAmount || "",
+      remainingAmount: student.remainingAmount || "",
+      enrolledDate: student.enrolledDate
+        ? student.enrolledDate.split("T")[0]
+        : "",
+      profileImage: null,
+    });
+    setIsEditing(true);
+    setShowForm(true);
+  };
+
+  const handleDelete = async (id) => {
+    if (!window.confirm("Delete this student?")) return;
+    try {
+      await axios.delete(`${API_URL}/student/${id}`);
+      fetchStudents();
+    } catch (err) {
+      console.error("Error deleting student:", err);
+    }
+  };
+
+  return (
+    <div className="students-container">
+      <button
+        onClick={() => {
+          setShowForm(!showForm);
+          setIsEditing(false);
+          setFormData({
+            id: "",
+            name: "",
+            password: "",
+            courseName: "",
+            paidAmount: "",
+            remainingAmount: "",
+            enrolledDate: "",
+            profileImage: null,
+          });
+        }}
+        className="submit-btn"
+        style={{ marginBottom: "15px" }}
+      >
+        <FaPlus /> {showForm ? "Close Form" : "Add Student"}
+      </button>
+
+      {showForm && (
+        <>
+          <h2 className="form-title">
+            {isEditing ? "Update Student" : "Add Student"}
+          </h2>
+          <form onSubmit={handleSubmit} className="student-form">
+            <input
+              name="name"
+              placeholder="Name"
+              value={formData.name}
+              onChange={handleChange}
+              required
+            />
+            <input
+              name="password"
+              type="password"
+              placeholder="Password"
+              value={formData.password}
+              onChange={handleChange}
+              required={!isEditing}
+            />
+            <input
+              name="courseName"
+              placeholder="Course Name"
+              value={formData.courseName}
+              onChange={handleChange}
+            />
+            <input
+              name="paidAmount"
+              type="number"
+              placeholder="Paid Amount"
+              value={formData.paidAmount}
+              onChange={handleChange}
+            />
+            <input
+              name="remainingAmount"
+              type="number"
+              placeholder="Remaining Amount"
+              value={formData.remainingAmount}
+              onChange={handleChange}
+            />
+            <input
+              name="enrolledDate"
+              type="date"
+              value={formData.enrolledDate}
+              onChange={handleChange}
+            />
+            <div className="form-file">
+              <label>Profile Image (optional)</label>
+              <input
+                type="file"
+                name="profileImage"
+                accept="image/*"
+                onChange={handleChange}
+              />
+            </div>
+            <button type="submit" className="submit-btn">
+              {isEditing ? "Update Student" : "Add Student"}
+            </button>
+          </form>
+        </>
+      )}
+
+      {/* Table with assigned / submitted / not submitted */}
+      <table className="students-table">
+        <thead>
+          <tr>
+            <th>Profile</th>
+            <th>Name</th>
+            <th>Course</th>
+            <th>Paid</th>
+            <th>Remaining</th>
+            <th>Assigned</th>
+            <th>Submitted</th>
+            <th>Not Submitted</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {students.map((s) => {
+            const assigned = s.assignedAssignmentsCount ?? 0;
+            // prefer submittedCount, fallback to submissionsCount (based on your sample)
+            const submitted = s.submittedCount ?? s.submissionsCount ?? 0;
+            // if backend gives negative notSubmittedCount, clamp to 0; otherwise compute if absent
+            const notSubmitted =
+              s.notSubmittedCount != null
+                ? Math.max(0, s.notSubmittedCount)
+                : Math.max(0, assigned - submitted);
+
+            return (
+              <tr key={s.id}>
+                <td>
+                  {s.profileImage ? (
+                    <img
+                      src={s.profileImage}
+                      alt={s.name}
+                      className="profile-img"
+                    />
+                  ) : (
+                    "—"
+                  )}
+                </td>
+                <td>{s.name}</td>
+                <td>{s.courseName || "—"}</td>
+                <td>{s.paidAmount ?? 0}</td>
+                <td>{s.remainingAmount ?? 0}</td>
+                <td>{assigned}</td>
+                <td>{submitted}</td>
+                <td>{notSubmitted}</td>
+                <td className="action-btns">
+                  <button onClick={() => handleEdit(s)} className="edit-btn">
+                    <FaEdit />
+                  </button>
+                  <button
+                    onClick={() => handleDelete(s.id)}
+                    className="delete-btn"
+                  >
+                    <FaTrash />
+                  </button>
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
