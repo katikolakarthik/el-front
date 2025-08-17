@@ -427,19 +427,19 @@ const NewAssignments = () => {
         </div>
 
         {pdfUrl && (
-          <div className="pdf-shell" role="region" aria-label="Assignment PDF viewer">
-            {/* Give the iframe a real, fixed height via the wrapper so it can scroll internally */}
-            <iframe
-              className="pdf-iframe"
-              src={`https://docs.google.com/gview?url=${encodeURIComponent(pdfUrl)}&embedded=true`}
-              title="Assignment PDF"
-              frameBorder="0"
-              // sandbox is optional here; if you tighten it, ensure viewer still works:
-              // sandbox="allow-scripts allow-same-origin allow-popups allow-modals"
-            />
-          </div>
-        )}
-
+  <div className="pdf-shell">
+    <iframe
+      src={`https://docs.google.com/gview?url=${encodeURIComponent(pdfUrl)}&embedded=true`}
+      width="100%"
+      height="100%"
+      frameBorder="0"
+      title="Assignment PDF"
+      allowFullScreen
+      loading="lazy"
+      style={{ border: 'none' }}
+    />
+  </div>
+)}
         <div className="panel">
           <div className="panel-head">
             <h4>Questions</h4>
