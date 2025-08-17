@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import axios from 'axios';
 import {
   FiBook,
@@ -18,10 +18,12 @@ const StudentDashboard = () => {
   const [assignments, setAssignments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+
   const [showResultPopup, setShowResultPopup] = useState(false);
   const [resultData, setResultData] = useState(null);
   const [resultLoading, setResultLoading] = useState(false);
 
+  // --- Helpers ---
   const displayValue = (val) => {
     if (val === null || val === undefined) return '';
     if (Array.isArray(val)) return val.length > 0 ? val.join(', ') : '';
@@ -29,38 +31,72 @@ const StudentDashboard = () => {
     return val;
   };
 
+  const formatDate = (dateString) => {
+    if (!dateString) return 'N/A';
+    return new Date(dateString).toLocaleDateString(undefined, {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+    });
+  };
+
+  // --- Fetchers ---
+  const fetchProfile = useCallback(async (userId) => {
+    const res = await axios.get(
+      `https://el-backend-ashen.vercel.app/student/profile/${userId}`
+    );
+    if (!res.data) throw new Error('No profile data received');
+    return res.data;
+  }, []);
+
+  const fetchAssignments = useCallback(async (userId) => {
+    const res = await axios.get(
+      `https://el-backend-ashen.vercel.app/assignments/student/${userId}`
+    );
+    if (res.data?.success) {
+      return res.data.assignments || [];
+    }
+    return [];
+  }, []);
+
+  const refreshDashboard = useCallback(async () => {
+    try {
+      const userId = localStorage.getItem('userId');
+      if (!userId) throw new Error('User ID not found');
+      const [profile, assigns] = await Promise.all([
+        fetchProfile(userId),
+        fetchAssignments(userId),
+      ]);
+      setStudentData(profile);
+      setAssignments(assigns);
+    } catch (err) {
+      setError(err.message || 'Failed to refresh data');
+    }
+  }, [fetchProfile, fetchAssignments]);
+
+  // Initial load
   useEffect(() => {
-    const fetchData = async () => {
+    const bootstrap = async () => {
       try {
         const userId = localStorage.getItem('userId');
         if (!userId) throw new Error('User ID not found');
 
-        // Student profile
-        const profileResponse = await axios.get(
-          `https://el-backend-ashen.vercel.app/student/profile/${userId}`
-        );
-        if (!profileResponse.data) throw new Error('No profile data received');
-        setStudentData(profileResponse.data);
-
-        // Assignments w/ parent + sub status
-        const assignmentsResponse = await axios.get(
-          `https://el-backend-ashen.vercel.app/assignments/student/${userId}`
-        );
-        if (assignmentsResponse.data?.success) {
-          setAssignments(assignmentsResponse.data.assignments || []);
-        } else {
-          setAssignments([]);
-        }
+        const [profile, assigns] = await Promise.all([
+          fetchProfile(userId),
+          fetchAssignments(userId),
+        ]);
+        setStudentData(profile);
+        setAssignments(assigns);
       } catch (err) {
         setError(err.message || 'Failed to fetch data');
       } finally {
         setLoading(false);
       }
     };
+    bootstrap();
+  }, [fetchAssignments, fetchProfile]);
 
-    fetchData();
-  }, []);
-
+  // --- Results fetching ---
   const fetchResultData = async (studentId, assignmentId) => {
     try {
       setResultLoading(true);
@@ -85,7 +121,11 @@ const StudentDashboard = () => {
       const totalSub = a.subAssignments?.length ?? 0;
       const doneSub = a.subAssignments?.filter((s) => s.isCompleted)?.length ?? 0;
       const fallbackProgress =
-        totalSub > 0 ? Math.round((doneSub / totalSub) * 100) : (a.isCompleted ? 100 : 0);
+        totalSub > 0
+          ? Math.round((doneSub / totalSub) * 100)
+          : a.isCompleted
+          ? 100
+          : 0;
 
       return {
         assignmentId: a._id, // parent assignment id to send to /result
@@ -99,6 +139,7 @@ const StudentDashboard = () => {
     });
   }, [assignments]);
 
+  // --- Handlers ---
   const handleSubmissionClick = (submission) => {
     // Only allow results when parent assignment is completed
     if (!submission || submission.isCompleted !== true) return;
@@ -113,15 +154,37 @@ const StudentDashboard = () => {
     fetchResultData(studentId, assignmentId);
   };
 
-  const formatDate = (dateString) => {
-    if (!dateString) return 'N/A';
-    return new Date(dateString).toLocaleDateString(undefined, {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-    });
+  const closeResultPopup = async () => {
+    // Close popup
+    setShowResultPopup(false);
+    setResultData(null);
+
+    // 🔄 Auto-refresh dashboard data after closing result popup
+    // (useful after a submission flow finishes elsewhere)
+    await refreshDashboard();
   };
 
+  // --- Popup UX: close on overlay click & Escape; lock scroll while open ---
+  useEffect(() => {
+    if (!showResultPopup) return;
+
+    // Lock body scroll
+    const originalOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+
+    const handleEsc = (e) => {
+      if (e.key === 'Escape') closeResultPopup();
+    };
+    window.addEventListener('keydown', handleEsc);
+
+    return () => {
+      window.removeEventListener('keydown', handleEsc);
+      document.body.style.overflow = originalOverflow;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showResultPopup]); // depend only on visibility
+
+  // --- Render helpers for popup content ---
   const renderStaticAnswers = (module) => {
     const submitted = module.submitted || {};
     const fields = [
@@ -269,7 +332,7 @@ const StudentDashboard = () => {
           module.correctDynamicQuestions
         )}
 
-        {/* Per-assignment progress (optional fields) */}
+        {/* Optional per-module progress display */}
         {(module.submitted?.correctCount !== undefined ||
           module.submitted?.wrongCount !== undefined ||
           module.submitted?.progressPercent !== undefined) && (
@@ -303,9 +366,15 @@ const StudentDashboard = () => {
     const modules = Array.isArray(resultData.data) ? resultData.data : [resultData.data];
 
     return (
-      <div className="result-popup-overlay">
-        <div className="result-popup">
-          <button className="close-popup" onClick={closeResultPopup}>
+      <div
+        className="result-popup-overlay"
+        onClick={closeResultPopup} // close when clicking outside
+      >
+        <div
+          className="result-popup"
+          onClick={(e) => e.stopPropagation()} // prevent overlay close when clicking inside
+        >
+          <button className="close-popup" onClick={closeResultPopup} aria-label="Close results">
             <FiX size={24} />
           </button>
 
@@ -335,11 +404,7 @@ const StudentDashboard = () => {
     );
   };
 
-  const closeResultPopup = () => {
-    setShowResultPopup(false);
-    setResultData(null);
-  };
-
+  // --- Top-level renders ---
   if (loading) {
     return (
       <div className="dashboard-loading">
@@ -523,24 +588,4 @@ const StudentDashboard = () => {
                 );
               })
             ) : (
-              <div className="no-submissions">
-                <FiClock size={32} />
-                <p>No submissions yet. Start working on your assignments!</p>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {showResultPopup && renderResultPopup()}
-      {resultLoading && (
-        <div className="loading-overlay">
-          <div className="loading-spinner"></div>
-          <p>Loading result details...</p>
-        </div>
-      )}
-    </div>
-  );
-};
-
-export default StudentDashboard;
+              <div className="no-submissions"
