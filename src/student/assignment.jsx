@@ -360,16 +360,7 @@ const NewAssignments = () => {
                   </span>
                 </div>
 
-                {sub.assignmentPdf && (
-                  <a
-                    className="link"
-                    href={sub.assignmentPdf}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    View PDF
-                  </a>
-                )}
+                
 
                 <div className="card-actions">
                   <button
