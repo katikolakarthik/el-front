@@ -469,16 +469,7 @@ const NewAssignments = () => {
                 <span className="meta-val">{formatDate(assignment.assignedDate)}</span>
               </div>
 
-              {assignment.assignmentPdf && (
-                <a
-                  className="link"
-                  href={assignment.assignmentPdf}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  View PDF
-                </a>
-              )}
+              
 
               <div className="card-actions">
                 <button
