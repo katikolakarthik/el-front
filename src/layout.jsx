@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from "react";
 import { FaBars, FaTimes, FaGraduationCap, FaUserFriends, FaClipboardList, FaSignOutAlt } from "react-icons/fa";
 import { Link, useNavigate } from "react-router-dom";
+import AIAssistance from "./components/AIAssistance";
 import "./layout.css";
 
 const Layout = ({ children }) => {
@@ -119,6 +120,9 @@ const Layout = ({ children }) => {
         {/* Page Content */}
         <main className="content">{children}</main>
       </div>
+      
+      {/* AI Assistance Widget - Only for Students */}
+      {user?.role === "user" && <AIAssistance />}
     </div>
   );
 };
