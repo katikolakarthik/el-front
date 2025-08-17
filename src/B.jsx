@@ -5,7 +5,7 @@ export default function Assignments() {
   const [selectedSub, setSelectedSub] = useState(null);
 
   useEffect(() => {
-            fetch("https://el-backend-ashen.vercel.app/admin/assignments")
+            fetch("http://localhost:5000/admin/assignments")
       .then((res) => res.json())
       .then((data) => {
         if (Array.isArray(data)) {

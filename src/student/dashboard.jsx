@@ -37,13 +37,13 @@ const StudentDashboard = () => {
         if (!userId) throw new Error('User ID not found');
 
         const profileResponse = await axios.get(
-          `https://el-backend-ashen.vercel.app/student/profile/${userId}`
+          `http://localhost:5000/student/profile/${userId}`
         );
         if (!profileResponse.data) throw new Error('No profile data received');
         setStudentData(profileResponse.data);
 
         const assignmentsResponse = await axios.get(
-          `https://el-backend-ashen.vercel.app/assignments/student/${userId}`
+          `http://localhost:5000/assignments/student/${userId}`
         );
         if (assignmentsResponse.data?.success) {
           setAssignments(assignmentsResponse.data.assignments);
@@ -61,10 +61,10 @@ const StudentDashboard = () => {
   const fetchResultData = async (studentId, assignmentId) => {
     try {
       setResultLoading(true);
-      const response = await axios.post(
-        'https://el-backend-ashen.vercel.app/result',
-        { studentId, assignmentId }
-      );
+              const response = await axios.post(
+          'http://localhost:5000/result',
+          { studentId, assignmentId }
+        );
       setResultData(response.data);
       setShowResultPopup(true);
     } catch (err) {
@@ -462,43 +462,45 @@ const StudentDashboard = () => {
 
         <div className="info-card">
           <h2>Submissions</h2>
-          {studentData.recentSubmissions?.length > 0 ? (
-            studentData.recentSubmissions.map((submission, i) => (
-              <div
-                key={i}
-                className="submission-item"
-                onClick={() => handleSubmissionClick(submission)}
-                style={{ cursor: 'pointer' }}
-              >
-                <div className="submission-header">
-                  <FiAward className="submission-icon" />
-                  <h3>{submission.moduleName}</h3>
+          <div className="submissions-container">
+            {studentData.recentSubmissions?.length > 0 ? (
+              studentData.recentSubmissions.map((submission, i) => (
+                <div
+                  key={i}
+                  className="submission-item"
+                  onClick={() => handleSubmissionClick(submission)}
+                  style={{ cursor: 'pointer' }}
+                >
+                  <div className="submission-header">
+                    <FiAward className="submission-icon" />
+                    <h3>{submission.moduleName}</h3>
+                  </div>
+                  <div className="submission-details">
+                    <div className="submission-stat">
+                      <span>Submitted:</span>
+                      <span>{formatDate(submission.submissionDate)}</span>
+                    </div>
+                    <div className="submission-stat">
+                      <span>Score:</span>
+                      <span>
+                        {submission.totalCorrect} correct, {submission.totalWrong}{' '}
+                        wrong
+                      </span>
+                    </div>
+                    <div className="submission-stat">
+                      <span>Progress:</span>
+                      <span>{submission.overallProgress}%</span>
+                    </div>
+                  </div>
                 </div>
-                <div className="submission-details">
-                  <div className="submission-stat">
-                    <span>Submitted:</span>
-                    <span>{formatDate(submission.submissionDate)}</span>
-                  </div>
-                  <div className="submission-stat">
-                    <span>Score:</span>
-                    <span>
-                      {submission.totalCorrect} correct, {submission.totalWrong}{' '}
-                      wrong
-                    </span>
-                  </div>
-                  <div className="submission-stat">
-                    <span>Progress:</span>
-                    <span>{submission.overallProgress}%</span>
-                  </div>
-                </div>
+              ))
+            ) : (
+              <div className="no-submissions">
+                <FiClock size={32} />
+                <p>No submissions yet. Start working on your assignments!</p>
               </div>
-            ))
-          ) : (
-            <div className="no-submissions">
-              <FiClock size={32} />
-              <p>No submissions yet. Start working on your assignments!</p>
-            </div>
-          )}
+            )}
+          </div>
         </div>
       </div>
 

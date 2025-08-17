@@ -219,6 +219,41 @@ body {
 }
 
 /* Submissions */
+.submissions-container {
+  max-height: 300px;
+  overflow-y: auto;
+  padding-right: 8px;
+}
+
+.submissions-container::-webkit-scrollbar {
+  width: 8px;
+}
+
+.submissions-container::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 4px;
+}
+
+.submissions-container::-webkit-scrollbar-thumb {
+  background: var(--accent);
+  border-radius: 4px;
+}
+
+.submissions-container::-webkit-scrollbar-thumb:hover {
+  background: #2980b9;
+}
+
+/* Firefox scrollbar */
+.submissions-container {
+  scrollbar-width: thin;
+  scrollbar-color: var(--accent) #f1f1f1;
+}
+
+/* Ensure last submission item doesn't have bottom margin */
+.submissions-container .submission-item:last-child {
+  margin-bottom: 0;
+}
+
 .submission-item {
   background: var(--white);
   border-radius: var(--border-radius);

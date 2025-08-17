@@ -3,7 +3,7 @@ import axios from 'axios';
 import { FiBook, FiClock } from 'react-icons/fi';
 import './AssignmentFlow.css';
 
-const API_BASE = "https://el-backend-ashen.vercel.app";
+const API_BASE = "http://localhost:5000";
 
 const normalizeAssignment = (raw) => {
   const norm = { ...raw };
@@ -327,19 +327,21 @@ const NewAssignments = () => {
     if (!activeSubAssignment && activeAssignment.subAssignments?.length > 0) {
       return (
         <div className="assignment-detail">
-          <button onClick={() => setActiveAssignment(null)}>Back</button>
-          <h3>{activeAssignment.moduleName}</h3>
-
+          <div className="assignment-header">
+            <button className="back-button" onClick={() => setActiveAssignment(null)}>
+              ← Back
+            </button>
+            <h3>{activeAssignment.moduleName}</h3>
+          </div>
+          
           <div className="subassignments-list">
             {activeAssignment.subAssignments.map((sub, idx) => (
               <div key={idx} className="subassignment-item">
                 <div className="subassignment-content">
                   <h4>{sub.subModuleName}</h4>
-                  {sub.assignmentPdf && (
-                    <a href={sub.assignmentPdf} target="_blank" rel="noopener noreferrer">View PDF</a>
-                  )}
                 </div>
                 <button
+                  className={`subassignment-btn ${sub.isCompleted ? 'completed' : 'start'}`}
                   onClick={() => handleStart(activeAssignment._id, sub._id)}
                   disabled={Boolean(sub.isCompleted)}
                 >
@@ -358,36 +360,145 @@ const NewAssignments = () => {
 
     return (
       <div className="assignment-detail">
-        <button onClick={() => {
-          if (activeSubAssignment) {
-            setActiveSubAssignment(null);
-          } else {
-            setActiveAssignment(null);
-          }
-        }}>Back</button>
-        <h3>{activeSubAssignment?.subModuleName || activeAssignment.moduleName}</h3>
-
-        {pdfUrl && (
-          <iframe
-            src={`https://docs.google.com/gview?url=${encodeURIComponent(pdfUrl)}&embedded=true`}
-            width="100%" height="500px" frameBorder="0" title="Assignment PDF"
-          ></iframe>
-        )}
-
-        <div className="questions-section">
-          <h4>Questions</h4>
-          {renderQuestions(questionSource)}
+        <div className="assignment-header">
+          <button className="back-button" onClick={() => {
+            if (activeSubAssignment) {
+              setActiveSubAssignment(null);
+            } else {
+              setActiveAssignment(null);
+            }
+          }}>
+            ← Back
+          </button>
+          <h3>{activeSubAssignment?.subModuleName || activeAssignment.moduleName}</h3>
         </div>
 
-        <button
-          className="submit-button"
-          onClick={handleSubmit}
-          disabled={Boolean(activeSubAssignment?.isCompleted || activeAssignment?.isCompleted)}
-        >
-          {activeSubAssignment?.isCompleted || activeAssignment?.isCompleted
-            ? "Already Submitted"
-            : "Submit Assignment"}
-        </button>
+        <div className="assignment-workspace">
+          {/* Left Column - PDF Viewer */}
+          <div className="pdf-viewer-section">
+            <div className="pdf-content">
+              {pdfUrl ? (
+                <iframe
+                  src={`https://docs.google.com/gview?url=${encodeURIComponent(pdfUrl)}&embedded=true`}
+                  width="100%" 
+                  height="100%" 
+                  frameBorder="0" 
+                  title="Assignment PDF"
+                  className="pdf-iframe"
+                />
+              ) : (
+                <div className="pdf-placeholder">
+                  <div className="placeholder-content">
+                    <h3>Idea proposal</h3>
+                    <p>You have received a total of 95 ideas. You may forward a maximum of 40 Ideas.</p>
+                    <p>1. Details of Incubatee:</p>
+                    <p>1.1 Details of the Host Institute (HI)</p>
+                    <p>TKR College of Engineering and Technology</p>
+                    <p>1.2 Name of the Business Incubator (BI)</p>
+                    <p>Dr. B. Rajini Kanth, Professor, rajinikanth@tkroet.com, 8498085223</p>
+                    <p>1.3 Category of the Incubatee- MSME/ Student/ Others</p>
+                    <p>Entrepreneurs/MSME | Student | Others</p>
+                    <p>1.4 Incubatee Name</p>
+                    <p>Dr. DONETI GOPI KRI</p>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Right Column - Patient Details Form */}
+          <div className="patient-details-section">
+            <div className="form-header">
+              <h4>Patient Details</h4>
+            </div>
+            
+            <div className="form-content">
+              <div className="form-group">
+                <label>Patient Name</label>
+                <input
+                  type="text"
+                  className="form-input"
+                  value={answers.patientName || ""}
+                  onChange={(e) => handleAnswerChange("patientName", e.target.value)}
+                  placeholder="Enter patient name"
+                />
+              </div>
+
+              <div className="form-group">
+                <label>Age/DOB</label>
+                <input
+                  type="text"
+                  className="form-input"
+                  value={answers.ageOrDob || ""}
+                  onChange={(e) => handleAnswerChange("ageOrDob", e.target.value)}
+                  placeholder="Age/DOB"
+                />
+              </div>
+
+              <div className="form-group">
+                <label>ICD-10 Codes</label>
+                <div className="codes-row">
+                  <input
+                    type="text"
+                    className="form-input"
+                    value={answers.icdCodes || ""}
+                    onChange={(e) => handleAnswerChange("icdCodes", e.target.value)}
+                    placeholder="Enter ICD codes"
+                  />
+                  <input
+                    type="text"
+                    className="form-input"
+                    placeholder="CODIO"
+                    disabled
+                  />
+                </div>
+              </div>
+
+              <div className="form-group">
+                <label>CPT Codes</label>
+                <div className="codes-row">
+                  <input
+                    type="text"
+                    className="form-input"
+                    value={answers.cptCodes || ""}
+                    onChange={(e) => handleAnswerChange("cptCodes", e.target.value)}
+                    placeholder="Enter CPT codes"
+                  />
+                  <input
+                    type="text"
+                    className="form-input"
+                    placeholder="CPT"
+                    disabled
+                  />
+                </div>
+              </div>
+
+              <div className="form-group">
+                <label>Notes</label>
+                <textarea
+                  className="form-textarea"
+                  value={answers.notes || ""}
+                  onChange={(e) => handleAnswerChange("notes", e.target.value)}
+                  placeholder="Enter additional notes"
+                  rows="4"
+                />
+              </div>
+
+              <div className="form-actions">
+                <button
+                  className="submit-btn primary"
+                  onClick={handleSubmit}
+                  disabled={Boolean(activeSubAssignment?.isCompleted || activeAssignment?.isCompleted)}
+                >
+                  Submit
+                </button>
+                <button className="submit-btn secondary">
+                  Send to Audit
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     );
   }
@@ -404,12 +515,10 @@ const NewAssignments = () => {
               <div className="assignment-content">
                 <h3>{assignment.moduleName}</h3>
                 <p>Assigned on: {formatDate(assignment.assignedDate)}</p>
-                {assignment.assignmentPdf && (
-                  <a href={assignment.assignmentPdf} target="_blank" rel="noopener noreferrer">View PDF</a>
-                )}
               </div>
 
               <button
+                className={`assignment-btn ${assignment.isCompleted ? 'completed' : 'start'}`}
                 onClick={() => handleStart(assignment._id)}
                 disabled={Boolean(assignment.isCompleted)}
               >
