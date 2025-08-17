@@ -1,25 +1,26 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import axios from 'axios';
 import { FiBook, FiClock } from 'react-icons/fi';
 import './AssignmentFlow.css';
 
-const API_BASE = "https://el-backend-ashen.vercel.app";
+const API_BASE = 'https://el-backend-ashen.vercel.app';
 
 const normalizeAssignment = (raw) => {
   const norm = { ...raw };
+
   if (Array.isArray(norm.dynamicQuestions) && norm.dynamicQuestions.length > 0) {
-    norm.questions = norm.dynamicQuestions.map(q => ({ ...q, type: 'dynamic' }));
+    norm.questions = norm.dynamicQuestions.map((q) => ({ ...q, type: 'dynamic' }));
   } else if (norm.answerKey) {
     norm.questions = [{ type: 'predefined', answerKey: norm.answerKey }];
   } else {
     norm.questions = norm.questions || [];
   }
 
-  norm.subAssignments = (norm.subAssignments || []).map(sub => {
+  norm.subAssignments = (norm.subAssignments || []).map((sub) => {
     if (Array.isArray(sub.dynamicQuestions) && sub.dynamicQuestions.length > 0) {
       return {
         ...sub,
-        questions: sub.dynamicQuestions.map(q => ({ ...q, type: 'dynamic' })),
+        questions: sub.dynamicQuestions.map((q) => ({ ...q, type: 'dynamic' })),
       };
     } else if (sub.answerKey) {
       return {
@@ -32,6 +33,11 @@ const normalizeAssignment = (raw) => {
 
   return norm;
 };
+
+const sortByAssignedDesc = (arr) =>
+  [...arr].sort(
+    (a, b) => new Date(b?.assignedDate || 0).getTime() - new Date(a?.assignedDate || 0).getTime()
+  );
 
 const NewAssignments = () => {
   const [assignments, setAssignments] = useState([]);
@@ -52,7 +58,8 @@ const NewAssignments = () => {
           const assignmentsData = Array.isArray(response.data.assignments)
             ? response.data.assignments
             : [response.data.assignment].filter(Boolean);
-          setAssignments(assignmentsData);
+
+          setAssignments(sortByAssignedDesc(assignmentsData));
         } else {
           throw new Error('Failed to fetch assignments');
         }
@@ -66,11 +73,13 @@ const NewAssignments = () => {
   }, []);
 
   const formatDate = (dateString) =>
-    new Date(dateString).toLocaleDateString(undefined, {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-    });
+    dateString
+      ? new Date(dateString).toLocaleDateString(undefined, {
+          year: 'numeric',
+          month: 'short',
+          day: 'numeric',
+        })
+      : '—';
 
   const handleStart = async (assignmentId, subAssignmentId = null) => {
     try {
@@ -83,21 +92,20 @@ const NewAssignments = () => {
       let assignmentData = normalizeAssignment(response.data.assignment);
 
       // merge completion flags from list view
-      const listCopy = assignments.find(a => a._id === assignmentId);
+      const listCopy = assignments.find((a) => a._id === assignmentId);
       if (listCopy && Array.isArray(listCopy.subAssignments)) {
-        const completeMap = new Map(listCopy.subAssignments.map(s => [String(s._id), !!s.isCompleted]));
-        assignmentData.subAssignments = (assignmentData.subAssignments || []).map(sub => ({
+        const completeMap = new Map(listCopy.subAssignments.map((s) => [String(s._id), !!s.isCompleted]));
+        assignmentData.subAssignments = (assignmentData.subAssignments || []).map((sub) => ({
           ...sub,
-          isCompleted: typeof sub.isCompleted === 'boolean'
-            ? sub.isCompleted
-            : (completeMap.get(String(sub._id)) ?? false),
+          isCompleted:
+            typeof sub.isCompleted === 'boolean' ? sub.isCompleted : completeMap.get(String(sub._id)) ?? false,
         }));
       }
 
       setActiveAssignment(assignmentData);
 
       if (subAssignmentId) {
-        const sub = assignmentData.subAssignments.find(s => s._id === subAssignmentId);
+        const sub = assignmentData.subAssignments.find((s) => s._id === subAssignmentId);
         setActiveSubAssignment(sub || null);
       } else {
         setActiveSubAssignment(null);
@@ -113,23 +121,23 @@ const NewAssignments = () => {
 
   const handleSubmit = async () => {
     try {
-      const userId = localStorage.getItem("userId");
-      if (!userId) throw new Error("User ID not found");
+      const userId = localStorage.getItem('userId');
+      if (!userId) throw new Error('User ID not found');
 
       const payload = {
         studentId: userId,
         assignmentId: activeAssignment._id,
-        submittedAnswers: []
+        submittedAnswers: [],
       };
 
       const buildDynamic = (qs, prefix = 'dynamic') =>
         qs.map((q, idx) => ({
           questionText: q.questionText,
-          submittedAnswer: answers[`${prefix}-${idx}`] || ""
+          submittedAnswer: answers[`${prefix}-${idx}`] || '',
         }));
 
       if (activeSubAssignment) {
-        if (activeSubAssignment.questions.some(q => q.type === "dynamic")) {
+        if (activeSubAssignment.questions.some((q) => q.type === 'dynamic')) {
           payload.submittedAnswers.push({
             subAssignmentId: activeSubAssignment._id,
             dynamicQuestions: buildDynamic(activeSubAssignment.questions, 'dynamic'),
@@ -137,54 +145,67 @@ const NewAssignments = () => {
         } else {
           payload.submittedAnswers.push({
             subAssignmentId: activeSubAssignment._id,
-            patientName: answers.patientName || "",
-            ageOrDob: answers.ageOrDob || "",
-            icdCodes: (answers.icdCodes || "").split(",").map(s => s.trim()).filter(Boolean),
-            cptCodes: (answers.cptCodes || "").split(",").map(s => s.trim()).filter(Boolean),
-            notes: answers.notes || ""
+            patientName: answers.patientName || '',
+            ageOrDob: answers.ageOrDob || '',
+            icdCodes: (answers.icdCodes || '')
+              .split(',')
+              .map((s) => s.trim())
+              .filter(Boolean),
+            cptCodes: (answers.cptCodes || '')
+              .split(',')
+              .map((s) => s.trim())
+              .filter(Boolean),
+            notes: answers.notes || '',
           });
         }
       } else {
-        if (activeAssignment.questions.some(q => q.type === "dynamic")) {
+        if (activeAssignment.questions.some((q) => q.type === 'dynamic')) {
           payload.submittedAnswers.push({
             dynamicQuestions: buildDynamic(activeAssignment.questions, 'dynamic'),
           });
         } else {
           payload.submittedAnswers.push({
-            patientName: answers.patientName || "",
-            ageOrDob: answers.ageOrDob || "",
-            icdCodes: (answers.icdCodes || "").split(",").map(s => s.trim()).filter(Boolean),
-            cptCodes: (answers.cptCodes || "").split(",").map(s => s.trim()).filter(Boolean),
-            notes: answers.notes || ""
+            patientName: answers.patientName || '',
+            ageOrDob: answers.ageOrDob || '',
+            icdCodes: (answers.icdCodes || '')
+              .split(',')
+              .map((s) => s.trim())
+              .filter(Boolean),
+            cptCodes: (answers.cptCodes || '')
+              .split(',')
+              .map((s) => s.trim())
+              .filter(Boolean),
+            notes: answers.notes || '',
           });
         }
       }
 
       const res = await axios.post(`${API_BASE}/student/submit-assignment`, payload);
       if (!res.data?.success) {
-        alert("Failed to submit assignment");
+        alert('Failed to submit assignment');
         return;
       }
 
       if (activeSubAssignment) {
-        setActiveAssignment(prev => {
+        setActiveAssignment((prev) => {
           if (!prev) return prev;
-          const updatedSubs = (prev.subAssignments || []).map(s =>
+          const updatedSubs = (prev.subAssignments || []).map((s) =>
             s._id === activeSubAssignment._id ? { ...s, isCompleted: true } : s
           );
           return { ...prev, subAssignments: updatedSubs };
         });
-        setActiveSubAssignment(prev => prev ? { ...prev, isCompleted: true } : prev);
+        setActiveSubAssignment((prev) => (prev ? { ...prev, isCompleted: true } : prev));
       } else {
-        setActiveAssignment(prev => (prev ? { ...prev, isCompleted: true } : prev));
+        setActiveAssignment((prev) => (prev ? { ...prev, isCompleted: true } : prev));
       }
 
+      // refresh list + keep newest on top
       const refresh = await axios.get(`${API_BASE}/assignments/student/${userId}`);
       if (refresh.data?.success) {
         const refreshedData = Array.isArray(refresh.data.assignments)
           ? refresh.data.assignments
           : [refresh.data.assignment].filter(Boolean);
-        setAssignments(refreshedData);
+        setAssignments(sortByAssignedDesc(refreshedData));
       }
 
       if (activeSubAssignment && activeAssignment.subAssignments?.length > 0) {
@@ -192,33 +213,33 @@ const NewAssignments = () => {
           (sub) => sub._id === activeSubAssignment._id
         );
         if (currentIndex < activeAssignment.subAssignments.length - 1) {
-          alert("Assignment submitted successfully..wait for next");
+          alert('Assignment submitted successfully..wait for next');
           const nextSub = activeAssignment.subAssignments[currentIndex + 1];
           setActiveSubAssignment(nextSub);
         } else {
-          alert("Assignment completed successfully!");
+          alert('Assignment completed successfully!');
           setActiveSubAssignment(null);
         }
       } else {
-        alert("Assignment submitted successfully!");
+        alert('Assignment submitted successfully!');
         setActiveAssignment(null);
       }
 
       setAnswers({});
     } catch (err) {
-      alert("Error: " + err.message);
+      alert('Error: ' + err.message);
     }
   };
 
   const handleAnswerChange = (key, value) => {
-    setAnswers(prev => ({ ...prev, [key]: value }));
+    setAnswers((prev) => ({ ...prev, [key]: value }));
   };
 
   const renderQuestions = (target) => {
     if (!target) return null;
 
     const qs = target.questions || [];
-    const dynamicQs = qs.filter(q => q.type === "dynamic");
+    const dynamicQs = qs.filter((q) => q.type === 'dynamic');
 
     if (dynamicQs.length > 0) {
       return dynamicQs.map((q, idx) => {
@@ -246,7 +267,7 @@ const NewAssignments = () => {
                 className="input"
                 type="text"
                 placeholder="Type your answer"
-                value={answers[key] || ""}
+                value={answers[key] || ''}
                 onChange={(e) => handleAnswerChange(key, e.target.value)}
               />
             )}
@@ -255,7 +276,7 @@ const NewAssignments = () => {
       });
     }
 
-    const predefined = qs.find(q => q.type === 'predefined');
+    const predefined = qs.find((q) => q.type === 'predefined');
     if (predefined && predefined.answerKey) {
       return (
         <div className="form-grid">
@@ -264,8 +285,8 @@ const NewAssignments = () => {
             <input
               className="input"
               type="text"
-              value={answers.patientName || ""}
-              onChange={(e) => handleAnswerChange("patientName", e.target.value)}
+              value={answers.patientName || ''}
+              onChange={(e) => handleAnswerChange('patientName', e.target.value)}
             />
           </div>
           <div className="form-item">
@@ -273,8 +294,8 @@ const NewAssignments = () => {
             <input
               className="input"
               type="text"
-              value={answers.ageOrDob || ""}
-              onChange={(e) => handleAnswerChange("ageOrDob", e.target.value)}
+              value={answers.ageOrDob || ''}
+              onChange={(e) => handleAnswerChange('ageOrDob', e.target.value)}
             />
           </div>
           <div className="form-item">
@@ -282,8 +303,8 @@ const NewAssignments = () => {
             <input
               className="input"
               type="text"
-              value={answers.icdCodes || ""}
-              onChange={(e) => handleAnswerChange("icdCodes", e.target.value)}
+              value={answers.icdCodes || ''}
+              onChange={(e) => handleAnswerChange('icdCodes', e.target.value)}
               placeholder="Comma separated"
             />
           </div>
@@ -292,8 +313,8 @@ const NewAssignments = () => {
             <input
               className="input"
               type="text"
-              value={answers.cptCodes || ""}
-              onChange={(e) => handleAnswerChange("cptCodes", e.target.value)}
+              value={answers.cptCodes || ''}
+              onChange={(e) => handleAnswerChange('cptCodes', e.target.value)}
               placeholder="Comma separated"
             />
           </div>
@@ -301,8 +322,8 @@ const NewAssignments = () => {
             <label className="label">Notes</label>
             <textarea
               className="textarea"
-              value={answers.notes || ""}
-              onChange={(e) => handleAnswerChange("notes", e.target.value)}
+              value={answers.notes || ''}
+              onChange={(e) => handleAnswerChange('notes', e.target.value)}
               rows={4}
             />
           </div>
@@ -317,10 +338,14 @@ const NewAssignments = () => {
     return (
       <div className="container">
         <div className="page-header">
-          <h2 className="title"><FiBook className="icon" /> New Assignments</h2>
+          <h2 className="title">
+            <FiBook className="icon" /> New Assignments
+          </h2>
         </div>
         <div className="skeleton-list">
-          {[...Array(3)].map((_, i) => <div className="skeleton-card" key={i} />)}
+          {[...Array(3)].map((_, i) => (
+            <div className="skeleton-card" key={i} />
+          ))}
         </div>
       </div>
     );
@@ -330,7 +355,9 @@ const NewAssignments = () => {
     return (
       <div className="container">
         <div className="empty-state error">
-          <div className="empty-icon"><FiClock /></div>
+          <div className="empty-icon">
+            <FiClock />
+          </div>
           <div>
             <h3>Something went wrong</h3>
             <p>{error}</p>
@@ -346,7 +373,9 @@ const NewAssignments = () => {
       return (
         <div className="container">
           <div className="page-header">
-            <button className="btn btn-ghost" onClick={() => setActiveAssignment(null)}>Back</button>
+            <button className="btn btn-ghost" onClick={() => setActiveAssignment(null)}>
+              Back
+            </button>
             <h3 className="title-sm">{activeAssignment.moduleName}</h3>
           </div>
 
@@ -360,15 +389,13 @@ const NewAssignments = () => {
                   </span>
                 </div>
 
-                
-
                 <div className="card-actions">
                   <button
                     className="btn"
                     onClick={() => handleStart(activeAssignment._id, sub._id)}
                     disabled={Boolean(sub.isCompleted)}
                   >
-                    {sub.isCompleted ? "Completed" : "Start"}
+                    {sub.isCompleted ? 'Completed' : 'Start'}
                   </button>
                 </div>
               </div>
@@ -396,20 +423,20 @@ const NewAssignments = () => {
           >
             Back
           </button>
-          <h3 className="title-sm">
-            {activeSubAssignment?.subModuleName || activeAssignment.moduleName}
-          </h3>
+          <h3 className="title-sm">{activeSubAssignment?.subModuleName || activeAssignment.moduleName}</h3>
         </div>
 
         {pdfUrl && (
-          <div className="pdf-shell">
+          <div className="pdf-shell" role="region" aria-label="Assignment PDF viewer">
+            {/* Give the iframe a real, fixed height via the wrapper so it can scroll internally */}
             <iframe
+              className="pdf-iframe"
               src={`https://docs.google.com/gview?url=${encodeURIComponent(pdfUrl)}&embedded=true`}
-              width="100%"
-              height="100%"
-              frameBorder="0"
               title="Assignment PDF"
-            ></iframe>
+              frameBorder="0"
+              // sandbox is optional here; if you tighten it, ensure viewer still works:
+              // sandbox="allow-scripts allow-same-origin allow-popups allow-modals"
+            />
           </div>
         )}
 
@@ -417,9 +444,7 @@ const NewAssignments = () => {
           <div className="panel-head">
             <h4>Questions</h4>
           </div>
-          <div className="panel-body">
-            {renderQuestions(questionSource)}
-          </div>
+          <div className="panel-body">{renderQuestions(questionSource)}</div>
 
           <div className="panel-actions">
             <button
@@ -428,8 +453,8 @@ const NewAssignments = () => {
               disabled={Boolean(activeSubAssignment?.isCompleted || activeAssignment?.isCompleted)}
             >
               {activeSubAssignment?.isCompleted || activeAssignment?.isCompleted
-                ? "Already Submitted"
-                : "Submit Assignment"}
+                ? 'Already Submitted'
+                : 'Submit Assignment'}
             </button>
           </div>
         </div>
@@ -441,7 +466,9 @@ const NewAssignments = () => {
   return (
     <div className="container">
       <div className="page-header">
-        <h2 className="title"><FiBook className="icon" /> New Assignments</h2>
+        <h2 className="title">
+          <FiBook className="icon" /> New Assignments
+        </h2>
       </div>
 
       {assignments.length > 0 ? (
@@ -460,8 +487,6 @@ const NewAssignments = () => {
                 <span className="meta-val">{formatDate(assignment.assignedDate)}</span>
               </div>
 
-              
-
               <div className="card-actions">
                 <button
                   className="btn"
@@ -469,10 +494,10 @@ const NewAssignments = () => {
                   disabled={Boolean(assignment.isCompleted)}
                 >
                   {assignment.isCompleted
-                    ? "Completed"
+                    ? 'Completed'
                     : assignment.subAssignments?.length > 0
-                      ? "View Sections"
-                      : "Start"}
+                    ? 'View Sections'
+                    : 'Start'}
                 </button>
               </div>
             </div>
@@ -480,7 +505,9 @@ const NewAssignments = () => {
         </div>
       ) : (
         <div className="empty-state">
-          <div className="empty-icon"><FiClock /></div>
+          <div className="empty-icon">
+            <FiClock />
+          </div>
           <div>
             <h3>No new assignments</h3>
             <p className="muted">You’ll see new items here when assigned.</p>
