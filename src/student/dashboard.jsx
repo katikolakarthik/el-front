@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import axios from 'axios';
 import {
   FiBook,
@@ -35,17 +35,21 @@ const StudentDashboard = () => {
         const userId = localStorage.getItem('userId');
         if (!userId) throw new Error('User ID not found');
 
+        // Student profile
         const profileResponse = await axios.get(
           `https://el-backend-ashen.vercel.app/student/profile/${userId}`
         );
         if (!profileResponse.data) throw new Error('No profile data received');
         setStudentData(profileResponse.data);
 
+        // Assignments w/ parent + sub status
         const assignmentsResponse = await axios.get(
           `https://el-backend-ashen.vercel.app/assignments/student/${userId}`
         );
         if (assignmentsResponse.data?.success) {
-          setAssignments(assignmentsResponse.data.assignments);
+          setAssignments(assignmentsResponse.data.assignments || []);
+        } else {
+          setAssignments([]);
         }
       } catch (err) {
         setError(err.message || 'Failed to fetch data');
@@ -74,12 +78,39 @@ const StudentDashboard = () => {
     }
   };
 
+  // ✅ Build the submissions list from the parent assignments API
+  const submissions = useMemo(() => {
+    if (!Array.isArray(assignments)) return [];
+    return assignments.map((a) => {
+      const totalSub = a.subAssignments?.length ?? 0;
+      const doneSub = a.subAssignments?.filter((s) => s.isCompleted)?.length ?? 0;
+      const fallbackProgress =
+        totalSub > 0 ? Math.round((doneSub / totalSub) * 100) : (a.isCompleted ? 100 : 0);
+
+      return {
+        assignmentId: a._id, // parent assignment id to send to /result
+        moduleName: (a.moduleName || '').trim(),
+        isCompleted: a.isCompleted === true, // gate by parent assignment completion
+        submissionDate: a.assignedDate,
+        totalCorrect: a.totalCorrect ?? 0, // optional: depends on your backend
+        totalWrong: a.totalWrong ?? 0,
+        overallProgress: a.progressPercent ?? fallbackProgress,
+      };
+    });
+  }, [assignments]);
+
   const handleSubmissionClick = (submission) => {
-    // Gate by completion
-    if (!submission?.isCompleted) return;
-    // studentData might have _id or id depending on your API; prefer _id then id
+    // Only allow results when parent assignment is completed
+    if (!submission || submission.isCompleted !== true) return;
+
+    // Prefer _id if available in profile; otherwise fallback to id
     const studentId = studentData?._id || studentData?.id;
-    fetchResultData(studentId, submission.assignmentId);
+    const assignmentId = submission.assignmentId; // parent assignment id
+    if (!studentId || !assignmentId) {
+      console.warn('Missing studentId or assignmentId for result fetch.');
+      return;
+    }
+    fetchResultData(studentId, assignmentId);
   };
 
   const formatDate = (dateString) => {
@@ -176,18 +207,15 @@ const StudentDashboard = () => {
       module.correctAnswerKey &&
       (module.correctAnswerKey.patientName ||
         module.correctAnswerKey.ageOrDob ||
-        (module.correctAnswerKey.icdCodes &&
-          module.correctAnswerKey.icdCodes.length > 0) ||
-        (module.correctAnswerKey.cptCodes &&
-          module.correctAnswerKey.cptCodes.length > 0) ||
+        (module.correctAnswerKey.icdCodes && module.correctAnswerKey.icdCodes.length > 0) ||
+        (module.correctAnswerKey.cptCodes && module.correctAnswerKey.cptCodes.length > 0) ||
         module.correctAnswerKey.notes);
 
     return (
       <div key={index} className="sub-assignment">
         <div className="assignment-title">
           <h3>{module.moduleName || module.subModuleName}</h3>
-          {/* Requirement: DO NOT show assignment PDF in submission result */}
-          {/* Removed the PDF link here intentionally */}
+          {/* Intentionally no PDF link in result popup */}
         </div>
 
         {/* Static fields */}
@@ -227,8 +255,7 @@ const StudentDashboard = () => {
                 )}
                 {module.correctAnswerKey?.notes && (
                   <div>
-                    <strong>Notes:</strong>{' '}
-                    {displayValue(module.correctAnswerKey.notes)}
+                    <strong>Notes:</strong> {displayValue(module.correctAnswerKey.notes)}
                   </div>
                 )}
               </div>
@@ -242,7 +269,7 @@ const StudentDashboard = () => {
           module.correctDynamicQuestions
         )}
 
-        {/* Per-assignment progress */}
+        {/* Per-assignment progress (optional fields) */}
         {(module.submitted?.correctCount !== undefined ||
           module.submitted?.wrongCount !== undefined ||
           module.submitted?.progressPercent !== undefined) && (
@@ -260,8 +287,7 @@ const StudentDashboard = () => {
               )}
               {module.submitted?.progressPercent !== undefined && (
                 <>
-                  <strong>Progress:</strong>{' '}
-                  {module.submitted.progressPercent}%
+                  <strong>Progress:</strong> {module.submitted.progressPercent}%
                 </>
               )}
             </p>
@@ -274,9 +300,7 @@ const StudentDashboard = () => {
   const renderResultPopup = () => {
     if (!resultData) return null;
 
-    const modules = Array.isArray(resultData.data)
-      ? resultData.data
-      : [resultData.data];
+    const modules = Array.isArray(resultData.data) ? resultData.data : [resultData.data];
 
     return (
       <div className="result-popup-overlay">
@@ -298,9 +322,7 @@ const StudentDashboard = () => {
               </div>
               <div className="summary-item">
                 <span>Overall Progress:</span>
-                <strong className="progress">
-                  {resultData.overallProgress}%
-                </strong>
+                <strong className="progress">{resultData.overallProgress}%</strong>
               </div>
             </div>
           </div>
@@ -438,7 +460,7 @@ const StudentDashboard = () => {
               <p className="info-value">
                 {studentData.remainingAmount > 0
                   ? `Partially paid (₹${studentData.paidAmount}/₹${
-                      studentData.paidAmount + studentData.remainingAmount
+                      (studentData.paidAmount ?? 0) + (studentData.remainingAmount ?? 0)
                     })`
                   : 'Fully paid'}
               </p>
@@ -449,26 +471,27 @@ const StudentDashboard = () => {
         <div className="info-card">
           <h2>Submissions</h2>
           <div className="submissions-container">
-            {studentData.recentSubmissions?.length > 0 ? (
-              studentData.recentSubmissions.map((submission, i) => {
-                const completed = !!submission?.isCompleted;
+            {submissions.length > 0 ? (
+              submissions.map((submission, i) => {
+                const completed = submission.isCompleted === true;
                 return (
                   <div
                     key={i}
                     className={`submission-item ${completed ? '' : 'submission-item--disabled'}`}
                     onClick={() => (completed ? handleSubmissionClick(submission) : null)}
-                    title={
-                      completed
-                        ? 'Click to view result'
-                        : 'Result available after completion'
-                    }
-                    style={{ cursor: completed ? 'pointer' : 'not-allowed', opacity: completed ? 1 : 0.6 }}
+                    title={completed ? 'Click to view result' : 'Result available after completion'}
+                    style={{
+                      cursor: completed ? 'pointer' : 'not-allowed',
+                      opacity: completed ? 1 : 0.6,
+                    }}
                   >
                     <div className="submission-header">
                       <FiAward className="submission-icon" />
                       <h3>{submission.moduleName}</h3>
                       <span
-                        className={`status-badge ${completed ? 'status-badge--completed' : 'status-badge--pending'}`}
+                        className={`status-badge ${
+                          completed ? 'status-badge--completed' : 'status-badge--pending'
+                        }`}
                         style={{
                           marginLeft: 'auto',
                           fontSize: 12,
