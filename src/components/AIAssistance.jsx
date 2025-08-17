@@ -1,6 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Brain, X, Send, Mic, FileText, Loader2, MessageSquare, Maximize2, Minimize2 } from 'lucide-react';
+import { Brain, X, Send, Mic, FileText, Loader2, Maximize2, Minimize2 } from 'lucide-react';
 import './AIAssistance.css';
+
+const BASE_URL = 'https://welmed.vercel.app';
 
 const AIAssistance = () => {
   const [isOpen, setIsOpen] = useState(false);
@@ -9,47 +11,78 @@ const AIAssistance = () => {
     {
       id: 1,
       type: 'assistant',
-      content: 'Hello! I\'m your Gemini-powered medical coding AI assistant. I can help you with medical coding, DRG analysis, CPT codes, and more. How can I assist you today?',
-      timestamp: new Date()
-    }
+      content:
+        "Hello! I'm your Wellmed AI assistant. I can help you with medical coding, DRG analysis, CPT/ICD/HCPCS, and more. How can I assist you today?",
+      timestamp: new Date(),
+    },
   ]);
   const [inputMessage, setInputMessage] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [uploadedFile, setUploadedFile] = useState(null);
   const [pdfContent, setPdfContent] = useState('');
+  const [pdfMeta, setPdfMeta] = useState(null);
+
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
   const recognitionRef = useRef(null);
   const fileInputRef = useRef(null);
 
-  // Scroll to bottom when new messages arrive
   useEffect(() => {
-    scrollToBottom();
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  // --- Helpers ---
+  const stripHtml = (html) => {
+    if (!html) return '';
+    const tmp = document.createElement('div');
+    tmp.innerHTML = html;
+    return tmp.textContent || tmp.innerText || '';
   };
 
-  // Initialize speech recognition
+  const toBackendMessages = (msgs) =>
+    msgs.map((m) => ({
+      role: m.type === 'assistant' ? 'assistant' : 'user',
+      content: m.type === 'assistant' ? stripHtml(m.content) : m.content,
+    }));
+
+  const safeExtractGeminiText = (data) => {
+    try {
+      const text =
+        data?.candidates?.[0]?.content?.parts?.[0]?.text ??
+        data?.candidates?.[0]?.content?.parts?.map((p) => p?.text).filter(Boolean).join('\n') ??
+        null;
+      return text;
+    } catch {
+      return null;
+    }
+  };
+
+  const notifyError = (msg) => {
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: Date.now(),
+        type: 'assistant',
+        content: `**Error:** ${msg}`,
+        timestamp: new Date(),
+      },
+    ]);
+  };
+
+  // --- Speech Recognition ---
   const initializeSpeechRecognition = () => {
     if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
       alert('Speech recognition is not supported in this browser. Please use Chrome or Edge.');
       return null;
     }
-
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     const recognition = new SpeechRecognition();
-    
     recognition.continuous = false;
     recognition.interimResults = false;
     recognition.lang = 'en-US';
 
-    recognition.onstart = () => {
-      setIsListening(true);
-    };
-
+    recognition.onstart = () => setIsListening(true);
     recognition.onresult = (event) => {
       if (event.results.length > 0 && event.results[0].length > 0) {
         const transcript = event.results[0][0].transcript;
@@ -57,42 +90,33 @@ const AIAssistance = () => {
       }
       setIsListening(false);
     };
-
     recognition.onerror = (event) => {
-      console.error('Speech recognition error:', event.error);
       setIsListening(false);
       if (event.error === 'not-allowed') {
         alert('Please allow microphone access to use speech recognition.');
       } else if (event.error === 'no-speech') {
-        alert('No speech detected. Please try speaking again.');
+        alert('No speech detected. Please try again.');
       } else {
         alert(`Speech recognition error: ${event.error}`);
       }
     };
-
-    recognition.onend = () => {
-      setIsListening(false);
-    };
-
+    recognition.onend = () => setIsListening(false);
     return recognition;
   };
 
   const handleSpeakToAsk = () => {
     if (isListening) {
-      if (recognitionRef.current) {
-        recognitionRef.current.stop();
-      }
+      recognitionRef.current?.stop();
       setIsListening(false);
     } else {
       recognitionRef.current = initializeSpeechRecognition();
-      if (recognitionRef.current) {
-        recognitionRef.current.start();
-      }
+      recognitionRef.current?.start();
     }
   };
 
+  // --- PDF Upload (to backend) ---
   const handleFileUpload = async (event) => {
-    const file = event.target.files[0];
+    const file = event.target.files?.[0];
     if (!file) return;
 
     if (file.type !== 'application/pdf') {
@@ -101,36 +125,47 @@ const AIAssistance = () => {
     }
 
     setUploadedFile(file);
-    
-    // Read PDF content
-    const formData = new FormData();
-    formData.append('pdf', file);
+    setIsLoading(true);
 
     try {
-      // For now, we'll extract text from PDF and use it as context
-      // In a real implementation, you'd want to use a PDF parsing library
-      const reader = new FileReader();
-      reader.onload = async (e) => {
-        // Simple text extraction - for better results, use pdf-parse or similar
-        const text = e.target.result;
-        setPdfContent(text);
-        
-        // Add system message about PDF context
-        const pdfContextMessage = {
+      const formData = new FormData();
+      formData.append('pdf', file);
+
+      const res = await fetch(`${BASE_URL}/api/analyze-pdf`, {
+        method: 'POST',
+        body: formData,
+      });
+
+      const data = await res.json();
+
+      if (!res.ok || !data?.success) {
+        throw new Error(data?.error || 'PDF Analysis failed');
+      }
+
+      setPdfContent(data.text || '');
+      setPdfMeta({ pages: data.pages, info: data.info });
+
+      setMessages((prev) => [
+        ...prev,
+        {
           id: Date.now(),
           type: 'assistant',
-          content: `I've uploaded your PDF document. I can now help you with questions related to this content.`,
-          timestamp: new Date()
-        };
-        setMessages(prev => [...prev, pdfContextMessage]);
-      };
-      reader.readAsText(file);
-    } catch (error) {
-      console.error('PDF analysis error:', error);
-      alert('Error analyzing PDF. Please try again.');
+          content: `I've processed your PDF (${file.name}) with **${data.pages ?? 'unknown'}** pages. You can now ask questions based on its content.`,
+          timestamp: new Date(),
+        },
+      ]);
+    } catch (err) {
+      console.error('PDF analysis error:', err);
+      notifyError('PDF analysis failed. Please try again with a valid PDF.');
+      setUploadedFile(null);
+      setPdfContent('');
+      setPdfMeta(null);
+    } finally {
+      setIsLoading(false);
     }
   };
 
+  // --- Send Message (to backend chat/chat1) ---
   const handleSendMessage = async () => {
     if (!inputMessage.trim()) return;
 
@@ -138,71 +173,43 @@ const AIAssistance = () => {
       id: Date.now(),
       type: 'user',
       content: inputMessage,
-      timestamp: new Date()
+      timestamp: new Date(),
     };
-
-    setMessages(prev => [...prev, userMessage]);
+    setMessages((prev) => [...prev, userMessage]);
     setInputMessage('');
     setIsLoading(true);
 
     try {
-      // Use Gemini API directly
-      const response = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=AIzaSyAShoQ4yMxCJq32MzvwUcpVheyzdwyR-wY', {
+      const history = toBackendMessages([...messages, userMessage].slice(-12));
+      const endpoint = pdfContent ? '/api/chat1' : '/api/chat';
+      const payload = pdfContent ? { messages: history, pdfContent } : { messages: history };
+
+      const res = await fetch(`${BASE_URL}${endpoint}`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          contents: [
-            {
-              parts: [
-                {
-                                    text: `You are a medical coding AI assistant. Help students with medical coding, DRG analysis, CPT codes, and related questions. 
-
-Student's question: ${inputMessage}
-
-${pdfContent ? `Context from uploaded PDF: ${pdfContent}` : ''}
-
-Provide a helpful, accurate response focused on medical coding education.`
-                }
-              ]
-            }
-          ]
-        })
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
       });
 
-      if (response.ok) {
-                          const data = await response.json();
-                  const rawContent = data.candidates[0].content.parts[0].text;
-                  
-                  // Format the response to look like ChatGPT with bullet points and emojis
-                  const formattedContent = formatResponse(rawContent);
-                  
-                  const assistantMessage = {
-                    id: Date.now() + 1,
-                    type: 'assistant',
-                    content: formattedContent,
-                    timestamp: new Date()
-                  };
-        setMessages(prev => [...prev, assistantMessage]);
-      } else {
-        const errorMessage = {
-          id: Date.now() + 1,
-          type: 'assistant',
-          content: 'Sorry, I encountered an error. Please try again.',
-          timestamp: new Date()
-        };
-        setMessages(prev => [...prev, errorMessage]);
+      const data = await res.json();
+
+      if (!res.ok) {
+        const msg = data?.details || data?.error || 'Sorry, I encountered an error while generating a response.';
+        throw new Error(msg);
       }
-    } catch (error) {
-      console.error('Chat error:', error);
-      const errorMessage = {
+
+      const rawText = safeExtractGeminiText(data);
+      const finalText = rawText || 'I could not parse a response from the model. Please try rephrasing your question.';
+
+      const assistantMessage = {
         id: Date.now() + 1,
         type: 'assistant',
-        content: 'Sorry, I encountered an error. Please try again.',
-        timestamp: new Date()
+        content: finalText, // keep raw markdown; render cleanly below
+        timestamp: new Date(),
       };
-      setMessages(prev => [...prev, errorMessage]);
+      setMessages((prev) => [...prev, assistantMessage]);
+    } catch (err) {
+      console.error('Chat error:', err);
+      notifyError(err.message || 'Sorry, something went wrong.');
     } finally {
       setIsLoading(false);
     }
@@ -216,121 +223,112 @@ Provide a helpful, accurate response focused on medical coding education.`
   };
 
   const toggleChat = () => {
-    setIsOpen(!isOpen);
+    setIsOpen((o) => !o);
     if (!isOpen) {
-      setTimeout(() => {
-        inputRef.current?.focus();
-      }, 100);
+      setTimeout(() => inputRef.current?.focus(), 100);
     }
   };
 
-  const toggleFullscreen = () => {
-    setIsFullscreen(!isFullscreen);
-  };
+  const toggleFullscreen = () => setIsFullscreen((f) => !f);
 
-  // Format AI response to look like ChatGPT with bullet points and emojis
-  const formatResponse = (text) => {
-    if (!text) return text;
-    
-    let formatted = text;
-    
-    // Add emojis to common medical coding terms
-    const emojiMap = {
-      'DRG': '🏥',
-      'CPT': '📋',
-      'ICD': '📊',
-      'HCPCS': '🏷️',
-      'medical coding': '⚕️',
-      'coding': '💻',
-      'hospital': '🏥',
-      'patient': '👤',
-      'diagnosis': '🔍',
-      'procedure': '🩺',
-      'billing': '💰',
-      'insurance': '🛡️',
-      'claim': '📄',
-      'revenue': '💵',
-      'compliance': '✅',
-      'audit': '🔍',
-      'documentation': '📝',
-      'clinical': '🏥',
-      'surgical': '🔪',
-      'emergency': '🚨',
-      'outpatient': '🏥',
-      'inpatient': '🏥',
-      'ambulatory': '🚶',
-      'pharmacy': '💊',
-      'laboratory': '🧪',
-      'radiology': '📷',
-      'cardiology': '❤️',
-      'orthopedics': '🦴',
-      'pediatrics': '👶',
-      'geriatrics': '👴',
-      'oncology': '🦠',
-      'neurology': '🧠',
-      'psychiatry': '🧠',
-      'dermatology': '🦠',
-      'ophthalmology': '👁️',
-      'dental': '🦷',
-      'obstetrics': '🤱',
-      'gynecology': '👩‍⚕️'
+  // --- Lightweight Markdown renderer (no extra symbols injected) ---
+  const escapeHtml = (s) =>
+    s
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+
+  const markdownToHtml = (md) => {
+    if (!md) return '';
+
+    // Normalize line endings
+    md = md.replace(/\r\n?/g, '\n');
+
+    // Protect code blocks first
+    const codeBlocks = [];
+    md = md.replace(/```([\s\S]*?)```/g, (_, code) => {
+      const i = codeBlocks.push(`<pre><code>${escapeHtml(code)}</code></pre>`) - 1;
+      return `[[[CODEBLOCK_${i}]]]`;
+    });
+
+    // Inline code
+    md = md.replace(/`([^`]+?)`/g, (_, code) => `<code>${escapeHtml(code)}</code>`);
+
+    // Headings
+    md = md
+      .replace(/^###\s+(.+)$/gm, '<h3>$1</h3>')
+      .replace(/^##\s+(.+)$/gm, '<h2>$1</h2>')
+      .replace(/^#\s+(.+)$/gm, '<h1>$1</h1>');
+
+    // Bold / Italic (basic)
+    md = md
+      .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+      .replace(/\*(.+?)\*/g, '<em>$1</em>');
+
+    // Links [text](url)
+    md = md.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
+
+    // Lists (group into <ul>/<ol>)
+    const lines = md.split('\n');
+    let out = '';
+    let inUL = false;
+    let inOL = false;
+
+    const closeLists = () => {
+      if (inUL) {
+        out += '</ul>';
+        inUL = false;
+      }
+      if (inOL) {
+        out += '</ol>';
+        inOL = false;
+      }
     };
-    
-    // Replace terms with emojis
-    Object.entries(emojiMap).forEach(([term, emoji]) => {
-      const regex = new RegExp(`\\b${term}\\b`, 'gi');
-      formatted = formatted.replace(regex, `${emoji} ${term}`);
-    });
-    
-    // Format bullet points and lists
-    formatted = formatted.replace(/^[-*]\s+/gm, '• ');
-    formatted = formatted.replace(/^(\d+)\.\s+/gm, '$1️⃣ ');
-    
-    // Format headers
-    formatted = formatted.replace(/^(#+)\s+(.+)$/gm, (match, hashes, text) => {
-      const level = hashes.length;
-      const emojis = ['📌', '🔹', '🔸', '▪️', '▫️'];
-      const emoji = emojis[Math.min(level - 1, emojis.length - 1)];
-      return `${emoji} **${text}**`;
-    });
-    
-    // Format important terms
-    formatted = formatted.replace(/\*\*(.+?)\*\*/g, '**$1**');
-    formatted = formatted.replace(/\*(.+?)\*/g, '*$1*');
-    
-    // Add spacing for better readability
-    formatted = formatted.replace(/\n\n/g, '\n\n');
-    
-    return formatted;
-  };
 
-  // Convert formatted text to HTML for rendering
-  const formatMessageContent = (text) => {
-    if (!text) return '';
-    
-    let html = text;
-    
-    // Convert markdown-style formatting to HTML
-    html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
-    html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
-    
-    // Convert bullet points to proper HTML lists
-    html = html.replace(/^(•\s+.+)$/gm, '<li>$1</li>');
-    html = html.replace(/(<li>.*<\/li>)/s, '<ul>$1</ul>');
-    
-    // Convert numbered lists
-    html = html.replace(/^(\d+️⃣\s+.+)$/gm, '<li>$1</li>');
-    html = html.replace(/(<li>\d+️⃣.*<\/li>)/s, '<ol>$1</ol>');
-    
-    // Convert line breaks to HTML
-    html = html.replace(/\n/g, '<br>');
-    
-    // Add CSS classes for styling
-    html = html.replace(/<ul>/g, '<ul class="ai-message-list">');
-    html = html.replace(/<ol>/g, '<ol class="ai-message-list">');
-    html = html.replace(/<li>/g, '<li class="ai-message-list-item">');
-    
-    return html;
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+
+      // Unordered list item: - or * followed by space
+      if (/^\s*[-*]\s+/.test(line)) {
+        if (!inUL) {
+          closeLists();
+          inUL = true;
+          out += '<ul class="ai-message-list">';
+        }
+        const item = line.replace(/^\s*[-*]\s+/, '');
+        out += `<li class="ai-message-list-item">${item}</li>`;
+        continue;
+      }
+
+      // Ordered list item: 1. 2. etc
+      if (/^\s*\d+\.\s+/.test(line)) {
+        if (!inOL) {
+          closeLists();
+          inOL = true;
+          out += '<ol class="ai-message-list">';
+        }
+        const item = line.replace(/^\s*\d+\.\s+/, '');
+        out += `<li class="ai-message-list-item">${item}</li>`;
+        continue;
+      }
+
+      // Blank line -> paragraph break
+      if (/^\s*$/.test(line)) {
+        closeLists();
+        out += '<br>';
+        continue;
+      }
+
+      // Regular paragraph line
+      closeLists();
+      out += `<p>${line}</p>`;
+    }
+    closeLists();
+
+    // Restore code blocks
+    out = out.replace(/\[\[\[CODEBLOCK_(\d+)]]]/g, (_, idx) => codeBlocks[Number(idx)]);
+
+    return out;
   };
 
   return (
@@ -347,13 +345,13 @@ Provide a helpful, accurate response focused on medical coding education.`
           <div className="ai-assistant-header">
             <div className="ai-assistant-title">
               <Brain size={20} />
-              <span>Gemini AI Assistant</span>
+              <span>Wellmed AI Assistant</span>
             </div>
             <div className="ai-assistant-controls">
-              <button 
-                className="ai-assistant-fullscreen" 
+              <button
+                className="ai-assistant-fullscreen"
                 onClick={toggleFullscreen}
-                title={isFullscreen ? "Exit Fullscreen" : "Enter Fullscreen"}
+                title={isFullscreen ? 'Exit Fullscreen' : 'Enter Fullscreen'}
               >
                 {isFullscreen ? <Minimize2 size={20} /> : <Maximize2 size={20} />}
               </button>
@@ -364,22 +362,24 @@ Provide a helpful, accurate response focused on medical coding education.`
           </div>
 
           <div className="ai-assistant-messages">
-                         {messages.map((message) => (
-               <div key={message.id} className={`ai-message ${message.type}`}>
-                 <div className="ai-message-content">
-                   {message.type === 'assistant' ? (
-                     <div dangerouslySetInnerHTML={{ 
-                       __html: formatMessageContent(message.content) 
-                     }} />
-                   ) : (
-                     message.content
-                   )}
-                 </div>
-                 <div className="ai-message-time">
-                   {message.timestamp.toLocaleTimeString()}
-                 </div>
-               </div>
-             ))}
+            {messages.map((message) => (
+              <div key={message.id} className={`ai-message ${message.type}`}>
+                <div className="ai-message-content">
+                  {message.type === 'assistant' ? (
+                    <div
+                      dangerouslySetInnerHTML={{
+                        __html: markdownToHtml(message.content),
+                      }}
+                    />
+                  ) : (
+                    message.content
+                  )}
+                </div>
+                <div className="ai-message-time">
+                  {message.timestamp.toLocaleTimeString()}
+                </div>
+              </div>
+            ))}
             {isLoading && (
               <div className="ai-message assistant">
                 <div className="ai-message-content">
@@ -408,14 +408,14 @@ Provide a helpful, accurate response focused on medical coding education.`
                 <Mic size={16} />
               </button>
             </div>
-            
+
             <div className="ai-input-wrapper">
               <textarea
                 ref={inputRef}
                 value={inputMessage}
                 onChange={(e) => setInputMessage(e.target.value)}
                 onKeyPress={handleKeyPress}
-                placeholder="Ask me anything about medical coding, DRG codes, CPT codes..."
+                placeholder="Ask about DRG, CPT, ICD, documentation, coverage rules..."
                 className="ai-input"
                 rows={1}
               />
@@ -436,11 +436,18 @@ Provide a helpful, accurate response focused on medical coding education.`
                   onClick={() => {
                     setUploadedFile(null);
                     setPdfContent('');
+                    setPdfMeta(null);
                   }}
                   className="ai-remove-file"
                 >
                   <X size={14} />
                 </button>
+              </div>
+            )}
+
+            {pdfMeta && (
+              <div className="ai-uploaded-file" style={{ opacity: 0.8 }}>
+                <span>Parsed PDF • Pages: {pdfMeta.pages ?? '—'}</span>
               </div>
             )}
           </div>
