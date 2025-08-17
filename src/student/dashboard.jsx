@@ -10,7 +10,6 @@ import {
   FiDollarSign,
   FiAward,
   FiX,
-  FiFileText
 } from 'react-icons/fi';
 import './StudentDashboard.css';
 
@@ -24,9 +23,9 @@ const StudentDashboard = () => {
   const [resultLoading, setResultLoading] = useState(false);
 
   const displayValue = (val) => {
-    if (val === null || val === undefined) return "";
-    if (Array.isArray(val)) return val.length > 0 ? val.join(", ") : "";
-    if (typeof val === "string" && val.trim() === "") return "";
+    if (val === null || val === undefined) return '';
+    if (Array.isArray(val)) return val.length > 0 ? val.join(', ') : '';
+    if (typeof val === 'string' && val.trim() === '') return '';
     return val;
   };
 
@@ -61,10 +60,10 @@ const StudentDashboard = () => {
   const fetchResultData = async (studentId, assignmentId) => {
     try {
       setResultLoading(true);
-              const response = await axios.post(
-          'https://el-backend-ashen.vercel.app/result',
-          { studentId, assignmentId }
-        );
+      const response = await axios.post(
+        'https://el-backend-ashen.vercel.app/result',
+        { studentId, assignmentId }
+      );
       setResultData(response.data);
       setShowResultPopup(true);
     } catch (err) {
@@ -76,12 +75,11 @@ const StudentDashboard = () => {
   };
 
   const handleSubmissionClick = (submission) => {
-    fetchResultData(studentData.id, submission.assignmentId);
-  };
-
-  const closeResultPopup = () => {
-    setShowResultPopup(false);
-    setResultData(null);
+    // Gate by completion
+    if (!submission?.isCompleted) return;
+    // studentData might have _id or id depending on your API; prefer _id then id
+    const studentId = studentData?._id || studentData?.id;
+    fetchResultData(studentId, submission.assignmentId);
   };
 
   const formatDate = (dateString) => {
@@ -89,7 +87,7 @@ const StudentDashboard = () => {
     return new Date(dateString).toLocaleDateString(undefined, {
       year: 'numeric',
       month: 'short',
-      day: 'numeric'
+      day: 'numeric',
     });
   };
 
@@ -100,15 +98,17 @@ const StudentDashboard = () => {
       { key: 'ageOrDob', label: 'Age/DOB' },
       { key: 'icdCodes', label: 'ICD Codes' },
       { key: 'cptCodes', label: 'CPT Codes' },
-      { key: 'notes', label: 'Notes' }
+      { key: 'notes', label: 'Notes' },
     ];
 
-    const hasValues = fields.some(field => {
+    const hasValues = fields.some((field) => {
       const value = submitted[field.key];
-      return value !== null && 
-             value !== undefined && 
-             (!Array.isArray(value) || value.length > 0) && 
-             (typeof value !== 'string' || value.trim() !== '');
+      return (
+        value !== null &&
+        value !== undefined &&
+        (!Array.isArray(value) || value.length > 0) &&
+        (typeof value !== 'string' || value.trim() !== '')
+      );
     });
 
     if (!hasValues) return null;
@@ -117,10 +117,12 @@ const StudentDashboard = () => {
       <div className="answers-row">
         {fields.map((field) => {
           const value = submitted[field.key];
-          if (value === null || 
-              value === undefined || 
-              (Array.isArray(value) && value.length === 0) || 
-              (typeof value === 'string' && value.trim() === '')) {
+          if (
+            value === null ||
+            value === undefined ||
+            (Array.isArray(value) && value.length === 0) ||
+            (typeof value === 'string' && value.trim() === '')
+          ) {
             return null;
           }
           return (
@@ -141,7 +143,7 @@ const StudentDashboard = () => {
         {correctQuestions.map((cq, i) => {
           const sq = submittedQuestions?.[i];
           if (!cq.questionText) return null;
-          
+
           return (
             <div key={i} className="dynamic-question">
               <div className="question-text">
@@ -149,11 +151,11 @@ const StudentDashboard = () => {
               </div>
               <div className="question-answers">
                 <div className="submitted-answer">
-                  <span>Your Answer:</span>{" "}
+                  <span>Your Answer:</span>{' '}
                   <strong>{displayValue(sq?.submittedAnswer)}</strong>
                 </div>
                 <div className="correct-answer">
-                  <span>Correct Answer:</span>{" "}
+                  <span>Correct Answer:</span>{' '}
                   <strong>{displayValue(cq.answer || cq.correctAnswer)}</strong>
                 </div>
               </div>
@@ -170,28 +172,22 @@ const StudentDashboard = () => {
   };
 
   const renderModule = (module, index) => {
-    const hasCorrectAnswers = module.correctAnswerKey && (
-      module.correctAnswerKey.patientName ||
-      module.correctAnswerKey.ageOrDob ||
-      (module.correctAnswerKey.icdCodes && module.correctAnswerKey.icdCodes.length > 0) ||
-      (module.correctAnswerKey.cptCodes && module.correctAnswerKey.cptCodes.length > 0) ||
-      module.correctAnswerKey.notes
-    );
+    const hasCorrectAnswers =
+      module.correctAnswerKey &&
+      (module.correctAnswerKey.patientName ||
+        module.correctAnswerKey.ageOrDob ||
+        (module.correctAnswerKey.icdCodes &&
+          module.correctAnswerKey.icdCodes.length > 0) ||
+        (module.correctAnswerKey.cptCodes &&
+          module.correctAnswerKey.cptCodes.length > 0) ||
+        module.correctAnswerKey.notes);
 
     return (
       <div key={index} className="sub-assignment">
         <div className="assignment-title">
           <h3>{module.moduleName || module.subModuleName}</h3>
-          {module.assignmentPdf && (
-            <a
-              href={module.assignmentPdf}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="pdf-link"
-            >
-              <FiFileText /> View Assignment PDF
-            </a>
-          )}
+          {/* Requirement: DO NOT show assignment PDF in submission result */}
+          {/* Removed the PDF link here intentionally */}
         </div>
 
         {/* Static fields */}
@@ -200,34 +196,39 @@ const StudentDashboard = () => {
             <h4>Your Answers</h4>
             {renderStaticAnswers({ submitted: module.submitted })}
           </div>
-          
+
           {hasCorrectAnswers && (
             <div className="answers-section">
               <h4>Correct Answers</h4>
               <div className="answers-row">
                 {module.correctAnswerKey?.patientName && (
                   <div>
-                    <strong>Patient Name:</strong> {displayValue(module.correctAnswerKey.patientName)}
+                    <strong>Patient Name:</strong>{' '}
+                    {displayValue(module.correctAnswerKey.patientName)}
                   </div>
                 )}
                 {module.correctAnswerKey?.ageOrDob && (
                   <div>
-                    <strong>Age/DOB:</strong> {displayValue(module.correctAnswerKey.ageOrDob)}
+                    <strong>Age/DOB:</strong>{' '}
+                    {displayValue(module.correctAnswerKey.ageOrDob)}
                   </div>
                 )}
                 {module.correctAnswerKey?.icdCodes?.length > 0 && (
                   <div>
-                    <strong>ICD Codes:</strong> {displayValue(module.correctAnswerKey.icdCodes)}
+                    <strong>ICD Codes:</strong>{' '}
+                    {displayValue(module.correctAnswerKey.icdCodes)}
                   </div>
                 )}
                 {module.correctAnswerKey?.cptCodes?.length > 0 && (
                   <div>
-                    <strong>CPT Codes:</strong> {displayValue(module.correctAnswerKey.cptCodes)}
+                    <strong>CPT Codes:</strong>{' '}
+                    {displayValue(module.correctAnswerKey.cptCodes)}
                   </div>
                 )}
                 {module.correctAnswerKey?.notes && (
                   <div>
-                    <strong>Notes:</strong> {displayValue(module.correctAnswerKey.notes)}
+                    <strong>Notes:</strong>{' '}
+                    {displayValue(module.correctAnswerKey.notes)}
                   </div>
                 )}
               </div>
@@ -242,19 +243,26 @@ const StudentDashboard = () => {
         )}
 
         {/* Per-assignment progress */}
-        {(module.submitted?.correctCount !== undefined || 
-          module.submitted?.wrongCount !== undefined || 
+        {(module.submitted?.correctCount !== undefined ||
+          module.submitted?.wrongCount !== undefined ||
           module.submitted?.progressPercent !== undefined) && (
           <div className="module-progress">
             <p>
               {module.submitted?.correctCount !== undefined && (
-                <><strong>Correct:</strong> {module.submitted.correctCount} |</>
+                <>
+                  <strong>Correct:</strong> {module.submitted.correctCount} |
+                </>
               )}
               {module.submitted?.wrongCount !== undefined && (
-                <><strong>Wrong:</strong> {module.submitted.wrongCount} |</>
+                <>
+                  <strong>Wrong:</strong> {module.submitted.wrongCount} |
+                </>
               )}
               {module.submitted?.progressPercent !== undefined && (
-                <><strong>Progress:</strong> {module.submitted.progressPercent}%</>
+                <>
+                  <strong>Progress:</strong>{' '}
+                  {module.submitted.progressPercent}%
+                </>
               )}
             </p>
           </div>
@@ -305,6 +313,11 @@ const StudentDashboard = () => {
     );
   };
 
+  const closeResultPopup = () => {
+    setShowResultPopup(false);
+    setResultData(null);
+  };
+
   if (loading) {
     return (
       <div className="dashboard-loading">
@@ -335,33 +348,6 @@ const StudentDashboard = () => {
       <header className="dashboard-header">
         <h1>Welcome back, {studentData.name}!</h1>
       </header>
-
-      {/* Assignments Section */}
-      {/*<div className="assignments-section">
-        <h2>Your Assignments</h2>
-        <div className="assignments-scroll-container">
-          {assignments.length > 0 ? (
-            <div className="assignments-grid">
-              {assignments.map((assignment, index) => (
-                <div key={index} className="assignment-card">
-                  <div className="assignment-icon">
-                    <FiBook size={20} />
-                  </div>
-                  <div className="assignment-details">
-                    <h3>{assignment.moduleName}</h3>
-                    <p>Assigned: {formatDate(assignment.assignedDate)}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="no-assignments">
-              <FiClock size={32} />
-              <p>No assignments currently assigned</p>
-            </div>
-          )}
-        </div>
-      </div>*/}
 
       {/* Stats Section */}
       <div className="stats-grid">
@@ -464,36 +450,55 @@ const StudentDashboard = () => {
           <h2>Submissions</h2>
           <div className="submissions-container">
             {studentData.recentSubmissions?.length > 0 ? (
-              studentData.recentSubmissions.map((submission, i) => (
-                <div
-                  key={i}
-                  className="submission-item"
-                  onClick={() => handleSubmissionClick(submission)}
-                  style={{ cursor: 'pointer' }}
-                >
-                  <div className="submission-header">
-                    <FiAward className="submission-icon" />
-                    <h3>{submission.moduleName}</h3>
-                  </div>
-                  <div className="submission-details">
-                    <div className="submission-stat">
-                      <span>Submitted:</span>
-                      <span>{formatDate(submission.submissionDate)}</span>
-                    </div>
-                    <div className="submission-stat">
-                      <span>Score:</span>
-                      <span>
-                        {submission.totalCorrect} correct, {submission.totalWrong}{' '}
-                        wrong
+              studentData.recentSubmissions.map((submission, i) => {
+                const completed = !!submission?.isCompleted;
+                return (
+                  <div
+                    key={i}
+                    className={`submission-item ${completed ? '' : 'submission-item--disabled'}`}
+                    onClick={() => (completed ? handleSubmissionClick(submission) : null)}
+                    title={
+                      completed
+                        ? 'Click to view result'
+                        : 'Result available after completion'
+                    }
+                    style={{ cursor: completed ? 'pointer' : 'not-allowed', opacity: completed ? 1 : 0.6 }}
+                  >
+                    <div className="submission-header">
+                      <FiAward className="submission-icon" />
+                      <h3>{submission.moduleName}</h3>
+                      <span
+                        className={`status-badge ${completed ? 'status-badge--completed' : 'status-badge--pending'}`}
+                        style={{
+                          marginLeft: 'auto',
+                          fontSize: 12,
+                          padding: '2px 8px',
+                          borderRadius: 999,
+                          border: '1px solid #e0e0e0',
+                        }}
+                      >
+                        {completed ? 'Completed' : 'Pending'}
                       </span>
                     </div>
-                    <div className="submission-stat">
-                      <span>Progress:</span>
-                      <span>{submission.overallProgress}%</span>
+                    <div className="submission-details">
+                      <div className="submission-stat">
+                        <span>Submitted:</span>
+                        <span>{formatDate(submission.submissionDate)}</span>
+                      </div>
+                      <div className="submission-stat">
+                        <span>Score:</span>
+                        <span>
+                          {submission.totalCorrect} correct, {submission.totalWrong} wrong
+                        </span>
+                      </div>
+                      <div className="submission-stat">
+                        <span>Progress:</span>
+                        <span>{submission.overallProgress}%</span>
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))
+                );
+              })
             ) : (
               <div className="no-submissions">
                 <FiClock size={32} />
