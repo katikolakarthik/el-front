@@ -426,20 +426,15 @@ const NewAssignments = () => {
           <h3 className="title-sm">{activeSubAssignment?.subModuleName || activeAssignment.moduleName}</h3>
         </div>
 
+        
         {pdfUrl && (
-  <div className="pdf-shell">
-    <iframe
-      src={`https://docs.google.com/gview?url=${encodeURIComponent(pdfUrl)}&embedded=true`}
-      width="100%"
-      height="100%"
-      frameBorder="0"
-      title="Assignment PDF"
-      allowFullScreen
-      loading="lazy"
-      style={{ border: 'none' }}
-    />
-  </div>
-)}
+          <iframe
+            src={`https://docs.google.com/gview?url=${encodeURIComponent(pdfUrl)}&embedded=true`}
+            width="100%" height="500px" frameBorder="0" title="Assignment PDF"
+          ></iframe>
+        )}
+
+
         <div className="panel">
           <div className="panel-head">
             <h4>Questions</h4>
