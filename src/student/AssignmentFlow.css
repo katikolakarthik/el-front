@@ -615,3 +615,23 @@ h1, h2, h3, h4, h5, h6 {
     align-self: flex-start;
   }
 }
+
+/* PDF Viewer Styles */
+.pdf-shell {
+  width: 100%;
+  height: 70vh; /* Use viewport height for better responsiveness */
+  min-height: 500px; /* Minimum height */
+  margin-bottom: var(--space-xl);
+  border-radius: var(--radius-md);
+  overflow: auto; /* Changed from hidden to auto */
+  box-shadow: var(--shadow-md);
+  border: var(--border);
+  background: #f1f5f9;
+  position: relative;
+}
+
+.pdf-shell iframe {
+  width: 100%;
+  height: 100%;
+  border: none;
+}
