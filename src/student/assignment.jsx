@@ -7,7 +7,6 @@ const API_BASE = "https://el-backend-ashen.vercel.app";
 
 const normalizeAssignment = (raw) => {
   const norm = { ...raw };
-  // parent-level questions (if any)
   if (Array.isArray(norm.dynamicQuestions) && norm.dynamicQuestions.length > 0) {
     norm.questions = norm.dynamicQuestions.map(q => ({ ...q, type: 'dynamic' }));
   } else if (norm.answerKey) {
@@ -16,7 +15,6 @@ const normalizeAssignment = (raw) => {
     norm.questions = norm.questions || [];
   }
 
-  // sub-assignments
   norm.subAssignments = (norm.subAssignments || []).map(sub => {
     if (Array.isArray(sub.dynamicQuestions) && sub.dynamicQuestions.length > 0) {
       return {
@@ -43,7 +41,6 @@ const NewAssignments = () => {
   const [activeSubAssignment, setActiveSubAssignment] = useState(null);
   const [answers, setAnswers] = useState({});
 
-  // Fetch assignments list (cards view)
   useEffect(() => {
     const fetchAssignments = async () => {
       try {
@@ -75,7 +72,6 @@ const NewAssignments = () => {
       day: 'numeric',
     });
 
-  // Start assignment or sub-assignment (detail view)
   const handleStart = async (assignmentId, subAssignmentId = null) => {
     try {
       const userId = localStorage.getItem('userId');
@@ -84,10 +80,9 @@ const NewAssignments = () => {
       const response = await axios.get(`${API_BASE}/assignments/${assignmentId}/student/${userId}`);
       if (!response.data?.success) throw new Error('Failed to fetch assignment details');
 
-      // Normalize the fetched assignment
       let assignmentData = normalizeAssignment(response.data.assignment);
 
-      // 🔁 Merge isCompleted flags from the list view (source of truth for completion)
+      // merge completion flags from list view
       const listCopy = assignments.find(a => a._id === assignmentId);
       if (listCopy && Array.isArray(listCopy.subAssignments)) {
         const completeMap = new Map(listCopy.subAssignments.map(s => [String(s._id), !!s.isCompleted]));
@@ -116,7 +111,6 @@ const NewAssignments = () => {
     }
   };
 
-  // Submit assignment/sub-assignment
   const handleSubmit = async () => {
     try {
       const userId = localStorage.getItem("userId");
@@ -172,7 +166,6 @@ const NewAssignments = () => {
         return;
       }
 
-      // ✅ Instant local flip to Completed (no wait)
       if (activeSubAssignment) {
         setActiveAssignment(prev => {
           if (!prev) return prev;
@@ -186,7 +179,6 @@ const NewAssignments = () => {
         setActiveAssignment(prev => (prev ? { ...prev, isCompleted: true } : prev));
       }
 
-      // 🔄 Also refresh the top-level list so cards view stays in sync
       const refresh = await axios.get(`${API_BASE}/assignments/student/${userId}`);
       if (refresh.data?.success) {
         const refreshedData = Array.isArray(refresh.data.assignments)
@@ -195,7 +187,6 @@ const NewAssignments = () => {
         setAssignments(refreshedData);
       }
 
-      // Navigation behavior after submit
       if (activeSubAssignment && activeAssignment.subAssignments?.length > 0) {
         const currentIndex = activeAssignment.subAssignments.findIndex(
           (sub) => sub._id === activeSubAssignment._id
@@ -233,24 +224,28 @@ const NewAssignments = () => {
       return dynamicQs.map((q, idx) => {
         const key = `dynamic-${idx}`;
         return (
-          <div key={idx} className="question-block">
-            <p><strong>{q.questionText}</strong></p>
+          <div key={idx} className="q-block">
+            <p className="q-title">{q.questionText}</p>
             {q.options && q.options.length > 0 ? (
-              q.options.map((opt, i) => (
-                <label key={i}>
-                  <input
-                    type="radio"
-                    name={`q${idx}`}
-                    value={opt}
-                    checked={answers[key] === opt}
-                    onChange={(e) => handleAnswerChange(key, e.target.value)}
-                  /> {opt}
-                </label>
-              ))
+              <div className="q-options">
+                {q.options.map((opt, i) => (
+                  <label key={i} className="q-option">
+                    <input
+                      type="radio"
+                      name={`q${idx}`}
+                      value={opt}
+                      checked={answers[key] === opt}
+                      onChange={(e) => handleAnswerChange(key, e.target.value)}
+                    />
+                    <span>{opt}</span>
+                  </label>
+                ))}
+              </div>
             ) : (
               <input
+                className="input"
                 type="text"
-                placeholder="Enter your answer"
+                placeholder="Type your answer"
                 value={answers[key] || ""}
                 onChange={(e) => handleAnswerChange(key, e.target.value)}
               />
@@ -260,91 +255,131 @@ const NewAssignments = () => {
       });
     }
 
-    // Predefined
     const predefined = qs.find(q => q.type === 'predefined');
     if (predefined && predefined.answerKey) {
       return (
-        <>
-          <div className="question-block">
-            <label>Patient Name:</label>
+        <div className="form-grid">
+          <div className="form-item">
+            <label className="label">Patient Name</label>
             <input
+              className="input"
               type="text"
               value={answers.patientName || ""}
               onChange={(e) => handleAnswerChange("patientName", e.target.value)}
             />
           </div>
-          <div className="question-block">
-            <label>Age / DOB:</label>
+          <div className="form-item">
+            <label className="label">Age / DOB</label>
             <input
+              className="input"
               type="text"
               value={answers.ageOrDob || ""}
               onChange={(e) => handleAnswerChange("ageOrDob", e.target.value)}
             />
           </div>
-          <div className="question-block">
-            <label>ICD Codes:</label>
+          <div className="form-item">
+            <label className="label">ICD Codes</label>
             <input
+              className="input"
               type="text"
               value={answers.icdCodes || ""}
               onChange={(e) => handleAnswerChange("icdCodes", e.target.value)}
-              placeholder="Enter ICD codes (comma separated)"
+              placeholder="Comma separated"
             />
           </div>
-          <div className="question-block">
-            <label>CPT Codes:</label>
+          <div className="form-item">
+            <label className="label">CPT Codes</label>
             <input
+              className="input"
               type="text"
               value={answers.cptCodes || ""}
               onChange={(e) => handleAnswerChange("cptCodes", e.target.value)}
-              placeholder="Enter CPT codes (comma separated)"
+              placeholder="Comma separated"
             />
           </div>
-          <div className="question-block">
-            <label>Notes:</label>
+          <div className="form-item form-item--full">
+            <label className="label">Notes</label>
             <textarea
+              className="textarea"
               value={answers.notes || ""}
               onChange={(e) => handleAnswerChange("notes", e.target.value)}
+              rows={4}
             />
           </div>
-        </>
+        </div>
       );
     }
 
-    return <p>No questions available for this assignment.</p>;
+    return <p className="muted">No questions available for this assignment.</p>;
   };
 
   if (loading) {
-    return <div className="assignments-loading"><p>Loading assignments...</p></div>;
+    return (
+      <div className="container">
+        <div className="page-header">
+          <h2 className="title"><FiBook className="icon" /> New Assignments</h2>
+        </div>
+        <div className="skeleton-list">
+          {[...Array(3)].map((_, i) => <div className="skeleton-card" key={i} />)}
+        </div>
+      </div>
+    );
   }
 
   if (error) {
-    return <div className="assignments-error"><p>Error: {error}</p></div>;
+    return (
+      <div className="container">
+        <div className="empty-state error">
+          <div className="empty-icon"><FiClock /></div>
+          <div>
+            <h3>Something went wrong</h3>
+            <p>{error}</p>
+          </div>
+        </div>
+      </div>
+    );
   }
 
-  // Detail view
+  // DETAIL VIEW
   if (activeAssignment) {
-    // List of sub-assignments
     if (!activeSubAssignment && activeAssignment.subAssignments?.length > 0) {
       return (
-        <div className="assignment-detail">
-          <button onClick={() => setActiveAssignment(null)}>Back</button>
-          <h3>{activeAssignment.moduleName}</h3>
+        <div className="container">
+          <div className="page-header">
+            <button className="btn btn-ghost" onClick={() => setActiveAssignment(null)}>Back</button>
+            <h3 className="title-sm">{activeAssignment.moduleName}</h3>
+          </div>
 
-          <div className="subassignments-list">
+          <div className="grid">
             {activeAssignment.subAssignments.map((sub, idx) => (
-              <div key={idx} className="subassignment-item">
-                <div className="subassignment-content">
-                  <h4>{sub.subModuleName}</h4>
-                  {sub.assignmentPdf && (
-                    <a href={sub.assignmentPdf} target="_blank" rel="noopener noreferrer">View PDF</a>
-                  )}
+              <div key={idx} className="card sub-card">
+                <div className="card-head">
+                  <h4 className="card-title">{sub.subModuleName}</h4>
+                  <span className={`badge ${sub.isCompleted ? 'badge-success' : 'badge-neutral'}`}>
+                    {sub.isCompleted ? 'Completed' : 'Pending'}
+                  </span>
                 </div>
-                <button
-                  onClick={() => handleStart(activeAssignment._id, sub._id)}
-                  disabled={Boolean(sub.isCompleted)}
-                >
-                  {sub.isCompleted ? "Completed" : "Start"}
-                </button>
+
+                {sub.assignmentPdf && (
+                  <a
+                    className="link"
+                    href={sub.assignmentPdf}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    View PDF
+                  </a>
+                )}
+
+                <div className="card-actions">
+                  <button
+                    className="btn"
+                    onClick={() => handleStart(activeAssignment._id, sub._id)}
+                    disabled={Boolean(sub.isCompleted)}
+                  >
+                    {sub.isCompleted ? "Completed" : "Start"}
+                  </button>
+                </div>
               </div>
             ))}
           </div>
@@ -352,78 +387,123 @@ const NewAssignments = () => {
       );
     }
 
-    // Specific assignment/sub-assignment
     const pdfUrl = activeSubAssignment?.assignmentPdf || activeAssignment.assignmentPdf;
     const questionSource = activeSubAssignment || activeAssignment;
 
     return (
-      <div className="assignment-detail">
-        <button onClick={() => {
-          if (activeSubAssignment) {
-            setActiveSubAssignment(null);
-          } else {
-            setActiveAssignment(null);
-          }
-        }}>Back</button>
-        <h3>{activeSubAssignment?.subModuleName || activeAssignment.moduleName}</h3>
-
-        {pdfUrl && (
-          <iframe
-            src={`https://docs.google.com/gview?url=${encodeURIComponent(pdfUrl)}&embedded=true`}
-            width="100%" height="500px" frameBorder="0" title="Assignment PDF"
-          ></iframe>
-        )}
-
-        <div className="questions-section">
-          <h4>Questions</h4>
-          {renderQuestions(questionSource)}
+      <div className="container">
+        <div className="page-header">
+          <button
+            className="btn btn-ghost"
+            onClick={() => {
+              if (activeSubAssignment) {
+                setActiveSubAssignment(null);
+              } else {
+                setActiveAssignment(null);
+              }
+            }}
+          >
+            Back
+          </button>
+          <h3 className="title-sm">
+            {activeSubAssignment?.subModuleName || activeAssignment.moduleName}
+          </h3>
         </div>
 
-        <button
-          className="submit-button"
-          onClick={handleSubmit}
-          disabled={Boolean(activeSubAssignment?.isCompleted || activeAssignment?.isCompleted)}
-        >
-          {activeSubAssignment?.isCompleted || activeAssignment?.isCompleted
-            ? "Already Submitted"
-            : "Submit Assignment"}
-        </button>
+        {pdfUrl && (
+          <div className="pdf-shell">
+            <iframe
+              src={`https://docs.google.com/gview?url=${encodeURIComponent(pdfUrl)}&embedded=true`}
+              width="100%"
+              height="100%"
+              frameBorder="0"
+              title="Assignment PDF"
+            ></iframe>
+          </div>
+        )}
+
+        <div className="panel">
+          <div className="panel-head">
+            <h4>Questions</h4>
+          </div>
+          <div className="panel-body">
+            {renderQuestions(questionSource)}
+          </div>
+
+          <div className="panel-actions">
+            <button
+              className="btn btn-primary"
+              onClick={handleSubmit}
+              disabled={Boolean(activeSubAssignment?.isCompleted || activeAssignment?.isCompleted)}
+            >
+              {activeSubAssignment?.isCompleted || activeAssignment?.isCompleted
+                ? "Already Submitted"
+                : "Submit Assignment"}
+            </button>
+          </div>
+        </div>
       </div>
     );
   }
 
-  // Cards view
+  // CARDS VIEW
   return (
-    <div className="new-assignments-container">
-      <h2 className="assignments-header"><FiBook /> New Assignments</h2>
+    <div className="container">
+      <div className="page-header">
+        <h2 className="title"><FiBook className="icon" /> New Assignments</h2>
+      </div>
 
       {assignments.length > 0 ? (
-        <div className="assignments-list">
+        <div className="grid">
           {assignments.map((assignment, index) => (
-            <div key={index} className="assignment-item">
-              <div className="assignment-content">
-                <h3>{assignment.moduleName}</h3>
-                <p>Assigned on: {formatDate(assignment.assignedDate)}</p>
-                {assignment.assignmentPdf && (
-                  <a href={assignment.assignmentPdf} target="_blank" rel="noopener noreferrer">View PDF</a>
-                )}
+            <div key={index} className="card">
+              <div className="card-head">
+                <h3 className="card-title">{assignment.moduleName}</h3>
+                <span className={`badge ${assignment.isCompleted ? 'badge-success' : 'badge-neutral'}`}>
+                  {assignment.isCompleted ? 'Completed' : 'Assigned'}
+                </span>
               </div>
 
-              <button
-                onClick={() => handleStart(assignment._id)}
-                disabled={Boolean(assignment.isCompleted)}
-              >
-                {assignment.isCompleted
-                  ? "Completed"
-                  : assignment.subAssignments?.length > 0
-                    ? "View Sections"
-                    : "Start"}
-              </button>
+              <div className="meta">
+                <span className="meta-key">Assigned</span>
+                <span className="meta-val">{formatDate(assignment.assignedDate)}</span>
+              </div>
+
+              {assignment.assignmentPdf && (
+                <a
+                  className="link"
+                  href={assignment.assignmentPdf}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  View PDF
+                </a>
+              )}
+
+              <div className="card-actions">
+                <button
+                  className="btn"
+                  onClick={() => handleStart(assignment._id)}
+                  disabled={Boolean(assignment.isCompleted)}
+                >
+                  {assignment.isCompleted
+                    ? "Completed"
+                    : assignment.subAssignments?.length > 0
+                      ? "View Sections"
+                      : "Start"}
+                </button>
+              </div>
             </div>
           ))}
         </div>
       ) : (
-        <div className="no-assignments"><FiClock /><p>No new assignments available</p></div>
+        <div className="empty-state">
+          <div className="empty-icon"><FiClock /></div>
+          <div>
+            <h3>No new assignments</h3>
+            <p className="muted">You’ll see new items here when assigned.</p>
+          </div>
+        </div>
       )}
     </div>
   );
