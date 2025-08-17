@@ -3,7 +3,7 @@ import axios from 'axios';
 import { FiBook, FiClock } from 'react-icons/fi';
 import './AssignmentFlow.css';
 
-const API_BASE = "http://localhost:5000";
+const API_BASE = "https://el-backend-ashen.vercel.app";
 
 const normalizeAssignment = (raw) => {
   const norm = { ...raw };

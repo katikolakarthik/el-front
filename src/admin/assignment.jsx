@@ -4,7 +4,7 @@ import { useNavigate } from "react-router-dom";
 import "./assignment.css";
 
 // API base URL
-const API_BASE = "http://localhost:5000/admin";
+const API_BASE = "https://el-backend-ashen.vercel.app/admin";
 
 // --- Reusable Button Component ---
 const Button = ({ onClick, disabled, children, variant = "primary", className = "" }) => {

@@ -37,13 +37,13 @@ const StudentDashboard = () => {
         if (!userId) throw new Error('User ID not found');
 
         const profileResponse = await axios.get(
-          `http://localhost:5000/student/profile/${userId}`
+          `https://el-backend-ashen.vercel.app/student/profile/${userId}`
         );
         if (!profileResponse.data) throw new Error('No profile data received');
         setStudentData(profileResponse.data);
 
         const assignmentsResponse = await axios.get(
-          `http://localhost:5000/assignments/student/${userId}`
+          `https://el-backend-ashen.vercel.app/assignments/student/${userId}`
         );
         if (assignmentsResponse.data?.success) {
           setAssignments(assignmentsResponse.data.assignments);
@@ -62,7 +62,7 @@ const StudentDashboard = () => {
     try {
       setResultLoading(true);
               const response = await axios.post(
-          'http://localhost:5000/result',
+          'https://el-backend-ashen.vercel.app/result',
           { studentId, assignmentId }
         );
       setResultData(response.data);

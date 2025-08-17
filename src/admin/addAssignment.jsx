@@ -25,7 +25,7 @@ export default function AddAssignment() {
   useEffect(() => {
     const fetchStudents = async () => {
       try {
-        const res = await fetch("http://localhost:5000/admin/students");
+        const res = await fetch("https://el-backend-ashen.vercel.app/admin/students");
         if (!res.ok) {
           throw new Error("Failed to fetch students");
         }
@@ -158,7 +158,7 @@ export default function AddAssignment() {
 
     try {
       const res = await fetch(
-        "http://localhost:5000/admin/add-assignment",
+        "https://el-backend-ashen.vercel.app/admin/add-assignment",
         { 
           method: "POST", 
           body: formData 

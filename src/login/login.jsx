@@ -13,7 +13,7 @@ const Login = () => {
   e.preventDefault();
 
   try {
-          const res = await axios.post("http://localhost:5000/login", {
+          const res = await axios.post("https://el-backend-ashen.vercel.app/login", {
       name,
       password,
     });
