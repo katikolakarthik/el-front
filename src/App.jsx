@@ -8,7 +8,7 @@ import Assignment from "./admin/assignment.jsx";
 import Addassignment from "./admin/addAssignment.jsx";
 import StudentAssignment from './student/assignment.jsx';
 import ProtectedRoute from "./ProtectedRoute.jsx";
-
+import Credential from "./admin/credential.jsx";
 function App() {
   return (
     <Routes>
@@ -33,6 +33,16 @@ function App() {
           </ProtectedRoute>
         }
       />
+
+      <Route
+        path="/admin/credentials"
+        element={
+          <ProtectedRoute>
+            <Layout><Credential/></Layout>
+          </ProtectedRoute>
+        }
+      />
+
       <Route
         path="/admin/assignments"
         element={
