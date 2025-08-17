@@ -23,5 +23,8 @@ dist-ssr
 *.sln
 *.sw?
 
+# Backend directory (separate repository)
+el-backend/
+
 
 

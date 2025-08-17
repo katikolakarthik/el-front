@@ -70,6 +70,13 @@
 .card-actions {
   display: flex;
   gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.action-buttons {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
 }
 
 .card-meta {
@@ -89,6 +96,148 @@
   width: 100%;
   border-collapse: collapse;
   font-size: 0.9rem;
+}
+
+/* Existing PDF info styling */
+.existing-pdf-info {
+  background-color: #e8f5e8;
+  border: 1px solid #4caf50;
+  border-radius: 4px;
+  padding: 0.75rem;
+  margin-bottom: 0.5rem;
+}
+
+.existing-pdf-info p {
+  margin: 0 0 0.25rem 0;
+  color: #2e7d32;
+  font-weight: 500;
+}
+
+.existing-pdf-info small {
+  color: #388e3c;
+  font-size: 0.8rem;
+}
+
+/* Edit mode header */
+.edit-mode-header {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  padding: 1.5rem;
+  border-radius: 8px 8px 0 0;
+  margin-bottom: 1.5rem;
+  text-align: center;
+}
+
+.edit-mode-header h3 {
+  margin: 0 0 0.5rem 0;
+  font-size: 1.5rem;
+  font-weight: 600;
+}
+
+.edit-mode-subtitle {
+  margin: 0;
+  opacity: 0.9;
+  font-size: 0.95rem;
+}
+
+/* Enhanced question type toggle */
+.question-type-toggle {
+  display: flex;
+  gap: 1rem;
+  margin: 1rem 0;
+  padding: 1rem;
+  background-color: #f8f9fa;
+  border-radius: 6px;
+  border: 1px solid #e9ecef;
+}
+
+.question-type-option {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border: 2px solid transparent;
+}
+
+.question-type-option.selected {
+  background-color: #e3f2fd;
+  border-color: #2196f3;
+  color: #1976d2;
+}
+
+.question-type-option input[type="radio"] {
+  display: none;
+}
+
+.radio-custom {
+  width: 18px;
+  height: 18px;
+  border: 2px solid #ccc;
+  border-radius: 50%;
+  display: inline-block;
+  position: relative;
+  transition: all 0.2s ease;
+}
+
+.question-type-option.selected .radio-custom {
+  border-color: #2196f3;
+  background-color: #2196f3;
+}
+
+.question-type-option.selected .radio-custom::after {
+  content: '';
+  width: 8px;
+  height: 8px;
+  background-color: white;
+  border-radius: 50%;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.question-count {
+  font-size: 0.8rem;
+  opacity: 0.7;
+  margin-left: auto;
+}
+
+/* Data status badges */
+.existing-data-badge {
+  background-color: #d4edda;
+  color: #155724;
+  padding: 0.25rem 0.5rem;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  margin-left: 0.5rem;
+}
+
+.no-data-badge {
+  background-color: #f8d7da;
+  color: #721c24;
+  padding: 0.25rem 0.5rem;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  margin-left: 0.5rem;
+}
+
+/* Pre-filled field indicators */
+.edit-assignment-form input[value]:not([value=""]),
+.edit-assignment-form textarea[value]:not([value=""]),
+.edit-assignment-form input[type="radio"]:checked + label {
+  background-color: #f8f9fa;
+  border-color: #28a745;
+}
+
+.edit-assignment-form input[value]:not([value=""]):focus,
+.edit-assignment-form textarea[value]:not([value=""]):focus {
+  background-color: #fff;
+  border-color: #007bff;
 }
 
 .th {
@@ -139,6 +288,15 @@
 
 .button-primary:hover {
   background-color: #2980b9;
+}
+
+.button-secondary {
+  background-color: #6c757d;
+  color: #fff;
+}
+
+.button-secondary:hover {
+  background-color: #545b62;
 }
 
 /* PDF link styles */
@@ -463,4 +621,163 @@
   .summary-stats {
     flex-direction: column;
   }
+}
+
+/* Edit form styles */
+.edit-assignment-form {
+  max-height: 70vh;
+  overflow-y: auto;
+}
+
+.edit-assignment-form .form-group {
+  margin-bottom: 1rem;
+}
+
+.edit-assignment-form label {
+  display: block;
+  margin-bottom: 0.5rem;
+  font-weight: 500;
+  color: #333;
+}
+
+.edit-assignment-form input,
+.edit-assignment-form textarea {
+  width: 100%;
+  padding: 0.5rem;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 0.875rem;
+}
+
+.edit-assignment-form .sub-assignment-card {
+  border: 1px solid #e0e0e0;
+  border-radius: 6px;
+  padding: 1rem;
+  margin-bottom: 1rem;
+  background-color: #f8f9fa;
+}
+
+.edit-assignment-form .sub-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.edit-assignment-form .question-type-toggle {
+  display: flex;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.edit-assignment-form .question-type-toggle label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+}
+
+.edit-assignment-form .question-card {
+  border: 1px solid #e0e0e0;
+  border-radius: 4px;
+  padding: 1rem;
+  margin-bottom: 1rem;
+  background-color: #fff;
+}
+
+.edit-assignment-form .remove-question-btn {
+  background-color: #dc3545;
+  color: white;
+  border: none;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  cursor: pointer;
+  margin-top: 0.5rem;
+}
+
+.edit-assignment-form .remove-question-btn:hover {
+  background-color: #c82333;
+}
+
+.edit-assignment-form .add-question-btn,
+.edit-assignment-form .add-sub-btn {
+  background-color: #28a745;
+  color: white;
+  border: none;
+  padding: 0.5rem 1rem;
+  border-radius: 4px;
+  font-size: 0.875rem;
+  cursor: pointer;
+  margin-bottom: 1rem;
+}
+
+.edit-assignment-form .add-question-btn:hover,
+.edit-assignment-form .add-sub-btn:hover {
+  background-color: #218838;
+}
+
+.edit-assignment-form .form-actions {
+  margin-top: 2rem;
+  padding-top: 1rem;
+  border-top: 1px solid #e0e0e0;
+}
+
+.edit-assignment-form .submit-actions {
+  display: flex;
+  gap: 1rem;
+  justify-content: flex-end;
+}
+
+.edit-assignment-form .small-btn {
+  background-color: #6c757d;
+  color: white;
+  border: none;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  cursor: pointer;
+  margin-right: 0.5rem;
+}
+
+.edit-assignment-form .small-btn:hover {
+  background-color: #545b62;
+}
+
+.edit-assignment-form .student-checkbox-container {
+  max-height: 200px;
+  overflow-y: auto;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  padding: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.edit-assignment-form .student-checkbox-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.edit-assignment-form .student-checkbox-item input[type="checkbox"] {
+  width: auto;
+}
+
+.edit-assignment-form .student-selection-controls {
+  margin-bottom: 0.5rem;
+}
+
+.edit-assignment-form .remove-btn {
+  background-color: #dc3545;
+  color: white;
+  border: none;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+
+.edit-assignment-form .remove-btn:hover {
+  background-color: #c82333;
 }

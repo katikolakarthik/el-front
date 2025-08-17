@@ -21,9 +21,9 @@ export default function Dashboard() {
     const fetchData = async () => {
       try {
         const [statsRes, studentsRes, assignmentsRes] = await Promise.all([
-          axios.get("https://el-backend-ashen.vercel.app/admin/dashboard"),
-          axios.get("https://el-backend-ashen.vercel.app/admin/studentslist"),
-          axios.get("https://el-backend-ashen.vercel.app/admin/recentassignments"),
+                  axios.get("https://el-backend-ashen.vercel.app/admin/dashboard"),
+        axios.get("https://el-backend-ashen.vercel.app/admin/studentslist"),
+        axios.get("https://el-backend-ashen.vercel.app/admin/recentassignments"),
         ]);
 
         setStats(statsRes.data);
