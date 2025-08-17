@@ -588,4 +588,24 @@ const StudentDashboard = () => {
                 );
               })
             ) : (
-              <div className="no-submissions"
+         <div className="no-submissions">
+                <FiClock size={32} />
+                <p>No submissions yet. Start working on your assignments!</p>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {showResultPopup && renderResultPopup()}
+      {resultLoading && (
+        <div className="loading-overlay">
+          <div className="loading-spinner"></div>
+          <p>Loading result details...</p>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default StudentDashboard;
