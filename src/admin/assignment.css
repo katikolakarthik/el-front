@@ -98,6 +98,34 @@
   font-size: 0.9rem;
 }
 
+/* Readonly field styling */
+.readonly-field {
+  background-color: #f8f9fa !important;
+  color: #6c757d !important;
+  cursor: not-allowed !important;
+  border: 1px solid #dee2e6 !important;
+}
+
+.readonly-field:focus {
+  outline: none !important;
+  box-shadow: none !important;
+  border-color: #dee2e6 !important;
+}
+
+/* Parent level section styling */
+.parent-level-section {
+  margin-bottom: 2rem;
+  padding: 1rem;
+  background-color: #f8f9fa;
+  border-radius: 8px;
+  border: 1px solid #e0e0e0;
+}
+
+.parent-level-section h3 {
+  color: #2c3e50;
+  margin-bottom: 1rem;
+}
+
 /* Existing PDF info styling */
 .existing-pdf-info {
   background-color: #e8f5e8;
