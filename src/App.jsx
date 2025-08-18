@@ -44,6 +44,15 @@ function App() {
         }
       />
 
+ <Route
+        path="/admin/subadmins"
+        element={
+          <ProtectedRoute>
+            <Layout><Subadmin/></Layout>
+          </ProtectedRoute>
+        }
+      />
+
       <Route
         path="/admin/assignments"
         element={
