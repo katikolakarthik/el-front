@@ -9,6 +9,7 @@ import Addassignment from "./admin/addAssignment.jsx";
 import StudentAssignment from './student/assignment.jsx';
 import ProtectedRoute from "./ProtectedRoute.jsx";
 import Credential from "./admin/credential.jsx";
+import Subadmin from "./admin/subadmin.jsx";
 function App() {
   return (
     <Routes>
