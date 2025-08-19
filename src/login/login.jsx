@@ -9,27 +9,26 @@ const Login = () => {
   const navigate = useNavigate();
 
   
-  const handleLogin = async (e) => {
+
+const handleLogin = async (e) => {
   e.preventDefault();
 
   try {
-          const res = await axios.post("https://el-backend-ashen.vercel.app/login", {
+    const res = await axios.post("https://el-backend-ashen.vercel.app/login", {
       name,
       password,
     });
 
     if (res.data.success) {
-      // Store the entire user object in localStorage
       localStorage.setItem("user", JSON.stringify(res.data.user));
-      
-      // Make sure we're using the correct ID field (either id or _id)
       const userId = res.data.user.id || res.data.user._id;
       localStorage.setItem("userId", userId);
 
       // Redirect based on role
-      if (res.data.user.role === "admin") {
+      const role = res.data.user.role;
+      if (role === "admin" || role === "subadmin") {
         navigate("/admin/dashboard");
-      } else if (res.data.user.role === "user") {
+      } else if (role === "user") {
         navigate("/student/dashboard");
       } else {
         setError("Invalid role assigned");
@@ -41,7 +40,6 @@ const Login = () => {
     setError(err.response?.data?.message || "Server error");
   }
 };
-  
   
 
   return (
