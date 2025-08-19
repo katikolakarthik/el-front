@@ -47,6 +47,10 @@ const Layout = ({ children }) => {
  <Link to="/admin/credentials" className="sidebar-link" onClick={closeSidebar}>
             <FaUserFriends /> <span>Student Credentials</span>
           </Link>
+<Link to="/admin/subadmins" className="sidebar-link" onClick={closeSidebar}>
+            <FaUserFriends /> <span>Subadmin Credentials</span>
+          </Link>
+
 
 
 
