@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import "./addassignment.css"
+import "./addassignment.css";
+import { useLocation } from "react-router-dom";
 
 export default function AddAssignment() {
   const navigate = useNavigate();
@@ -20,6 +21,14 @@ export default function AddAssignment() {
       assignmentPdf: null
     }
   ]);
+
+const location = useLocation();
+const initialCategory =
+  new URLSearchParams(location.search).get("category") || ""; // from pop
+const [category, setCategory] = useState(initialCategory);
+
+
+
 
   // Fetch all students on component mount
   useEffect(() => {
@@ -183,6 +192,21 @@ export default function AddAssignment() {
     <div className="add-assignment-container">
       <h2>Add New Assignment</h2>
       <form onSubmit={handleSubmit} className="assignment-form">
+<div className="form-group">
+  <label>Category*</label>
+  <input
+    type="text"
+    value={category}
+    onChange={(e) => setCategory(e.target.value)}
+    placeholder="Pick from popup or type"
+    required
+  />
+  <small>
+    From popup: {initialCategory || "none"}. You can adjust if needed.
+  </small>
+</div>
+
+
         <div className="form-group">
           <label htmlFor="moduleName">Module Name*</label>
           <input
