@@ -1,13 +1,12 @@
 import React, { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import "./addassignment.css";
-import { useLocation } from "react-router-dom";
 
 export default function AddAssignment() {
   const navigate = useNavigate();
+  const location = useLocation();
   const [moduleName, setModuleName] = useState("");
   const [students, setStudents] = useState([]);
-  const [selectedStudents, setSelectedStudents] = useState([]);
   const [subAssignments, setSubAssignments] = useState([
     {
       subModuleName: "",
@@ -22,13 +21,9 @@ export default function AddAssignment() {
     }
   ]);
 
-const location = useLocation();
-const initialCategory =
-  new URLSearchParams(location.search).get("category") || ""; // from pop
-const [category, setCategory] = useState(initialCategory);
-
-
-
+  // Get category from URL params
+  const initialCategory = new URLSearchParams(location.search).get("category") || "";
+  const [category, setCategory] = useState(initialCategory);
 
   // Fetch all students on component mount
   useEffect(() => {
@@ -42,32 +37,11 @@ const [category, setCategory] = useState(initialCategory);
         setStudents(data);
       } catch (err) {
         console.error("Error fetching students:", err);
-        alert(`Error fetching students: ${err.message}`);
       }
     };
-    
+
     fetchStudents();
   }, []);
-
-  // Handle student selection
-  const handleStudentSelection = (studentId) => {
-    setSelectedStudents(prev => {
-      if (prev.includes(studentId)) {
-        return prev.filter(id => id !== studentId);
-      } else {
-        return [...prev, studentId];
-      }
-    });
-  };
-
-  // Handle select all/none
-  const toggleAllStudents = (selectAll) => {
-    if (selectAll) {
-      setSelectedStudents(students.map(student => student._id));
-    } else {
-      setSelectedStudents([]);
-    }
-  };
 
   // Handle general field changes
   const handleSubChange = (index, field, value) => {
@@ -125,81 +99,90 @@ const [category, setCategory] = useState(initialCategory);
   };
 
   const handleSubmit = async (e) => {
-  e.preventDefault();
+    e.preventDefault();
 
-  const formData = new FormData();
-  formData.append("moduleName", moduleName);
-  formData.append("category", category);
-
-  // Prepare JSON for text data
-  const subDataForJson = subAssignments.map(sub => {
-    if (sub.isDynamic) {
-      return {
-        subModuleName: sub.subModuleName,
-        isDynamic: true,
-        questions: sub.dynamicQuestions.map(q => ({
-          questionText: q.questionText,
-          options: q.options ? q.options.split(",").map(opt => opt.trim()) : [],
-          answer: q.answer
-        }))
-      };
-    } else {
-      return {
-        subModuleName: sub.subModuleName,
-        isDynamic: false,
-        answerPatientName: sub.answerPatientName,
-        answerAgeOrDob: sub.answerAgeOrDob,
-        answerIcdCodes: sub.answerIcdCodes,
-        answerCptCodes: sub.answerCptCodes,
-        answerNotes: sub.answerNotes
-      };
+    // Validate category
+    if (!category || !category.trim()) {
+      alert("Category is required");
+      return;
     }
-  });
 
-  formData.append("subAssignments", JSON.stringify(subDataForJson));
+    const formData = new FormData();
+    formData.append("moduleName", moduleName);
+    formData.append("category", category.trim());
 
-  // Append PDFs
-  subAssignments.forEach((sub, index) => {
-    if (sub.assignmentPdf) {
-      formData.append("assignmentPdf", sub.assignmentPdf);
+    // Prepare JSON for text data
+    const subDataForJson = subAssignments.map(sub => {
+      if (sub.isDynamic) {
+        return {
+          subModuleName: sub.subModuleName,
+          isDynamic: true,
+          questions: sub.dynamicQuestions.map(q => ({
+            questionText: q.questionText,
+            options: q.options ? q.options.split(",").map(opt => opt.trim()) : [],
+            answer: q.answer
+          }))
+        };
+      } else {
+        return {
+          subModuleName: sub.subModuleName,
+          isDynamic: false,
+          answerPatientName: sub.answerPatientName,
+          answerAgeOrDob: sub.answerAgeOrDob,
+          answerIcdCodes: sub.answerIcdCodes,
+          answerCptCodes: sub.answerCptCodes,
+          answerNotes: sub.answerNotes
+        };
+      }
+    });
+
+    formData.append("subAssignments", JSON.stringify(subDataForJson));
+
+    // Append PDFs
+    subAssignments.forEach((sub, index) => {
+      if (sub.assignmentPdf) {
+        formData.append("assignmentPdf", sub.assignmentPdf);
+      }
+    });
+
+    try {
+      const res = await fetch(
+        "https://el-backend-ashen.vercel.app/admin/add-assignment",
+        { method: "POST", body: formData }
+      );
+
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.message || "Failed to save assignment");
+      }
+
+      const data = await res.json();
+      console.log("✅ Assignment saved:", data);
+      alert("Assignment saved successfully!");
+      navigate("/admin/assignments");
+    } catch (err) {
+      console.error("❌ Error:", err);
+      alert(`Error saving assignment: ${err.message}`);
     }
-  });
+  };
 
-  try {
-    const res = await fetch(
-      "https://el-backend-ashen.vercel.app/admin/add-assignment",
-      { method: "POST", body: formData }
-    );
-
-    if (!res.ok) throw new Error(await res.text());
-
-    const data = await res.json();
-    console.log("✅ Assignment saved:", data);
-    alert("Assignment saved successfully!");
-    navigate("/admin/assignments");
-  } catch (err) {
-    console.error("❌ Error:", err);
-    alert(`Error saving assignment: ${err.message}`);
-  }
-};
   return (
     <div className="add-assignment-container">
       <h2>Add New Assignment</h2>
       <form onSubmit={handleSubmit} className="assignment-form">
-<div className="form-group">
-  <label>Category*</label>
-  <input
-    type="text"
-    value={category}
-    onChange={(e) => setCategory(e.target.value)}
-    placeholder="Pick from popup or type"
-    required
-  />
-  <small>
-    From popup: {initialCategory || "none"}. You can adjust if needed.
-  </small>
-</div>
-
+        <div className="form-group">
+          <label>Category*</label>
+          <input
+            type="text"
+            value={category}
+            onChange={(e) => setCategory(e.target.value)}
+            placeholder="Enter category"
+            required
+          />
+          <small>
+            From popup: {initialCategory || "none"}. You can adjust if needed.
+          </small>
+        </div>
 
         <div className="form-group">
           <label htmlFor="moduleName">Module Name*</label>
@@ -211,42 +194,6 @@ const [category, setCategory] = useState(initialCategory);
             onChange={(e) => setModuleName(e.target.value)}
             required
           />
-        </div>
-
-        <div className="form-group">
-          <label>Assign to Students</label>
-          <div className="student-selection-controls">
-            <button 
-              type="button" 
-              onClick={() => toggleAllStudents(true)}
-              className="small-btn"
-            >
-              Select All
-            </button>
-            <button 
-              type="button" 
-              onClick={() => toggleAllStudents(false)}
-              className="small-btn"
-            >
-              Deselect All
-            </button>
-          </div>
-          <div className="student-checkbox-container">
-            {students.map(student => (
-              <div key={student._id} className="student-checkbox-item">
-                <input
-                  type="checkbox"
-                  id={`student-${student._id}`}
-                  checked={selectedStudents.includes(student._id)}
-                  onChange={() => handleStudentSelection(student._id)}
-                />
-                <label htmlFor={`student-${student._id}`}>
-                  {student.name} ({student.courseName})
-                </label>
-              </div>
-            ))}
-          </div>
-          <small>Selected: {selectedStudents.length} students</small>
         </div>
 
         <h3>Sub-Assignments</h3>
@@ -304,7 +251,7 @@ const [category, setCategory] = useState(initialCategory);
             {!sub.isDynamic && (
               <div className="predefined-fields">
                 <h4>Predefined Answer Key</h4>
-                
+
                 <div className="form-group">
                   <label htmlFor={`answerPatientName-${idx}`}>Patient Name</label>
                   <input
