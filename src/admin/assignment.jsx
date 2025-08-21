@@ -1041,6 +1041,11 @@ return (
 // --- Main Component ---
 export default function AssignmentsManager() {
   const navigate = useNavigate();
+
+// put this right under your existing imports at the top:
+const CATEGORY_OPTIONS = ["CPC", "CCS", "IP-DRG", "SURGERY", "Denials", "ED", "E and M"];
+
+
   const [assignments, setAssignments] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -1051,6 +1056,8 @@ export default function AssignmentsManager() {
   const [studentSummary, setStudentSummary] = useState(null);
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [summaryError, setSummaryError] = useState(null);
+const [showCategoryModal, setShowCategoryModal] = useState(false);
+
 
   // Edit functionality states
   const [editingModule, setEditingModule] = useState(null);
@@ -1175,9 +1182,21 @@ export default function AssignmentsManager() {
     setEditingSubAssignment(null);
   };
 
-  const handleAddAssignment = () => {
-    navigate('/assignment/add');
-  };
+  
+
+const handleAddAssignment = () => {
+  // open the category picker pop
+  setShowCategoryModal(true);
+};
+
+
+const goToAddWithCategory = (cat) => {
+  setShowCategoryModal(false);
+  navigate(`/assignment/add?category=${encodeURIComponent(cat)}`);
+};
+
+
+
 
   if (loading) return <p className="loading-text">Loading assignments...</p>;
   if (error) return <p className="error-text">Error: {error}</p>;
@@ -1255,6 +1274,25 @@ export default function AssignmentsManager() {
           />
         </Modal>
       )}
+
+
+{showCategoryModal && (
+  <Modal
+    isOpen={showCategoryModal}
+    onClose={() => setShowCategoryModal(false)}
+    title="Choose Category"
+  >
+    <div style={{ display: "grid", gap: 8 }}>
+      {CATEGORY_OPTIONS.map((c) => (
+        <Button key={c} onClick={() => goToAddWithCategory(c)} variant="primary">
+          {c}
+        </Button>
+      ))}
+    </div>
+  </Modal>
+)}
+
+
 
       {/* Edit Sub-Assignment Modal */}
       {editingSubAssignment && (
