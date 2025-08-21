@@ -125,69 +125,63 @@ const [category, setCategory] = useState(initialCategory);
   };
 
   const handleSubmit = async (e) => {
-    e.preventDefault();
+  e.preventDefault();
 
-    const formData = new FormData();
-    formData.append("moduleName", moduleName);
-    formData.append("assignedStudents", selectedStudents.join(","));
+  const formData = new FormData();
+  formData.append("moduleName", moduleName);
+  formData.append("category", category);
 
-    // Prepare JSON for text data
-    const subDataForJson = subAssignments.map(sub => {
-      if (sub.isDynamic) {
-        return {
-          subModuleName: sub.subModuleName,
-          isDynamic: true,
-          questions: sub.dynamicQuestions.map(q => ({
-            questionText: q.questionText,
-            options: q.options ? q.options.split(",").map(opt => opt.trim()) : [],
-            answer: q.answer
-          }))
-        };
-      } else {
-        return {
-          subModuleName: sub.subModuleName,
-          isDynamic: false,
-          answerPatientName: sub.answerPatientName,
-          answerAgeOrDob: sub.answerAgeOrDob,
-          answerIcdCodes: sub.answerIcdCodes,
-          answerCptCodes: sub.answerCptCodes,
-          answerNotes: sub.answerNotes
-        };
-      }
-    });
-
-    formData.append("subAssignments", JSON.stringify(subDataForJson));
-
-    // Append PDFs
-    subAssignments.forEach((sub, index) => {
-      if (sub.assignmentPdf) {
-        formData.append(`assignmentPdf`, sub.assignmentPdf);
-      }
-    });
-
-    try {
-      const res = await fetch(
-        "https://el-backend-ashen.vercel.app/admin/add-assignment",
-        { 
-          method: "POST", 
-          body: formData 
-        }
-      );
-      
-      if (!res.ok) {
-        throw new Error(await res.text());
-      }
-
-      const data = await res.json();
-      console.log("✅ Assignment saved:", data);
-      alert("Assignment saved successfully!");
-      navigate("/admin/assignments");
-    } catch (err) {
-      console.error("❌ Error:", err);
-      alert(`Error saving assignment: ${err.message}`);
+  // Prepare JSON for text data
+  const subDataForJson = subAssignments.map(sub => {
+    if (sub.isDynamic) {
+      return {
+        subModuleName: sub.subModuleName,
+        isDynamic: true,
+        questions: sub.dynamicQuestions.map(q => ({
+          questionText: q.questionText,
+          options: q.options ? q.options.split(",").map(opt => opt.trim()) : [],
+          answer: q.answer
+        }))
+      };
+    } else {
+      return {
+        subModuleName: sub.subModuleName,
+        isDynamic: false,
+        answerPatientName: sub.answerPatientName,
+        answerAgeOrDob: sub.answerAgeOrDob,
+        answerIcdCodes: sub.answerIcdCodes,
+        answerCptCodes: sub.answerCptCodes,
+        answerNotes: sub.answerNotes
+      };
     }
-  };
+  });
 
+  formData.append("subAssignments", JSON.stringify(subDataForJson));
+
+  // Append PDFs
+  subAssignments.forEach((sub, index) => {
+    if (sub.assignmentPdf) {
+      formData.append("assignmentPdf", sub.assignmentPdf);
+    }
+  });
+
+  try {
+    const res = await fetch(
+      "https://el-backend-ashen.vercel.app/admin/add-assignment",
+      { method: "POST", body: formData }
+    );
+
+    if (!res.ok) throw new Error(await res.text());
+
+    const data = await res.json();
+    console.log("✅ Assignment saved:", data);
+    alert("Assignment saved successfully!");
+    navigate("/admin/assignments");
+  } catch (err) {
+    console.error("❌ Error:", err);
+    alert(`Error saving assignment: ${err.message}`);
+  }
+};
   return (
     <div className="add-assignment-container">
       <h2>Add New Assignment</h2>
