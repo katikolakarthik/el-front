@@ -48,29 +48,42 @@ const NewAssignments = () => {
   const [answers, setAnswers] = useState({});
 
   useEffect(() => {
-    const fetchAssignments = async () => {
-      try {
-        const userId = localStorage.getItem('userId');
-        if (!userId) throw new Error('User ID not found');
+  const fetchAssignments = async () => {
+    try {
+      const userId = localStorage.getItem('userId');
+      if (!userId) throw new Error('User ID not found');
 
-        const response = await axios.get(`${API_BASE}/assignments/student/${userId}`);
-        if (response.data?.success) {
-          const assignmentsData = Array.isArray(response.data.assignments)
-            ? response.data.assignments
-            : [response.data.assignment].filter(Boolean);
+      // Step 1: Get student details including courseName
+      const studentRes = await axios.get(
+        `${API_BASE}/student/${userId}/course`
+      );
 
-          setAssignments(sortByAssignedDesc(assignmentsData));
-        } else {
-          throw new Error('Failed to fetch assignments');
-        }
-      } catch (err) {
-        setError(err.message);
-      } finally {
-        setLoading(false);
+      if (!studentRes.data || !studentRes.data.courseName) {
+        throw new Error('Course name not found for student');
       }
-    };
-    fetchAssignments();
-  }, []);
+
+      const courseName = studentRes.data.courseName;
+
+      // Step 2: Fetch assignments using courseName
+      const assignRes = await axios.get(`${API_BASE}/category/${courseName}`);
+
+      if (Array.isArray(assignRes.data)) {
+        const normalized = assignRes.data.map(normalizeAssignment);
+        setAssignments(sortByAssignedDesc(normalized));
+      } else {
+        setAssignments([]);
+      }
+
+      setLoading(false);
+    } catch (err) {
+      console.error(err);
+      setError(err.message || 'Failed to fetch assignments');
+      setLoading(false);
+    }
+  };
+
+  fetchAssignments();
+}, []);
 
   const formatDate = (dateString) =>
     dateString
