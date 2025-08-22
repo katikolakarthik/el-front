@@ -53,75 +53,53 @@ const StudentDashboard = () => {
     const res = await axios.get(
       `https://el-backend-ashen.vercel.app/payment-details?studentId=${userId}`
     );
-    if (!res.data) throw new Error('No course info data received');
+    if (!res.data) throw new Error('No course info received');
     return res.data;
   }, []);
 
-  const fetchAssignments = useCallback(async (userId) => {
+  const fetchSubmissions = useCallback(async (userId) => {
     const res = await axios.get(
       `https://el-backend-ashen.vercel.app/submitted-assignments?studentId=${userId}`
     );
-    if (res.data?.assignments) {
-      return res.data.assignments || [];
-    }
-    return [];
+    return res.data?.assignments || [];
   }, []);
 
   const refreshDashboard = useCallback(async () => {
     try {
       const userId = localStorage.getItem('userId');
       const courseName = localStorage.getItem('courseName');
-      if (!userId || !courseName) throw new Error('User ID or courseName not found');
+      if (!userId || !courseName) throw new Error('User ID or course not found');
 
-      const [stats, info, assigns] = await Promise.all([
+      const [stats, courseInfo, submissions] = await Promise.all([
         fetchDashboardStats(userId, courseName),
         fetchCourseInfo(userId),
-        fetchAssignments(userId),
+        fetchSubmissions(userId),
       ]);
 
+      // normalize into one object
       setStudentData({
-        ...info,
+        ...courseInfo,
         totalAssignments: stats.totalAssigned,
         completedCount: stats.completed,
-        averageScore: stats.averageScore,
+        averageScore: stats.stats?.averageScore ?? 0,
         pendingCount: stats.pending,
-        courseProgress: stats.stats
-          ? Math.round((stats.stats.completed / stats.stats.assigned) * 100)
-          : 0,
+        courseProgress: Math.round(
+          (stats.completed / (stats.totalAssigned || 1)) * 100
+        ),
         assignmentCompletion: `${stats.completed}/${stats.totalAssigned}`,
       });
-      setAssignments(assigns);
+
+      setAssignments(submissions);
     } catch (err) {
       setError(err.message || 'Failed to refresh data');
     }
-  }, [fetchDashboardStats, fetchCourseInfo, fetchAssignments]);
+  }, [fetchDashboardStats, fetchCourseInfo, fetchSubmissions]);
 
   // Initial load
   useEffect(() => {
     const bootstrap = async () => {
       try {
-        const userId = localStorage.getItem('userId');
-        const courseName = localStorage.getItem('courseName');
-        if (!userId || !courseName) throw new Error('User ID or courseName not found');
-
-        const [stats, info, assigns] = await Promise.all([
-          fetchDashboardStats(userId, courseName),
-          fetchCourseInfo(userId),
-          fetchAssignments(userId),
-        ]);
-
-        setStudentData({
-          ...info,
-          totalAssignments: stats.totalAssigned,
-          completedCount: stats.completed,
-          averageScore: stats.averageScore,
-          pendingCount: stats.pending,
-          courseProgress: stats.stats
-            ? Math.round((stats.stats.completed / stats.stats.assigned) * 100)
-            : 0,
-          assignmentCompletion: `${stats.completed}/${stats.totalAssigned}`,
-        });
-        setAssignments(assigns);
+        await refreshDashboard();
       } catch (err) {
         setError(err.message || 'Failed to fetch data');
       } finally {
@@ -129,7 +107,7 @@ const StudentDashboard = () => {
       }
     };
     bootstrap();
-  }, [fetchDashboardStats, fetchCourseInfo, fetchAssignments]);
+  }, [refreshDashboard]);
 
   // --- Results fetching ---
   const fetchResultData = async (studentId, assignmentId) => {
@@ -149,12 +127,13 @@ const StudentDashboard = () => {
     }
   };
 
-  // ✅ Build submissions from submitted-assignments API
+  // ✅ Build the submissions list from new API
   const submissions = useMemo(() => {
     if (!Array.isArray(assignments)) return [];
     return assignments.map((a) => {
       const totalSub = a.subAssignments?.length ?? 0;
-      const doneSub = a.subAssignments?.filter((s) => s.isCompleted)?.length ?? 0;
+      const doneSub =
+        a.subAssignments?.filter((s) => s.isCompleted)?.length ?? 0;
       const fallbackProgress =
         totalSub > 0
           ? Math.round((doneSub / totalSub) * 100)
@@ -164,12 +143,12 @@ const StudentDashboard = () => {
 
       return {
         assignmentId: a.assignmentId,
-        moduleName: a.moduleName || `Assignment`,
+        moduleName: (a.moduleName || '').trim(),
         isCompleted: a.isCompleted === true,
         submissionDate: a.assignedDate,
         totalCorrect: a.totalCorrect ?? 0,
         totalWrong: a.totalWrong ?? 0,
-        overallProgress: fallbackProgress,
+        overallProgress: a.progressPercent ?? fallbackProgress,
       };
     });
   }, [assignments]);
@@ -193,20 +172,52 @@ const StudentDashboard = () => {
     await refreshDashboard();
   };
 
-  // --- Render Result Popup ---
+  useEffect(() => {
+    if (!showResultPopup) return;
+    const originalOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+
+    const handleEsc = (e) => {
+      if (e.key === 'Escape') closeResultPopup();
+    };
+    window.addEventListener('keydown', handleEsc);
+
+    return () => {
+      window.removeEventListener('keydown', handleEsc);
+      document.body.style.overflow = originalOverflow;
+    };
+  }, [showResultPopup]);
+
+  // --- Render helpers for popup ---
+  const renderModule = (module, index) => (
+    <div key={index} className="sub-assignment">
+      <div className="assignment-title">
+        <h3>{module.moduleName || module.subModuleName}</h3>
+      </div>
+      {/* ... keep existing answer comparison renderers ... */}
+    </div>
+  );
+
   const renderResultPopup = () => {
     if (!resultData) return null;
-
     const modules = Array.isArray(resultData.data)
       ? resultData.data
       : [resultData.data];
 
     return (
       <div className="result-popup-overlay" onClick={closeResultPopup}>
-        <div className="result-popup" onClick={(e) => e.stopPropagation()}>
-          <button className="close-popup" onClick={closeResultPopup}>
+        <div
+          className="result-popup"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <button
+            className="close-popup"
+            onClick={closeResultPopup}
+            aria-label="Close results"
+          >
             <FiX size={24} />
           </button>
+
           <div className="result-header">
             <h2>Assignment Results</h2>
             <div className="result-summary">
@@ -220,17 +231,15 @@ const StudentDashboard = () => {
               </div>
               <div className="summary-item">
                 <span>Overall Progress:</span>
-                <strong className="progress">{resultData.overallProgress}%</strong>
+                <strong className="progress">
+                  {resultData.overallProgress}%
+                </strong>
               </div>
             </div>
           </div>
+
           <div className="multi-assignment-result">
-            {modules.map((m, i) => (
-              <div key={i}>
-                <h3>{m.moduleName || 'Assignment'}</h3>
-                {/* You can expand with your existing module renderer */}
-              </div>
-            ))}
+            {modules.map((m, i) => renderModule(m, i))}
           </div>
         </div>
       </div>
@@ -272,34 +281,39 @@ const StudentDashboard = () => {
       {/* Stats Section */}
       <div className="stats-grid">
         <div className="stat-card">
-          <div className="stat-icon"><FiBook size={24} /></div>
+          <div className="stat-icon">
+            <FiBook size={24} />
+          </div>
           <div className="stat-content">
             <h3>Total Assignments</h3>
             <p className="stat-value">{studentData.totalAssignments}</p>
             <p className="stat-label">Assigned to you</p>
           </div>
         </div>
-
         <div className="stat-card">
-          <div className="stat-icon"><FiCheckCircle size={24} /></div>
+          <div className="stat-icon">
+            <FiCheckCircle size={24} />
+          </div>
           <div className="stat-content">
             <h3>Completed</h3>
             <p className="stat-value">{studentData.completedCount}</p>
             <p className="stat-label">Successfully submitted</p>
           </div>
         </div>
-
         <div className="stat-card">
-          <div className="stat-icon"><FiTrendingUp size={24} /></div>
+          <div className="stat-icon">
+            <FiTrendingUp size={24} />
+          </div>
           <div className="stat-content">
             <h3>Average Score</h3>
-            <p className="stat-value">{studentData.averageScore}</p>
+            <p className="stat-value">{studentData.averageScore}%</p>
             <p className="stat-label">Your performance</p>
           </div>
         </div>
-
         <div className="stat-card">
-          <div className="stat-icon"><FiAlertCircle size={24} /></div>
+          <div className="stat-icon">
+            <FiAlertCircle size={24} />
+          </div>
           <div className="stat-content">
             <h3>Pending</h3>
             <p className="stat-value">{studentData.pendingCount}</p>
@@ -320,7 +334,9 @@ const StudentDashboard = () => {
           </div>
           <div className="progress-details">
             <span>Course Progress {studentData.courseProgress}%</span>
-            <span>Assignment Completion {studentData.assignmentCompletion}</span>
+            <span>
+              Assignment Completion {studentData.assignmentCompletion}
+            </span>
           </div>
         </div>
       </div>
@@ -340,7 +356,9 @@ const StudentDashboard = () => {
             <FiCalendar className="info-icon" />
             <div>
               <p className="info-label">Enrolled:</p>
-              <p className="info-value">{formatDate(studentData.enrolledDate)}</p>
+              <p className="info-value">
+                {formatDate(studentData.enrolledDate)}
+              </p>
             </div>
           </div>
           <div className="info-item">
@@ -350,7 +368,8 @@ const StudentDashboard = () => {
               <p className="info-value">
                 {studentData.remainingAmount > 0
                   ? `Partially paid (₹${studentData.paidAmount}/₹${
-                      (studentData.paidAmount ?? 0) + (studentData.remainingAmount ?? 0)
+                      (studentData.paidAmount ?? 0) +
+                      (studentData.remainingAmount ?? 0)
                     })`
                   : 'Fully paid'}
               </p>
@@ -367,9 +386,17 @@ const StudentDashboard = () => {
                 return (
                   <div
                     key={i}
-                    className={`submission-item ${completed ? '' : 'submission-item--disabled'}`}
-                    onClick={() => (completed ? handleSubmissionClick(submission) : null)}
-                    title={completed ? 'Click to view result' : 'Result available after completion'}
+                    className={`submission-item ${
+                      completed ? '' : 'submission-item--disabled'
+                    }`}
+                    onClick={() =>
+                      completed ? handleSubmissionClick(submission) : null
+                    }
+                    title={
+                      completed
+                        ? 'Click to view result'
+                        : 'Result available after completion'
+                    }
                     style={{
                       cursor: completed ? 'pointer' : 'not-allowed',
                       opacity: completed ? 1 : 0.6,
@@ -377,10 +404,12 @@ const StudentDashboard = () => {
                   >
                     <div className="submission-header">
                       <FiAward className="submission-icon" />
-                      <h3>{submission.moduleName}</h3>
+                      <h3>{submission.moduleName || 'Assignment'}</h3>
                       <span
                         className={`status-badge ${
-                          completed ? 'status-badge--completed' : 'status-badge--pending'
+                          completed
+                            ? 'status-badge--completed'
+                            : 'status-badge--pending'
                         }`}
                         style={{
                           marginLeft: 'auto',
@@ -401,7 +430,8 @@ const StudentDashboard = () => {
                       <div className="submission-stat">
                         <span>Score:</span>
                         <span>
-                          {submission.totalCorrect} correct, {submission.totalWrong} wrong
+                          {submission.totalCorrect} correct,{' '}
+                          {submission.totalWrong} wrong
                         </span>
                       </div>
                       <div className="submission-stat">
