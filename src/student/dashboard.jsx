@@ -586,4 +586,55 @@ const StudentDashboard = () => {
                         className={`status-badge ${
                           completed ? 'status-badge--completed' : 'status-badge--pending'
                         }`}
-       
+                        style={{
+                          marginLeft: 'auto',
+                          fontSize: 12,
+                          padding: '2px 8px',
+                          borderRadius: 999,
+                          border: '1px solid #e0e0e0',
+                        }}
+                      >
+                        {completed ? 'Completed' : 'Pending'}
+                      </span>
+                    </div>
+                    <div className="submission-details">
+                      <div className="submission-stat">
+                        <span>Submitted:</span>
+                        <span>{formatDate(submission.submissionDate)}</span>
+                      </div>
+                      <div className="submission-stat">
+                        <span>Score:</span>
+                        <span>
+                          {submission.totalCorrect} correct, {submission.totalWrong} wrong
+                        </span>
+                      </div>
+                      <div className="submission-stat">
+                        <span>Progress:</span>
+                        <span>{submission.overallProgress}%</span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })
+            ) : (
+              <div className="no-submissions">
+                <FiClock size={32} />
+                <p>No submissions yet. Start working on your assignments!</p>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+      
+      {showResultPopup && renderResultPopup()}
+      {resultLoading && (
+        <div className="loading-overlay">
+          <div className="loading-spinner"></div>
+          <p>Loading result details...</p>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default StudentDashboard;
