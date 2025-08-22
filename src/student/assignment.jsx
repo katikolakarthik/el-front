@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { FiBook, FiClock } from 'react-icons/fi';
 import './AssignmentFlow.css';
@@ -56,7 +56,7 @@ const NewAssignments = () => {
         const userId = localStorage.getItem('userId');
         if (!userId) throw new Error('User ID not found');
 
-        // 1) Get the student's courseName using the same userId
+        // 1) Get courseName for this userId
         const courseResp = await axios.get(`${API_BASE}/student/${userId}/course`);
         const courseName =
           courseResp?.data?.courseName ||
@@ -64,14 +64,12 @@ const NewAssignments = () => {
           courseResp?.data?.course?.courseName ||
           null;
 
-        if (!courseName) {
-          throw new Error('Course name not found for this student');
-        }
+        if (!courseName) throw new Error('Course name not found for this student');
 
         // 2) Fetch assignments by course/category
         const asgResp = await axios.get(`${API_BASE}/category/${encodeURIComponent(courseName)}`);
 
-        // Be defensive about response shape
+        // Normalize various possible shapes
         let assignmentsData = [];
         if (asgResp?.data?.success && Array.isArray(asgResp.data.assignments)) {
           assignmentsData = asgResp.data.assignments;
@@ -104,20 +102,22 @@ const NewAssignments = () => {
         })
       : '—';
 
+  // ===== FIXED: no API call here, we open from what we already have =====
   const handleStart = async (assignmentId, subAssignmentId = null) => {
     try {
-      const userId = localStorage.getItem('userId');
       setLoading(true);
+      setError(null);
 
-      const response = await axios.get(`${API_BASE}/assignments/${assignmentId}/student/${userId}`);
-      if (!response.data?.success) throw new Error('Failed to fetch assignment details');
+      // Find the assignment from the already-fetched list
+      const fromList = assignments.find((a) => String(a._id) === String(assignmentId));
+      if (!fromList) throw new Error('Assignment not found in list');
 
-      let assignmentData = normalizeAssignment(response.data.assignment);
+      // Normalize for UI rendering
+      const assignmentData = normalizeAssignment(fromList);
 
-      // merge completion flags from list view
-      const listCopy = assignments.find((a) => a._id === assignmentId);
-      if (listCopy && Array.isArray(listCopy.subAssignments)) {
-        const completeMap = new Map(listCopy.subAssignments.map((s) => [String(s._id), !!s.isCompleted]));
+      // Preserve any completion flags already on the list item
+      if (fromList && Array.isArray(fromList.subAssignments)) {
+        const completeMap = new Map(fromList.subAssignments.map((s) => [String(s._id), !!s.isCompleted]));
         assignmentData.subAssignments = (assignmentData.subAssignments || []).map((sub) => ({
           ...sub,
           isCompleted:
@@ -128,7 +128,7 @@ const NewAssignments = () => {
       setActiveAssignment(assignmentData);
 
       if (subAssignmentId) {
-        const sub = assignmentData.subAssignments.find((s) => s._id === subAssignmentId);
+        const sub = (assignmentData.subAssignments || []).find((s) => String(s._id) === String(subAssignmentId));
         setActiveSubAssignment(sub || null);
       } else {
         setActiveSubAssignment(null);
@@ -160,7 +160,7 @@ const NewAssignments = () => {
         }));
 
       if (activeSubAssignment) {
-        if (activeSubAssignment.questions.some((q) => q.type === 'dynamic')) {
+        if ((activeSubAssignment.questions || []).some((q) => q.type === 'dynamic')) {
           payload.submittedAnswers.push({
             subAssignmentId: activeSubAssignment._id,
             dynamicQuestions: buildDynamic(activeSubAssignment.questions, 'dynamic'),
@@ -182,7 +182,7 @@ const NewAssignments = () => {
           });
         }
       } else {
-        if (activeAssignment.questions.some((q) => q.type === 'dynamic')) {
+        if ((activeAssignment.questions || []).some((q) => q.type === 'dynamic')) {
           payload.submittedAnswers.push({
             dynamicQuestions: buildDynamic(activeAssignment.questions, 'dynamic'),
           });
@@ -209,11 +209,12 @@ const NewAssignments = () => {
         return;
       }
 
+      // Mark as completed in local state
       if (activeSubAssignment) {
         setActiveAssignment((prev) => {
           if (!prev) return prev;
           const updatedSubs = (prev.subAssignments || []).map((s) =>
-            s._id === activeSubAssignment._id ? { ...s, isCompleted: true } : s
+            String(s._id) === String(activeSubAssignment._id) ? { ...s, isCompleted: true } : s
           );
           return { ...prev, subAssignments: updatedSubs };
         });
@@ -222,10 +223,9 @@ const NewAssignments = () => {
         setActiveAssignment((prev) => (prev ? { ...prev, isCompleted: true } : prev));
       }
 
-      // refresh list + keep newest on top (using courseName flow again)
+      // Refresh the list again via course flow
       try {
-        const userId2 = localStorage.getItem('userId');
-        const courseResp2 = await axios.get(`${API_BASE}/student/${userId2}/course`);
+        const courseResp2 = await axios.get(`${API_BASE}/student/${userId}/course`);
         const courseName2 =
           courseResp2?.data?.courseName ||
           courseResp2?.data?.course?.name ||
@@ -246,13 +246,14 @@ const NewAssignments = () => {
           }
           setAssignments(sortByAssignedDesc(refreshedData));
         }
-      } catch (_) {
-        // Non-fatal: ignore refresh errors
+      } catch {
+        // ignore refresh errors
       }
 
-      if (activeSubAssignment && activeAssignment.subAssignments?.length > 0) {
+      // Move to next sub or close
+      if (activeSubAssignment && (activeAssignment.subAssignments || []).length > 0) {
         const currentIndex = activeAssignment.subAssignments.findIndex(
-          (sub) => sub._id === activeSubAssignment._id
+          (sub) => String(sub._id) === String(activeSubAssignment._id)
         );
         if (currentIndex < activeAssignment.subAssignments.length - 1) {
           alert('Assignment submitted successfully..wait for next');
