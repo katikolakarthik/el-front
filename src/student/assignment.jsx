@@ -46,44 +46,43 @@ const NewAssignments = () => {
   const [activeAssignment, setActiveAssignment] = useState(null);
   const [activeSubAssignment, setActiveSubAssignment] = useState(null);
   const [answers, setAnswers] = useState({});
+  const [courseName, setCourseName] = useState('');
 
   useEffect(() => {
-  const fetchAssignments = async () => {
-    try {
-      const userId = localStorage.getItem('userId');
-      if (!userId) throw new Error('User ID not found');
+    const fetchCourseAndAssignments = async () => {
+      try {
+        const userId = localStorage.getItem('userId');
+        if (!userId) throw new Error('User ID not found');
 
-      // Step 1: Get student details including courseName
-      const studentRes = await axios.get(
-        `${API_BASE}/student/${userId}/course`
-      );
+        // First fetch course information
+        const courseResponse = await axios.get(`${API_BASE}/student/${userId}/course`);
+        if (courseResponse.data?.success) {
+          const course = courseResponse.data.courseName;
+          setCourseName(course);
+          
+          // Then fetch assignments using the course name
+          const assignmentsResponse = await axios.get(`${API_BASE}/category/${course}`);
+          if (assignmentsResponse.data?.success) {
+            const assignmentsData = Array.isArray(assignmentsResponse.data.assignments)
+              ? assignmentsResponse.data.assignments
+              : [assignmentsResponse.data.assignment].filter(Boolean);
 
-      if (!studentRes.data || !studentRes.data.courseName) {
-        throw new Error('Course name not found for student');
+            setAssignments(sortByAssignedDesc(assignmentsData));
+          } else {
+            throw new Error('Failed to fetch assignments');
+          }
+        } else {
+          throw new Error('Failed to fetch course information');
+        }
+      } catch (err) {
+        setError(err.message);
+      } finally {
+        setLoading(false);
       }
-
-      const courseName = studentRes.data.courseName;
-
-      // Step 2: Fetch assignments using courseName
-      const assignRes = await axios.get(`${API_BASE}/category/${courseName}`);
-
-      if (Array.isArray(assignRes.data)) {
-        const normalized = assignRes.data.map(normalizeAssignment);
-        setAssignments(sortByAssignedDesc(normalized));
-      } else {
-        setAssignments([]);
-      }
-
-      setLoading(false);
-    } catch (err) {
-      console.error(err);
-      setError(err.message || 'Failed to fetch assignments');
-      setLoading(false);
-    }
-  };
-
-  fetchAssignments();
-}, []);
+    };
+    
+    fetchCourseAndAssignments();
+  }, []);
 
   const formatDate = (dateString) =>
     dateString
@@ -213,7 +212,7 @@ const NewAssignments = () => {
       }
 
       // refresh list + keep newest on top
-      const refresh = await axios.get(`${API_BASE}/assignments/student/${userId}`);
+      const refresh = await axios.get(`${API_BASE}/category/${courseName}`);
       if (refresh.data?.success) {
         const refreshedData = Array.isArray(refresh.data.assignments)
           ? refresh.data.assignments
@@ -439,7 +438,7 @@ const NewAssignments = () => {
           <h3 className="title-sm">{activeSubAssignment?.subModuleName || activeAssignment.moduleName}</h3>
         </div>
 
-        
+
         {pdfUrl && (
           <iframe
             src={`https://docs.google.com/gview?url=${encodeURIComponent(pdfUrl)}&embedded=true`}
@@ -518,7 +517,7 @@ const NewAssignments = () => {
           </div>
           <div>
             <h3>No new assignments</h3>
-            <p className="muted">You’ll see new items here when assigned.</p>
+            <p className="muted">You'll see new items here when assigned.</p>
           </div>
         </div>
       )}
