@@ -603,12 +603,10 @@ const StudentDashboard = () => {
                         <span>{formatDate(submission.submissionDate)}</span>
                       </div>
                       <div className="submission-stat">
-                        <span>Score:</span>
-                   
+                       
                       </div>
                       <div className="submission-stat">
-                        <span>Progress:</span>
-                        <span>{submission.overallProgress}%</span>
+                       
                       </div>
                     </div>
                   </div>
