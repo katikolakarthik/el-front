@@ -11,12 +11,21 @@ export default function AddAssignment() {
     {
       subModuleName: "",
       isDynamic: false,
+
+      // Predefined answer fields
       answerPatientName: "",
       answerAgeOrDob: "",
       answerIcdCodes: "",
       answerCptCodes: "",
+      answerPcsCodes: "",       // NEW
+      answerHcpcsCodes: "",     // NEW
+      answerDrgValue: "",       // NEW
+      answerModifiers: "",      // NEW
       answerNotes: "",
+
+      // Dynamic questions
       dynamicQuestions: [{ questionText: "", options: "", answer: "" }],
+
       assignmentPdf: null
     }
   ]);
@@ -25,21 +34,18 @@ export default function AddAssignment() {
   const initialCategory = new URLSearchParams(location.search).get("category") || "";
   const [category, setCategory] = useState(initialCategory);
 
-  // Fetch all students on component mount
+  // Fetch all students on component mount (unchanged)
   useEffect(() => {
     const fetchStudents = async () => {
       try {
         const res = await fetch("https://el-backend-ashen.vercel.app/admin/students");
-        if (!res.ok) {
-          throw new Error("Failed to fetch students");
-        }
+        if (!res.ok) throw new Error("Failed to fetch students");
         const data = await res.json();
         setStudents(data);
       } catch (err) {
         console.error("Error fetching students:", err);
       }
     };
-
     fetchStudents();
   }, []);
 
@@ -59,10 +65,10 @@ export default function AddAssignment() {
 
   const addDynamicQuestion = (subIndex) => {
     const updated = [...subAssignments];
-    updated[subIndex].dynamicQuestions.push({ 
-      questionText: "", 
-      options: "", 
-      answer: "" 
+    updated[subIndex].dynamicQuestions.push({
+      questionText: "",
+      options: "",
+      answer: ""
     });
     setSubAssignments(updated);
   };
@@ -79,11 +85,19 @@ export default function AddAssignment() {
       {
         subModuleName: "",
         isDynamic: false,
+
+        // Predefined answer fields
         answerPatientName: "",
         answerAgeOrDob: "",
         answerIcdCodes: "",
         answerCptCodes: "",
+        answerPcsCodes: "",       // NEW
+        answerHcpcsCodes: "",     // NEW
+        answerDrgValue: "",       // NEW
+        answerModifiers: "",      // NEW
         answerNotes: "",
+
+        // Dynamic questions
         dynamicQuestions: [{ questionText: "", options: "", answer: "" }],
         assignmentPdf: null
       }
@@ -112,14 +126,14 @@ export default function AddAssignment() {
     formData.append("category", category.trim());
 
     // Prepare JSON for text data
-    const subDataForJson = subAssignments.map(sub => {
+    const subDataForJson = subAssignments.map((sub) => {
       if (sub.isDynamic) {
         return {
           subModuleName: sub.subModuleName,
           isDynamic: true,
-          questions: sub.dynamicQuestions.map(q => ({
+          questions: sub.dynamicQuestions.map((q) => ({
             questionText: q.questionText,
-            options: q.options ? q.options.split(",").map(opt => opt.trim()) : [],
+            options: q.options ? q.options.split(",").map((opt) => opt.trim()) : [],
             answer: q.answer
           }))
         };
@@ -127,10 +141,16 @@ export default function AddAssignment() {
         return {
           subModuleName: sub.subModuleName,
           isDynamic: false,
+
+          // These keys must match backend controller (formatPredefined)
           answerPatientName: sub.answerPatientName,
           answerAgeOrDob: sub.answerAgeOrDob,
-          answerIcdCodes: sub.answerIcdCodes,
-          answerCptCodes: sub.answerCptCodes,
+          answerIcdCodes: sub.answerIcdCodes,     // CSV string; backend splits
+          answerCptCodes: sub.answerCptCodes,     // CSV string; backend splits
+          answerPcsCodes: sub.answerPcsCodes,     // NEW CSV
+          answerHcpcsCodes: sub.answerHcpcsCodes, // NEW CSV
+          answerDrgValue: sub.answerDrgValue,     // NEW string
+          answerModifiers: sub.answerModifiers,   // NEW CSV
           answerNotes: sub.answerNotes
         };
       }
@@ -139,7 +159,7 @@ export default function AddAssignment() {
     formData.append("subAssignments", JSON.stringify(subDataForJson));
 
     // Append PDFs
-    subAssignments.forEach((sub, index) => {
+    subAssignments.forEach((sub) => {
       if (sub.assignmentPdf) {
         formData.append("assignmentPdf", sub.assignmentPdf);
       }
@@ -179,9 +199,7 @@ export default function AddAssignment() {
             placeholder="Enter category"
             required
           />
-          <small>
-            From popup: {initialCategory || "none"}. You can adjust if needed.
-          </small>
+          <small>From popup: {initialCategory || "none"}. You can adjust if needed.</small>
         </div>
 
         <div className="form-group">
@@ -219,9 +237,7 @@ export default function AddAssignment() {
                 type="text"
                 placeholder="Enter sub-module name"
                 value={sub.subModuleName}
-                onChange={(e) =>
-                  handleSubChange(idx, "subModuleName", e.target.value)
-                }
+                onChange={(e) => handleSubChange(idx, "subModuleName", e.target.value)}
                 required
               />
             </div>
@@ -259,9 +275,7 @@ export default function AddAssignment() {
                     type="text"
                     placeholder="Patient name"
                     value={sub.answerPatientName}
-                    onChange={(e) =>
-                      handleSubChange(idx, "answerPatientName", e.target.value)
-                    }
+                    onChange={(e) => handleSubChange(idx, "answerPatientName", e.target.value)}
                   />
                 </div>
 
@@ -272,9 +286,7 @@ export default function AddAssignment() {
                     type="text"
                     placeholder="e.g. 35 or 01/01/1990"
                     value={sub.answerAgeOrDob}
-                    onChange={(e) =>
-                      handleSubChange(idx, "answerAgeOrDob", e.target.value)
-                    }
+                    onChange={(e) => handleSubChange(idx, "answerAgeOrDob", e.target.value)}
                   />
                 </div>
 
@@ -285,9 +297,7 @@ export default function AddAssignment() {
                     type="text"
                     placeholder="Comma separated ICD codes"
                     value={sub.answerIcdCodes}
-                    onChange={(e) =>
-                      handleSubChange(idx, "answerIcdCodes", e.target.value)
-                    }
+                    onChange={(e) => handleSubChange(idx, "answerIcdCodes", e.target.value)}
                   />
                 </div>
 
@@ -298,9 +308,55 @@ export default function AddAssignment() {
                     type="text"
                     placeholder="Comma separated CPT codes"
                     value={sub.answerCptCodes}
-                    onChange={(e) =>
-                      handleSubChange(idx, "answerCptCodes", e.target.value)
-                    }
+                    onChange={(e) => handleSubChange(idx, "answerCptCodes", e.target.value)}
+                  />
+                </div>
+
+                {/* NEW: PCS Codes */}
+                <div className="form-group">
+                  <label htmlFor={`answerPcsCodes-${idx}`}>PCS Codes</label>
+                  <input
+                    id={`answerPcsCodes-${idx}`}
+                    type="text"
+                    placeholder="Comma separated ICD-10-PCS codes"
+                    value={sub.answerPcsCodes}
+                    onChange={(e) => handleSubChange(idx, "answerPcsCodes", e.target.value)}
+                  />
+                </div>
+
+                {/* NEW: HCPCS Codes */}
+                <div className="form-group">
+                  <label htmlFor={`answerHcpcsCodes-${idx}`}>HCPCS Codes</label>
+                  <input
+                    id={`answerHcpcsCodes-${idx}`}
+                    type="text"
+                    placeholder="Comma separated HCPCS codes"
+                    value={sub.answerHcpcsCodes}
+                    onChange={(e) => handleSubChange(idx, "answerHcpcsCodes", e.target.value)}
+                  />
+                </div>
+
+                {/* NEW: DRG Value */}
+                <div className="form-group">
+                  <label htmlFor={`answerDrgValue-${idx}`}>DRG Value</label>
+                  <input
+                    id={`answerDrgValue-${idx}`}
+                    type="text"
+                    placeholder="e.g. 470 or 470-xx"
+                    value={sub.answerDrgValue}
+                    onChange={(e) => handleSubChange(idx, "answerDrgValue", e.target.value)}
+                  />
+                </div>
+
+                {/* NEW: Modifiers */}
+                <div className="form-group">
+                  <label htmlFor={`answerModifiers-${idx}`}>Modifiers</label>
+                  <input
+                    id={`answerModifiers-${idx}`}
+                    type="text"
+                    placeholder="Comma separated modifiers (e.g. 26, 59, LT)"
+                    value={sub.answerModifiers}
+                    onChange={(e) => handleSubChange(idx, "answerModifiers", e.target.value)}
                   />
                 </div>
 
@@ -310,9 +366,7 @@ export default function AddAssignment() {
                     id={`answerNotes-${idx}`}
                     placeholder="Additional notes"
                     value={sub.answerNotes}
-                    onChange={(e) =>
-                      handleSubChange(idx, "answerNotes", e.target.value)
-                    }
+                    onChange={(e) => handleSubChange(idx, "answerNotes", e.target.value)}
                   />
                 </div>
               </div>
@@ -332,12 +386,7 @@ export default function AddAssignment() {
                         placeholder="Enter question text"
                         value={q.questionText}
                         onChange={(e) =>
-                          handleDynamicQuestionChange(
-                            idx,
-                            qIdx,
-                            "questionText",
-                            e.target.value
-                          )
+                          handleDynamicQuestionChange(idx, qIdx, "questionText", e.target.value)
                         }
                         required
                       />
@@ -353,12 +402,7 @@ export default function AddAssignment() {
                         placeholder="Option 1, Option 2, Option 3"
                         value={q.options}
                         onChange={(e) =>
-                          handleDynamicQuestionChange(
-                            idx,
-                            qIdx,
-                            "options",
-                            e.target.value
-                          )
+                          handleDynamicQuestionChange(idx, qIdx, "options", e.target.value)
                         }
                       />
                     </div>
@@ -371,12 +415,7 @@ export default function AddAssignment() {
                         placeholder="Enter correct answer"
                         value={q.answer}
                         onChange={(e) =>
-                          handleDynamicQuestionChange(
-                            idx,
-                            qIdx,
-                            "answer",
-                            e.target.value
-                          )
+                          handleDynamicQuestionChange(idx, qIdx, "answer", e.target.value)
                         }
                         required
                       />
@@ -406,11 +445,7 @@ export default function AddAssignment() {
         ))}
 
         <div className="form-actions">
-          <button
-            type="button"
-            onClick={addSubAssignment}
-            className="add-sub-btn"
-          >
+          <button type="button" onClick={addSubAssignment} className="add-sub-btn">
             + Add Sub-Assignment
           </button>
 
