@@ -462,7 +462,7 @@ const StudentDashboard = () => {
   return (
     <div className="student-dashboard">
       <header className="dashboard-header">
-        <h1>Welcome back, {user.data.name}!</h1>
+     
       </header>
 
       {/* Stats Section */}
