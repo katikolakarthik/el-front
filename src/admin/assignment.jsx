@@ -8,7 +8,7 @@ import "./assignment.css";
 // API base URLs
 // =======================
 const API_BASE = "https://el-backend-ashen.vercel.app/admin"; // existing admin APIs
-const API_SUBMISSIONS_BASE = "https://el-backend-ashen.vercel.app/assignments"; // new submissions API
+const API_SUBMISSIONS_BASE = "https://el-backend-ashen.vercel.app/assignments"; // submissions API
 
 // =======================
 // Reusable Button
@@ -56,17 +56,29 @@ const Modal = ({ isOpen, onClose, title, children }) => {
 };
 
 // =======================
-// Small helpers (display)
+// Small display helpers
 // =======================
 const Field = ({ label, children }) => (
   <p><strong>{label}:</strong> {children ?? "-"}</p>
 );
-
 const ListOrDash = (arr) => (Array.isArray(arr) && arr.length ? arr.join(", ") : "-");
 
 // =======================
+// "Assignment Results" header
+// =======================
+const ResultsHeader = ({ totalCorrect, totalWrong, overallProgress }) => (
+  <div className="results-header card">
+    <h2 className="results-title">Assignment Results</h2>
+    <div className="results-stats">
+      <div><span>Correct Answers:</span> <strong className="text-success">{totalCorrect ?? 0}</strong></div>
+      <div><span>Wrong Answers:</span> <strong className="text-danger">{totalWrong ?? 0}</strong></div>
+      <div><span>Overall Progress:</span> <strong className="text-primary">{(overallProgress ?? 0)}%</strong></div>
+    </div>
+  </div>
+);
+
+// =======================
 // Student Summary (one student's detailed result)
-// Supports both new shape (parentSummary/subModulesSummary) and legacy (submittedAnswers)
 // =======================
 const StudentSummaryView = ({ result, onBack }) => {
   if (!result) return null;
@@ -78,188 +90,199 @@ const StudentSummaryView = ({ result, onBack }) => {
     totalWrong,
     overallProgress,
     submissionDate,
-    // New shape:
+
+    // New shape from backend
     parentSummary,
     subModulesSummary,
-    // Legacy fallback:
+
+    // Legacy fallback
     submittedAnswers
   } = result;
 
   const hasNewShape = Array.isArray(subModulesSummary) || parentSummary;
   const hasLegacy = Array.isArray(submittedAnswers);
 
-  // Render dynamic questions list (enteredValues shape)
+  // Dynamic questions section (enteredValues shape)
   const DynamicQuestions = ({ dq = [] }) => {
     if (!Array.isArray(dq) || dq.length === 0) return null;
     return (
       <div className="mt-1">
-        <h5>Dynamic Questions</h5>
-        <ul className="dq-list">
-          {dq.map((q, idx) => (
-            <li key={q._id || idx} className="dq-item">
-              <Field label={`Q${idx + 1}`}>{q.questionText || "-"}</Field>
-              <Field label="Options">{ListOrDash(q.options)}</Field>
-              <Field label="Correct Answer">{q.correctAnswer ?? q.answer ?? "-"}</Field>
-              <Field label="Submitted Answer">{q.submittedAnswer ?? "-"}</Field>
-              <Field label="Is Correct?">{q.isCorrect ? "Yes" : "No"}</Field>
-            </li>
-          ))}
-        </ul>
+        {dq.map((q, idx) => (
+          <div key={q._id || idx} className="dq-card">
+            <h5 className="dq-title">Q{idx + 1}: {q.questionText || "-"}</h5>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+              <div>
+                <Field label="Submitted Answer">{q.submittedAnswer ?? "-"}</Field>
+              </div>
+              <div>
+                <Field label="Correct Answer">{q.correctAnswer ?? q.answer ?? "-"}</Field>
+              </div>
+            </div>
+            <Field label="Options">{ListOrDash(q.options)}</Field>
+          </div>
+        ))}
       </div>
     );
   };
 
-  // One block rendering for an "enteredValues + scores" section
-  const EnteredValuesBlock = ({ title, enteredValues, correctCount, wrongCount, progressPercent }) => {
-    if (!enteredValues) return null;
-    const { patientName, ageOrDob, icdCodes, cptCodes, notes, dynamicQuestions } = enteredValues;
-    return (
-      <div className="subassignment-block">
-        <h4 className="sub-title">{title}</h4>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-          <div>
-            <Field label="Patient Name">{patientName || "-"}</Field>
-            <Field label="Age/DOB">{ageOrDob || "-"}</Field>
-            <Field label="ICD Codes">{ListOrDash(icdCodes)}</Field>
-            <Field label="CPT Codes">{ListOrDash(cptCodes)}</Field>
-            <Field label="Notes">{notes || "-"}</Field>
-          </div>
-          <div>
-            <Field label="Correct">{correctCount ?? "-"}</Field>
-            <Field label="Wrong">{wrongCount ?? "-"}</Field>
-            <Field label="Progress">{progressPercent ?? 0}%</Field>
-          </div>
-        </div>
-        <DynamicQuestions dq={dynamicQuestions} />
-        <hr className="divider" />
+  // Block for static fields in Submitted vs Correct layout
+  const StaticTwoColumn = ({ submitted = {}, correct = {} }) => (
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+      <div className="panel panel-left">
+        <h5 className="panel-title">Submitted Answers</h5>
+        <Field label="Patient Name">{submitted.patientName || "-"}</Field>
+        <Field label="Age/DOB">{submitted.ageOrDob || "-"}</Field>
+        <Field label="ICD Codes">{ListOrDash(submitted.icdCodes)}</Field>
+        <Field label="CPT Codes">{ListOrDash(submitted.cptCodes)}</Field>
+        <Field label="Notes">{submitted.notes || "-"}</Field>
       </div>
-    );
-  };
-
-  // Sub-module row renderer for new shape
-  const SubModuleRow = ({ sub }) => {
-    const ev = sub?.enteredValues || {};
-    return (
-      <div className="subassignment-block">
-        <h4 className="sub-title">
-          {sub?.subModuleName ? `Sub-Module: ${sub.subModuleName}` : "Sub-Module"}
-          {sub?.subAssignmentId ? ` — ${sub.subAssignmentId}` : ""}
-        </h4>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-          <div>
-            <Field label="Patient Name">{ev.patientName || "-"}</Field>
-            <Field label="Age/DOB">{ev.ageOrDob || "-"}</Field>
-            <Field label="ICD Codes">{ListOrDash(ev.icdCodes)}</Field>
-            <Field label="CPT Codes">{ListOrDash(ev.cptCodes)}</Field>
-            <Field label="Notes">{ev.notes || "-"}</Field>
-          </div>
-          <div>
-            <Field label="Correct">{sub?.correctCount ?? "-"}</Field>
-            <Field label="Wrong">{sub?.wrongCount ?? "-"}</Field>
-            <Field label="Progress">{sub?.progressPercent ?? 0}%</Field>
-          </div>
-        </div>
-
-        <DynamicQuestions dq={ev.dynamicQuestions} />
-        <hr className="divider" />
+      <div className="panel panel-right">
+        <h5 className="panel-title">Correct Answers</h5>
+        <Field label="Patient Name">{correct.patientName || "-"}</Field>
+        <Field label="Age/DOB">{correct.ageOrDob || "-"}</Field>
+        <Field label="ICD Codes">{ListOrDash(correct.icdCodes)}</Field>
+        <Field label="CPT Codes">{ListOrDash(correct.cptCodes)}</Field>
+        <Field label="Notes">{correct.notes || "-"}</Field>
       </div>
-    );
-  };
+    </div>
+  );
+
+  // Sub-module section (matches your screenshot structure)
+  const SubModuleSection = ({ title, enteredValues, answerKey, correctCount, wrongCount, progressPercent }) => (
+    <div className="submodule card">
+      <h3 className="submodule-title">{title}</h3>
+
+      <StaticTwoColumn submitted={enteredValues} correct={answerKey} />
+
+      {/* Dynamic questions (if any) */}
+      <DynamicQuestions dq={enteredValues?.dynamicQuestions} />
+
+      <div className="submodule-footer">
+        <span>Correct: <strong>{correctCount ?? 0}</strong></span>
+        <span>Wrong: <strong>{wrongCount ?? 0}</strong></span>
+        <span>Progress: <strong>{progressPercent ?? 0}%</strong></span>
+      </div>
+    </div>
+  );
 
   return (
     <div className="student-summary-container">
-      <Button onClick={onBack} variant="primary" className="mb-1">← Back to Students</Button>
+      <Button onClick={onBack} variant="primary" className="mb-1">← Back to Submissions</Button>
 
-      <div className="card">
+      {/* Top header with totals */}
+      <ResultsHeader
+        totalCorrect={totalCorrect}
+        totalWrong={totalWrong}
+        overallProgress={overallProgress}
+      />
+
+      {/* Student meta */}
+      <div className="card student-meta">
         <div className="card-header">
-          <h3 className="card-title">{studentName} {courseName ? `— ${courseName}` : ""}</h3>
+          <h4 className="card-title">{studentName}{courseName ? ` — ${courseName}` : ""}</h4>
           <div className="card-meta">
             <span>Submitted: {submissionDate ? new Date(submissionDate).toLocaleString() : "-"}</span>
-            <span className="ml-1">Overall Progress: {overallProgress ?? 0}%</span>
-            <span className="ml-1">Correct: {totalCorrect ?? 0}</span>
-            <span className="ml-1">Wrong: {totalWrong ?? 0}</span>
           </div>
         </div>
-
-        <div className="card-body">
-          {/* New shape: parent + sub modules */}
-          {hasNewShape && (
-            <>
-              {/* Parent-level (if exists) */}
-              {parentSummary?.enteredValues ? (
-                <EnteredValuesBlock
-                  title="Parent Assignment (Overall Entry)"
-                  enteredValues={parentSummary.enteredValues}
-                  correctCount={parentSummary.correctCount}
-                  wrongCount={parentSummary.wrongCount}
-                  progressPercent={parentSummary.progressPercent}
-                />
-              ) : null}
-
-              {/* Sub-modules */}
-              {Array.isArray(subModulesSummary) && subModulesSummary.length > 0 ? (
-                subModulesSummary.map((sa, idx) => <SubModuleRow key={sa.subAssignmentId || idx} sub={sa} />)
-              ) : !parentSummary?.enteredValues ? (
-                <p className="no-data-text">No sub-assignment details found.</p>
-              ) : null}
-            </>
-          )}
-
-          {/* Legacy shape: submittedAnswers */}
-          {!hasNewShape && hasLegacy && (
-            <>
-              {submittedAnswers.length === 0 && <p className="no-data-text">No sub-assignment details found.</p>}
-              {submittedAnswers.map((sa, idx) => (
-                <div key={sa._id || idx} className="subassignment-block">
-                  <h4 className="sub-title">Sub-Assignment: {sa.subAssignmentId || "-"}</h4>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                    <div>
-                      <Field label="Patient Name">{sa.patientName || "-"}</Field>
-                      <Field label="Age/DOB">{sa.ageOrDob || "-"}</Field>
-                      <Field label="ICD Codes">{ListOrDash(sa.icdCodes)}</Field>
-                      <Field label="CPT Codes">{ListOrDash(sa.cptCodes)}</Field>
-                      <Field label="Notes">{sa.notes || "-"}</Field>
-                    </div>
-                    <div>
-                      <Field label="Correct">{sa.correctCount ?? "-"}</Field>
-                      <Field label="Wrong">{sa.wrongCount ?? "-"}</Field>
-                      <Field label="Progress">{sa.progressPercent ?? 0}%</Field>
-                    </div>
-                  </div>
-
-                  {Array.isArray(sa.dynamicQuestions) && sa.dynamicQuestions.length > 0 && (
-                    <div className="mt-1">
-                      <h5>Dynamic Questions</h5>
-                      <ul className="dq-list">
-                        {sa.dynamicQuestions.map((q, qIdx) => (
-                          <li key={qIdx} className="dq-item">
-                            <Field label={`Q${qIdx + 1}`}>{q.questionText || "-"}</Field>
-                            <Field label="Correct Answer">{q.correctAnswer ?? "-"}</Field>
-                            <Field label="Submitted Answer">{q.submittedAnswer ?? "-"}</Field>
-                            <Field label="Is Correct?">{q.isCorrect ? "Yes" : "No"}</Field>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-
-                  <hr className="divider" />
-                </div>
-              ))}
-            </>
-          )}
-        </div>
       </div>
+
+      {/* New shape rendering */}
+      {hasNewShape && (
+        <>
+          {/* Parent-level (if exists and has entries) */}
+          {parentSummary?.enteredValues && (
+            <SubModuleSection
+              title="Parent"
+              enteredValues={parentSummary.enteredValues}
+              answerKey={parentSummary.answerKey || {}}
+              correctCount={parentSummary.correctCount}
+              wrongCount={parentSummary.wrongCount}
+              progressPercent={parentSummary.progressPercent}
+            />
+          )}
+
+          {/* Sub-modules */}
+          {Array.isArray(subModulesSummary) && subModulesSummary.length > 0 ? (
+            subModulesSummary.map((sa, idx) => (
+              <SubModuleSection
+                key={sa.subAssignmentId || idx}
+                title={sa.subModuleName || `Sub-Module ${idx + 1}`}
+                enteredValues={sa.enteredValues || {}}
+                answerKey={sa.answerKey || {}}
+                correctCount={sa.correctCount}
+                wrongCount={sa.wrongCount}
+                progressPercent={sa.progressPercent}
+              />
+            ))
+          ) : !parentSummary?.enteredValues ? (
+            <p className="no-data-text">No sub-assignment details found.</p>
+          ) : null}
+        </>
+      )}
+
+      {/* Legacy shape fallback */}
+      {!hasNewShape && hasLegacy && (
+        <>
+          {submittedAnswers.length === 0 && <p className="no-data-text">No sub-assignment details found.</p>}
+          {submittedAnswers.map((sa, idx) => (
+            <div key={sa._id || idx} className="submodule card">
+              <h3 className="submodule-title">Sub-Module {sa.subAssignmentId || idx + 1}</h3>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                <div className="panel panel-left">
+                  <h5 className="panel-title">Submitted Answers</h5>
+                  <Field label="Patient Name">{sa.patientName || "-"}</Field>
+                  <Field label="Age/DOB">{sa.ageOrDob || "-"}</Field>
+                  <Field label="ICD Codes">{ListOrDash(sa.icdCodes)}</Field>
+                  <Field label="CPT Codes">{ListOrDash(sa.cptCodes)}</Field>
+                  <Field label="Notes">{sa.notes || "-"}</Field>
+                </div>
+                <div className="panel panel-right">
+                  <h5 className="panel-title">Correct Answers</h5>
+                  {/* In legacy we may not have explicit answerKey; omit or keep blank */}
+                  <Field label="Patient Name">-</Field>
+                  <Field label="Age/DOB">-</Field>
+                  <Field label="ICD Codes">-</Field>
+                  <Field label="CPT Codes">-</Field>
+                  <Field label="Notes">-</Field>
+                </div>
+              </div>
+
+              {/* Legacy dynamic questions */}
+              {Array.isArray(sa.dynamicQuestions) && sa.dynamicQuestions.length > 0 && (
+                <div className="mt-1">
+                  {sa.dynamicQuestions.map((q, qIdx) => (
+                    <div key={qIdx} className="dq-card">
+                      <h5 className="dq-title">Q{qIdx + 1}: {q.questionText || "-"}</h5>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                        <div><Field label="Submitted Answer">{q.submittedAnswer ?? "-"}</Field></div>
+                        <div><Field label="Correct Answer">{q.correctAnswer ?? "-"}</Field></div>
+                      </div>
+                      {Array.isArray(q.options) && q.options.length > 0 && (
+                        <Field label="Options">{q.options.join(", ")}</Field>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <div className="submodule-footer">
+                <span>Correct: <strong>{sa.correctCount ?? 0}</strong></span>
+                <span>Wrong: <strong>{sa.wrongCount ?? 0}</strong></span>
+                <span>Progress: <strong>{sa.progressPercent ?? 0}%</strong></span>
+              </div>
+            </div>
+          ))}
+        </>
+      )}
     </div>
   );
 };
 
 // =======================
-// Students Modal: lists names pulled from submissions API
+// Submissions Modal: lists students pulled from submissions API
 // =======================
-const StudentsModal = ({
+const SubmissionsModal = ({
   module,
   submissionsLoading,
   submissionsError,
@@ -279,7 +302,7 @@ const StudentsModal = ({
     );
   }
 
-  if (submissionsLoading) return <p className="loading-text">Loading students...</p>;
+  if (submissionsLoading) return <p className="loading-text">Loading submissions...</p>;
   if (submissionsError) return <p className="error-text">Error: {submissionsError}</p>;
 
   const results = submissions?.results || [];
@@ -295,7 +318,7 @@ const StudentsModal = ({
           key={r.studentId}
           className="student-list-item"
           onClick={() => onSelectStudent(r)}
-          title="View result"
+          title="View student result"
         >
           <strong>{r.studentName || "Unnamed Student"}</strong>
           {r.courseName ? ` (${r.courseName})` : ""} — Submitted:{" "}
@@ -307,13 +330,13 @@ const StudentsModal = ({
 };
 
 // =======================
-// Assignment Card (shows each module)
+// Assignment Card
 // =======================
 const AssignmentCard = ({
   assignment,
   onDeleteModule,
   onDeleteSubAssignment,
-  onOpenStudentsModal,
+  onOpenSubmissionsModal,
   deleting
 }) => {
   const { _id: moduleId, moduleName, assignedDate, subAssignments = [], assignmentPdf } = assignment;
@@ -331,8 +354,8 @@ const AssignmentCard = ({
             {deleting[moduleId] ? "Deleting..." : "Delete Module"}
           </Button>
 
-          <Button onClick={() => onOpenStudentsModal(assignment)} variant="primary">
-            View Students ({assignment.assignedStudents?.length ?? 0})
+          <Button onClick={() => onOpenSubmissionsModal(assignment)} variant="primary">
+            View Submissions ({assignment.assignedStudents?.length ?? 0})
           </Button>
         </div>
       </div>
@@ -412,7 +435,6 @@ const AssignmentCard = ({
 export default function AssignmentsManager() {
   const navigate = useNavigate();
 
-  // If you still need category selection to add new assignments
   const CATEGORY_OPTIONS = ["CPC", "CCS", "IP-DRG", "SURGERY", "Denials", "ED", "E and M"];
 
   const [assignments, setAssignments] = useState([]);
@@ -420,22 +442,21 @@ export default function AssignmentsManager() {
   const [error, setError] = useState(null);
   const [deleting, setDeleting] = useState({});
 
-  // Students Modal state
+  // Submissions Modal state
   const [activeModule, setActiveModule] = useState(null);
   const [submissionsLoading, setSubmissionsLoading] = useState(false);
   const [submissionsError, setSubmissionsError] = useState(null);
   const [moduleSubmissions, setModuleSubmissions] = useState(null);
   const [selectedStudentResult, setSelectedStudentResult] = useState(null);
 
-  // Optional: students list, if still used elsewhere
+  // Optional: students list (not required for submissions flow)
   const [students, setStudents] = useState([]);
 
-  // Category modal (for Add Assignment flow)
   const [showCategoryModal, setShowCategoryModal] = useState(false);
 
   useEffect(() => {
     fetchAssignments();
-    fetchStudents(); // safe to keep; not required for the new View Students flow
+    fetchStudents();
   }, []);
 
   const fetchStudents = async () => {
@@ -461,9 +482,9 @@ export default function AssignmentsManager() {
   };
 
   // =======================
-  // View Students — NEW FLOW
+  // View Submissions
   // =======================
-  const openStudentsModal = async (module) => {
+  const openSubmissionsModal = async (module) => {
     setActiveModule(module);
     setSelectedStudentResult(null);
     setModuleSubmissions(null);
@@ -475,9 +496,8 @@ export default function AssignmentsManager() {
       const { data } = await axios.get(`${API_SUBMISSIONS_BASE}/${module._id}/submissions`);
       // Expected shape:
       // {
-      //   assignmentId: "...",
-      //   moduleName: "...",
-      //   results: [ { studentId, studentName, courseName, parentSummary, subModulesSummary, totalCorrect, totalWrong, overallProgress, submissionDate } ]
+      //   assignmentId, moduleName,
+      //   results: [{ studentId, studentName, courseName, totalCorrect, totalWrong, overallProgress, submissionDate, parentSummary, subModulesSummary }]
       // }
       setModuleSubmissions(data);
     } catch (err) {
@@ -487,7 +507,7 @@ export default function AssignmentsManager() {
     }
   };
 
-  const closeStudentsModal = () => {
+  const closeSubmissionsModal = () => {
     setActiveModule(null);
     setModuleSubmissions(null);
     setSelectedStudentResult(null);
@@ -552,70 +572,4 @@ export default function AssignmentsManager() {
   // =======================
   // Render
   // =======================
-  if (loading) return <p className="loading-text">Loading assignments...</p>;
-  if (error) return <p className="error-text">Error: {error}</p>;
-
-  return (
-    <div className="container">
-      <div className="header-container">
-        <h2 className="header">Assignments Overview</h2>
-        <Button onClick={handleAddAssignment} variant="primary" className="add-assignment-btn">
-          + Add Assignment
-        </Button>
-      </div>
-
-      {assignments.length === 0 && (
-        <p className="no-data-text">No assignments found.</p>
-      )}
-
-      <div className="cards-grid">
-        {assignments.map((assignment) => (
-          <AssignmentCard
-            key={assignment._id}
-            assignment={assignment}
-            onDeleteModule={handleDeleteModule}
-            onDeleteSubAssignment={handleDeleteSubAssignment}
-            onOpenStudentsModal={openStudentsModal}
-            deleting={deleting}
-          />
-        ))}
-      </div>
-
-      {/* Students Modal */}
-      {activeModule && (
-        <Modal
-          isOpen={!!activeModule}
-          onClose={closeStudentsModal}
-          title={`Students — ${activeModule.moduleName}`}
-        >
-          <StudentsModal
-            module={activeModule}
-            submissionsLoading={submissionsLoading}
-            submissionsError={submissionsError}
-            submissions={moduleSubmissions}
-            selectedStudentResult={selectedStudentResult}
-            onBackToList={handleBackToStudentList}
-            onSelectStudent={handleSelectStudentFromList}
-          />
-        </Modal>
-      )}
-
-      {/* Category Picker Modal (optional) */}
-      {showCategoryModal && (
-        <Modal
-          isOpen={showCategoryModal}
-          onClose={() => setShowCategoryModal(false)}
-          title="Choose Category"
-        >
-          <div className="category-grid">
-            {CATEGORY_OPTIONS.map((cat) => (
-              <Button key={cat} className="category-btn" onClick={() => goToAddWithCategory(cat)}>
-                {cat}
-              </Button>
-            ))}
-          </div>
-        </Modal>
-      )}
-    </div>
-  );
-}
+  if (loading) return <p classN
