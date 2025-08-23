@@ -66,8 +66,10 @@ const NewAssignments = () => {
 
         if (!courseName) throw new Error('Course name not found for this student');
 
-        // 2) Fetch assignments by course/category
-        const asgResp = await axios.get(`${API_BASE}/category/${encodeURIComponent(courseName)}`);
+        // 2) Fetch assignments by course/category with studentId parameter
+        const asgResp = await axios.get(
+          `${API_BASE}/category/${encodeURIComponent(courseName)}?studentId=${userId}`
+        );
 
         // Normalize various possible shapes
         let assignmentsData = [];
@@ -102,7 +104,6 @@ const NewAssignments = () => {
         })
       : '—';
 
-  // ===== FIXED: no API call here, we open from what we already have =====
   const handleStart = async (assignmentId, subAssignmentId = null) => {
     try {
       setLoading(true);
@@ -115,14 +116,17 @@ const NewAssignments = () => {
       // Normalize for UI rendering
       const assignmentData = normalizeAssignment(fromList);
 
-      // Preserve any completion flags already on the list item
+      // Preserve completion flags from the API response
+      assignmentData.isCompleted = fromList.isCompleted || false;
+      
       if (fromList && Array.isArray(fromList.subAssignments)) {
-        const completeMap = new Map(fromList.subAssignments.map((s) => [String(s._id), !!s.isCompleted]));
-        assignmentData.subAssignments = (assignmentData.subAssignments || []).map((sub) => ({
-          ...sub,
-          isCompleted:
-            typeof sub.isCompleted === 'boolean' ? sub.isCompleted : completeMap.get(String(sub._id)) ?? false,
-        }));
+        assignmentData.subAssignments = (assignmentData.subAssignments || []).map((sub) => {
+          const originalSub = fromList.subAssignments.find(s => String(s._id) === String(sub._id));
+          return {
+            ...sub,
+            isCompleted: originalSub ? originalSub.isCompleted : false
+          };
+        });
       }
 
       setActiveAssignment(assignmentData);
@@ -223,7 +227,7 @@ const NewAssignments = () => {
         setActiveAssignment((prev) => (prev ? { ...prev, isCompleted: true } : prev));
       }
 
-      // Refresh the list again via course flow
+      // Refresh the list to get updated completion status
       try {
         const courseResp2 = await axios.get(`${API_BASE}/student/${userId}/course`);
         const courseName2 =
@@ -233,7 +237,9 @@ const NewAssignments = () => {
           null;
 
         if (courseName2) {
-          const asgResp2 = await axios.get(`${API_BASE}/category/${encodeURIComponent(courseName2)}`);
+          const asgResp2 = await axios.get(
+            `${API_BASE}/category/${encodeURIComponent(courseName2)}?studentId=${userId}`
+          );
           let refreshedData = [];
           if (asgResp2?.data?.success && Array.isArray(asgResp2.data.assignments)) {
             refreshedData = asgResp2.data.assignments;
@@ -300,6 +306,7 @@ const NewAssignments = () => {
                       value={opt}
                       checked={answers[key] === opt}
                       onChange={(e) => handleAnswerChange(key, e.target.value)}
+                      disabled={target.isCompleted}
                     />
                     <span>{opt}</span>
                   </label>
@@ -312,6 +319,7 @@ const NewAssignments = () => {
                 placeholder="Type your answer"
                 value={answers[key] || ''}
                 onChange={(e) => handleAnswerChange(key, e.target.value)}
+                disabled={target.isCompleted}
               />
             )}
           </div>
@@ -330,6 +338,7 @@ const NewAssignments = () => {
               type="text"
               value={answers.patientName || ''}
               onChange={(e) => handleAnswerChange('patientName', e.target.value)}
+              disabled={target.isCompleted}
             />
           </div>
           <div className="form-item">
@@ -339,6 +348,7 @@ const NewAssignments = () => {
               type="text"
               value={answers.ageOrDob || ''}
               onChange={(e) => handleAnswerChange('ageOrDob', e.target.value)}
+              disabled={target.isCompleted}
             />
           </div>
           <div className="form-item">
@@ -349,6 +359,7 @@ const NewAssignments = () => {
               value={answers.icdCodes || ''}
               onChange={(e) => handleAnswerChange('icdCodes', e.target.value)}
               placeholder="Comma separated"
+              disabled={target.isCompleted}
             />
           </div>
           <div className="form-item">
@@ -359,6 +370,7 @@ const NewAssignments = () => {
               value={answers.cptCodes || ''}
               onChange={(e) => handleAnswerChange('cptCodes', e.target.value)}
               placeholder="Comma separated"
+              disabled={target.isCompleted}
             />
           </div>
           <div className="form-item form-item--full">
@@ -368,6 +380,7 @@ const NewAssignments = () => {
               value={answers.notes || ''}
               onChange={(e) => handleAnswerChange('notes', e.target.value)}
               rows={4}
+              disabled={target.isCompleted}
             />
           </div>
         </div>
@@ -436,7 +449,7 @@ const NewAssignments = () => {
                   <button
                     className="btn"
                     onClick={() => handleStart(activeAssignment._id, sub._id)}
-                    disabled={Boolean(sub.isCompleted)}
+                    disabled={sub.isCompleted}
                   >
                     {sub.isCompleted ? 'Completed' : 'Start'}
                   </button>
@@ -450,6 +463,7 @@ const NewAssignments = () => {
 
     const pdfUrl = activeSubAssignment?.assignmentPdf || activeAssignment.assignmentPdf;
     const questionSource = activeSubAssignment || activeAssignment;
+    const isCompleted = questionSource.isCompleted;
 
     return (
       <div className="container">
@@ -479,6 +493,7 @@ const NewAssignments = () => {
         <div className="panel">
           <div className="panel-head">
             <h4>Questions</h4>
+            {isCompleted && <span className="badge badge-success">Completed</span>}
           </div>
           <div className="panel-body">{renderQuestions(questionSource)}</div>
 
@@ -486,11 +501,9 @@ const NewAssignments = () => {
             <button
               className="btn btn-primary"
               onClick={handleSubmit}
-              disabled={Boolean(activeSubAssignment?.isCompleted || activeAssignment?.isCompleted)}
+              disabled={isCompleted}
             >
-              {activeSubAssignment?.isCompleted || activeAssignment?.isCompleted
-                ? 'Already Submitted'
-                : 'Submit Assignment'}
+              {isCompleted ? 'Already Submitted' : 'Submit Assignment'}
             </button>
           </div>
         </div>
@@ -527,7 +540,7 @@ const NewAssignments = () => {
                 <button
                   className="btn"
                   onClick={() => handleStart(assignment._id)}
-                  disabled={Boolean(assignment.isCompleted)}
+                  disabled={assignment.isCompleted}
                 >
                   {assignment.isCompleted
                     ? 'Completed'
@@ -546,7 +559,7 @@ const NewAssignments = () => {
           </div>
           <div>
             <h3>No new assignments</h3>
-            <p className="muted">You’ll see new items here when assigned.</p>
+            <p className="muted">You'll see new items here when assigned.</p>
           </div>
         </div>
       )}
