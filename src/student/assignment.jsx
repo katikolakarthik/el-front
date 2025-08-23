@@ -636,14 +636,14 @@ const predefined = qs.find((q) => q.type === 'predefined');
   </div>
 ) : (
   <div className="empty-state">
-    <div className="empty-icon">
-      <FiClock />
-    </div>
-    <div>
-      <h3>No assignments are available</h3>
-      <p className="muted">You'll see new items here when assigned.</p>
-    </div>
+  <div className="empty-icon">
+    <FiClock />
   </div>
+  <div>
+    <h3>No assignments are available</h3>
+    <p className="muted">Please check back later for new assignments.</p>
+  </div>
+</div>
 )}
     </div>
   );
