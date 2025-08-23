@@ -39,14 +39,6 @@ const sortByAssignedDesc = (arr) =>
     (a, b) => new Date(b?.assignedDate || 0).getTime() - new Date(a?.assignedDate || 0).getTime()
   );
 
-// Helper function to check if all sub-assignments are completed
-const areAllSubAssignmentsCompleted = (assignment) => {
-  if (!assignment.subAssignments || assignment.subAssignments.length === 0) {
-    return assignment.isCompleted || false;
-  }
-  return assignment.subAssignments.every(sub => sub.isCompleted);
-};
-
 const NewAssignments = () => {
   const [assignments, setAssignments] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -54,6 +46,14 @@ const NewAssignments = () => {
   const [activeAssignment, setActiveAssignment] = useState(null);
   const [activeSubAssignment, setActiveSubAssignment] = useState(null);
   const [answers, setAnswers] = useState({});
+
+  // Helper function to check if all sub-assignments are completed
+  const areAllSubAssignmentsCompleted = (assignment) => {
+    if (!assignment.subAssignments || assignment.subAssignments.length === 0) {
+      return assignment.isCompleted || false;
+    }
+    return assignment.subAssignments.every(sub => sub.isCompleted);
+  };
 
   useEffect(() => {
     const fetchAssignments = async () => {
@@ -532,10 +532,8 @@ const NewAssignments = () => {
         <div className="grid">
           {assignments.map((assignment, index) => {
             const allSubsCompleted = areAllSubAssignmentsCompleted(assignment);
-            const isParentDisabled = assignment.subAssignments?.length > 0 
-              ? allSubsCompleted 
-              : assignment.isCompleted;
-
+            const isParentDisabled = assignment.subAssignments?.length > 0 ? allSubsCompleted : assignment.isCompleted;
+            
             return (
               <div key={index} className="card">
                 <div className="card-head">
@@ -552,10 +550,9 @@ const NewAssignments = () => {
 
                 {assignment.subAssignments?.length > 0 && (
                   <div className="meta">
-                    <span className="meta-key">Sections</span>
+                    <span className="meta-key">Progress</span>
                     <span className="meta-val">
-                      {assignment.subAssignments.filter(sub => sub.isCompleted).length}/
-                      {assignment.subAssignments.length} completed
+                      {assignment.subAssignments.filter(sub => sub.isCompleted).length} / {assignment.subAssignments.length} completed
                     </span>
                   </div>
                 )}
@@ -578,9 +575,18 @@ const NewAssignments = () => {
           })}
         </div>
       ) : (
-        <div className="empty-state">
+      <div className="empty-state">
           <div className="empty-icon">
             <FiClock />
           </div>
           <div>
-            <h3>No new assignments</h3
+            <h3>No new assignments</h3>
+            <p className="muted">You'll see new items here when assigned.</p>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default NewAssignments;
