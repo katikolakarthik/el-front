@@ -572,4 +572,70 @@ export default function AssignmentsManager() {
   // =======================
   // Render
   // =======================
-  if (loading) return <p classN
+  if (loading) return <p className="loading-text">Loading assignments...</p>;
+  if (error) return <p className="error-text">Error: {error}</p>;
+
+  return (
+    <div className="container">
+      <div className="header-container">
+        <h2 className="header">Assignments Overview</h2>
+        <Button onClick={handleAddAssignment} variant="primary" className="add-assignment-btn">
+          + Add Assignment
+        </Button>
+      </div>
+
+      {assignments.length === 0 && (
+        <p className="no-data-text">No assignments found.</p>
+      )}
+
+      <div className="cards-grid">
+        {assignments.map((assignment) => (
+          <AssignmentCard
+            key={assignment._id}
+            assignment={assignment}
+            onDeleteModule={handleDeleteModule}
+            onDeleteSubAssignment={handleDeleteSubAssignment}
+            onOpenSubmissionsModal={openSubmissionsModal}
+            deleting={deleting}
+          />
+        ))}
+      </div>
+
+      {/* Submissions Modal */}
+      {activeModule && (
+        <Modal
+          isOpen={!!activeModule}
+          onClose={closeSubmissionsModal}
+          title={`Submissions — ${activeModule.moduleName}`}
+        >
+          <SubmissionsModal
+            module={activeModule}
+            submissionsLoading={submissionsLoading}
+            submissionsError={submissionsError}
+            submissions={moduleSubmissions}
+            selectedStudentResult={selectedStudentResult}
+            onBackToList={handleBackToStudentList}
+            onSelectStudent={handleSelectStudentFromList}
+          />
+        </Modal>
+      )}
+
+      {/* Category Picker Modal (optional) */}
+      {showCategoryModal && (
+        <Modal
+          isOpen={showCategoryModal}
+          onClose={() => setShowCategoryModal(false)}
+          title="Choose Category"
+        >
+          <div className="category-grid">
+            {CATEGORY_OPTIONS.map((cat) => (
+              <Button key={cat} className="category-btn" onClick={() => goToAddWithCategory(cat)}>
+                {cat}
+              </Button>
+            ))}
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
+}
