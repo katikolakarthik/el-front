@@ -420,3 +420,22 @@
   padding: 2rem;
   color: #666;
 }
+/* Expiry date styling */
+.expired-date {
+  color: #ff4d4f;
+  font-weight: bold;
+}
+
+.active-date {
+  color: #52c41a;
+}
+
+/* Form row layout */
+.form-row {
+  display: flex;
+  gap: 15px;
+}
+
+.form-row .form-group {
+  flex: 1;
+}
