@@ -39,6 +39,14 @@ const sortByAssignedDesc = (arr) =>
     (a, b) => new Date(b?.assignedDate || 0).getTime() - new Date(a?.assignedDate || 0).getTime()
   );
 
+// Helper function to check if all sub-assignments are completed
+const areAllSubAssignmentsCompleted = (assignment) => {
+  if (!assignment.subAssignments || assignment.subAssignments.length === 0) {
+    return assignment.isCompleted || false;
+  }
+  return assignment.subAssignments.every(sub => sub.isCompleted);
+};
+
 const NewAssignments = () => {
   const [assignments, setAssignments] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -522,35 +530,52 @@ const NewAssignments = () => {
 
       {assignments.length > 0 ? (
         <div className="grid">
-          {assignments.map((assignment, index) => (
-            <div key={index} className="card">
-              <div className="card-head">
-                <h3 className="card-title">{assignment.moduleName}</h3>
-                <span className={`badge ${assignment.isCompleted ? 'badge-success' : 'badge-neutral'}`}>
-                  {assignment.isCompleted ? 'Completed' : 'Assigned'}
-                </span>
-              </div>
+          {assignments.map((assignment, index) => {
+            const allSubsCompleted = areAllSubAssignmentsCompleted(assignment);
+            const isParentDisabled = assignment.subAssignments?.length > 0 
+              ? allSubsCompleted 
+              : assignment.isCompleted;
 
-              <div className="meta">
-                <span className="meta-key">Assigned</span>
-                <span className="meta-val">{formatDate(assignment.assignedDate)}</span>
-              </div>
+            return (
+              <div key={index} className="card">
+                <div className="card-head">
+                  <h3 className="card-title">{assignment.moduleName}</h3>
+                  <span className={`badge ${isParentDisabled ? 'badge-success' : 'badge-neutral'}`}>
+                    {isParentDisabled ? 'Completed' : 'Assigned'}
+                  </span>
+                </div>
 
-              <div className="card-actions">
-                <button
-                  className="btn"
-                  onClick={() => handleStart(assignment._id)}
-                  disabled={assignment.isCompleted}
-                >
-                  {assignment.isCompleted
-                    ? 'Completed'
-                    : assignment.subAssignments?.length > 0
-                    ? 'View Sections'
-                    : 'Start'}
-                </button>
+                <div className="meta">
+                  <span className="meta-key">Assigned</span>
+                  <span className="meta-val">{formatDate(assignment.assignedDate)}</span>
+                </div>
+
+                {assignment.subAssignments?.length > 0 && (
+                  <div className="meta">
+                    <span className="meta-key">Sections</span>
+                    <span className="meta-val">
+                      {assignment.subAssignments.filter(sub => sub.isCompleted).length}/
+                      {assignment.subAssignments.length} completed
+                    </span>
+                  </div>
+                )}
+
+                <div className="card-actions">
+                  <button
+                    className="btn"
+                    onClick={() => handleStart(assignment._id)}
+                    disabled={isParentDisabled}
+                  >
+                    {isParentDisabled
+                      ? 'Completed'
+                      : assignment.subAssignments?.length > 0
+                      ? 'View Sections'
+                      : 'Start'}
+                  </button>
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       ) : (
         <div className="empty-state">
@@ -558,13 +583,4 @@ const NewAssignments = () => {
             <FiClock />
           </div>
           <div>
-            <h3>No new assignments</h3>
-            <p className="muted">You'll see new items here when assigned.</p>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-};
-
-export default NewAssignments;
+            <h3>No new assignments</h3
