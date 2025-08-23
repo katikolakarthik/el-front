@@ -126,7 +126,7 @@ const NewAssignments = () => {
 
       // Preserve completion flags from the API response
       assignmentData.isCompleted = fromList.isCompleted || false;
-      
+
       if (fromList && Array.isArray(fromList.subAssignments)) {
         assignmentData.subAssignments = (assignmentData.subAssignments || []).map((sub) => {
           const originalSub = fromList.subAssignments.find(s => String(s._id) === String(sub._id));
@@ -154,6 +154,12 @@ const NewAssignments = () => {
     }
   };
 
+  const csvToArray = (str = '') =>
+    str
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
+
   const handleSubmit = async () => {
     try {
       const userId = localStorage.getItem('userId');
@@ -171,6 +177,18 @@ const NewAssignments = () => {
           submittedAnswer: answers[`${prefix}-${idx}`] || '',
         }));
 
+      const buildPredefinedPayload = () => ({
+        patientName: answers.patientName || '',
+        ageOrDob: answers.ageOrDob || '',
+        icdCodes: csvToArray(answers.icdCodes || ''),
+        cptCodes: csvToArray(answers.cptCodes || ''),
+        pcsCodes: csvToArray(answers.pcsCodes || ''),         // NEW
+        hcpcsCodes: csvToArray(answers.hcpcsCodes || ''),     // NEW
+        drgValue: answers.drgValue || '',                     // NEW
+        modifiers: csvToArray(answers.modifiers || ''),       // NEW
+        notes: answers.notes || '',
+      });
+
       if (activeSubAssignment) {
         if ((activeSubAssignment.questions || []).some((q) => q.type === 'dynamic')) {
           payload.submittedAnswers.push({
@@ -180,17 +198,7 @@ const NewAssignments = () => {
         } else {
           payload.submittedAnswers.push({
             subAssignmentId: activeSubAssignment._id,
-            patientName: answers.patientName || '',
-            ageOrDob: answers.ageOrDob || '',
-            icdCodes: (answers.icdCodes || '')
-              .split(',')
-              .map((s) => s.trim())
-              .filter(Boolean),
-            cptCodes: (answers.cptCodes || '')
-              .split(',')
-              .map((s) => s.trim())
-              .filter(Boolean),
-            notes: answers.notes || '',
+            ...buildPredefinedPayload(),
           });
         }
       } else {
@@ -200,17 +208,7 @@ const NewAssignments = () => {
           });
         } else {
           payload.submittedAnswers.push({
-            patientName: answers.patientName || '',
-            ageOrDob: answers.ageOrDob || '',
-            icdCodes: (answers.icdCodes || '')
-              .split(',')
-              .map((s) => s.trim())
-              .filter(Boolean),
-            cptCodes: (answers.cptCodes || '')
-              .split(',')
-              .map((s) => s.trim())
-              .filter(Boolean),
-            notes: answers.notes || '',
+            ...buildPredefinedPayload(),
           });
         }
       }
@@ -334,8 +332,7 @@ const NewAssignments = () => {
         );
       });
     }
-
-    const predefined = qs.find((q) => q.type === 'predefined');
+const predefined = qs.find((q) => q.type === 'predefined');
     if (predefined && predefined.answerKey) {
       return (
         <div className="form-grid">
@@ -359,6 +356,7 @@ const NewAssignments = () => {
               disabled={target.isCompleted}
             />
           </div>
+
           <div className="form-item">
             <label className="label">ICD Codes</label>
             <input
@@ -381,6 +379,59 @@ const NewAssignments = () => {
               disabled={target.isCompleted}
             />
           </div>
+
+          {/* NEW: PCS Codes */}
+          <div className="form-item">
+            <label className="label">PCS Codes</label>
+            <input
+              className="input"
+              type="text"
+              value={answers.pcsCodes || ''}
+              onChange={(e) => handleAnswerChange('pcsCodes', e.target.value)}
+              placeholder="Comma separated"
+              disabled={target.isCompleted}
+            />
+          </div>
+
+          {/* NEW: HCPCS Codes */}
+          <div className="form-item">
+            <label className="label">HCPCS Codes</label>
+            <input
+              className="input"
+              type="text"
+              value={answers.hcpcsCodes || ''}
+              onChange={(e) => handleAnswerChange('hcpcsCodes', e.target.value)}
+              placeholder="Comma separated"
+              disabled={target.isCompleted}
+            />
+          </div>
+
+          {/* NEW: DRG Value */}
+          <div className="form-item">
+            <label className="label">DRG Value</label>
+            <input
+              className="input"
+              type="text"
+              value={answers.drgValue || ''}
+              onChange={(e) => handleAnswerChange('drgValue', e.target.value)}
+              placeholder="e.g. 470 or 470-xx"
+              disabled={target.isCompleted}
+            />
+          </div>
+
+          {/* NEW: Modifiers */}
+          <div className="form-item">
+            <label className="label">Modifiers</label>
+            <input
+              className="input"
+              type="text"
+              value={answers.modifiers || ''}
+              onChange={(e) => handleAnswerChange('modifiers', e.target.value)}
+              placeholder="Comma separated (e.g. 26, 59, LT)"
+              disabled={target.isCompleted}
+            />
+          </div>
+
           <div className="form-item form-item--full">
             <label className="label">Notes</label>
             <textarea
@@ -533,7 +584,7 @@ const NewAssignments = () => {
           {assignments.map((assignment, index) => {
             const allSubsCompleted = areAllSubAssignmentsCompleted(assignment);
             const isParentDisabled = assignment.subAssignments?.length > 0 ? allSubsCompleted : assignment.isCompleted;
-            
+
             return (
               <div key={index} className="card">
                 <div className="card-head">
@@ -575,7 +626,7 @@ const NewAssignments = () => {
           })}
         </div>
       ) : (
-      <div className="empty-state">
+       <div className="empty-state">
           <div className="empty-icon">
             <FiClock />
           </div>
