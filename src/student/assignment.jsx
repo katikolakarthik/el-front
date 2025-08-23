@@ -55,53 +55,62 @@ const NewAssignments = () => {
     return assignment.subAssignments.every(sub => sub.isCompleted);
   };
 
-  useEffect(() => {
-    const fetchAssignments = async () => {
-      try {
-        setLoading(true);
-        setError(null);
+  
 
-        const userId = localStorage.getItem('userId');
-        if (!userId) throw new Error('User ID not found');
+useEffect(() => {
+  const fetchAssignments = async () => {
+    try {
+      setLoading(true);
+      setError(null);
 
-        // 1) Get courseName for this userId
-        const courseResp = await axios.get(`${API_BASE}/student/${userId}/course`);
-        const courseName =
-          courseResp?.data?.courseName ||
-          courseResp?.data?.course?.name ||
-          courseResp?.data?.course?.courseName ||
-          null;
+      const userId = localStorage.getItem('userId');
+      if (!userId) throw new Error('User ID not found');
 
-        if (!courseName) throw new Error('Course name not found for this student');
+      // 1) Get courseName for this userId
+      const courseResp = await axios.get(`${API_BASE}/student/${userId}/course`);
+      const courseName =
+        courseResp?.data?.courseName ||
+        courseResp?.data?.course?.name ||
+        courseResp?.data?.course?.courseName ||
+        null;
 
-        // 2) Fetch assignments by course/category with studentId parameter
-        const asgResp = await axios.get(
-          `${API_BASE}/category/${encodeURIComponent(courseName)}?studentId=${userId}`
-        );
+      if (!courseName) throw new Error('Course name not found for this student');
 
-        // Normalize various possible shapes
-        let assignmentsData = [];
-        if (asgResp?.data?.success && Array.isArray(asgResp.data.assignments)) {
-          assignmentsData = asgResp.data.assignments;
-        } else if (Array.isArray(asgResp?.data)) {
-          assignmentsData = asgResp.data;
-        } else if (Array.isArray(asgResp?.data?.data)) {
-          assignmentsData = asgResp.data.data;
-        } else if (asgResp?.data?.assignment) {
-          assignmentsData = [asgResp.data.assignment];
-        } else {
-          assignmentsData = [];
-        }
+      // 2) Fetch assignments by course/category with studentId parameter
+      const asgResp = await axios.get(
+        `${API_BASE}/category/${encodeURIComponent(courseName)}?studentId=${userId}`
+      );
 
-        setAssignments(sortByAssignedDesc(assignmentsData));
-      } catch (err) {
-        setError(err?.message || 'Failed to fetch assignments');
-      } finally {
-        setLoading(false);
+      // Normalize various possible shapes
+      let assignmentsData = [];
+      if (asgResp?.data?.success && Array.isArray(asgResp.data.assignments)) {
+        assignmentsData = asgResp.data.assignments;
+      } else if (Array.isArray(asgResp?.data)) {
+        assignmentsData = asgResp.data;
+      } else if (Array.isArray(asgResp?.data?.data)) {
+        assignmentsData = asgResp.data.data;
+      } else if (asgResp?.data?.assignment) {
+        assignmentsData = [asgResp.data.assignment];
       }
-    };
-    fetchAssignments();
-  }, []);
+
+      setAssignments(sortByAssignedDesc(assignmentsData));
+    } catch (err) {
+      // 👇 Special case for 404 → No assignments
+      if (err.response?.status === 404) {
+        setAssignments([]); // just empty list, no error
+      } else {
+        setError(err?.message || 'Failed to fetch assignments');
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+  fetchAssignments();
+}, []);
+
+
+
+
 
   const formatDate = (dateString) =>
     dateString
@@ -580,62 +589,62 @@ const predefined = qs.find((q) => q.type === 'predefined');
       </div>
 
       {assignments.length > 0 ? (
-        <div className="grid">
-          {assignments.map((assignment, index) => {
-            const allSubsCompleted = areAllSubAssignmentsCompleted(assignment);
-            const isParentDisabled = assignment.subAssignments?.length > 0 ? allSubsCompleted : assignment.isCompleted;
+  <div className="grid">
+    {assignments.map((assignment, index) => {
+      const allSubsCompleted = areAllSubAssignmentsCompleted(assignment);
+      const isParentDisabled = assignment.subAssignments?.length > 0 ? allSubsCompleted : assignment.isCompleted;
 
-            return (
-              <div key={index} className="card">
-                <div className="card-head">
-                  <h3 className="card-title">{assignment.moduleName}</h3>
-                  <span className={`badge ${isParentDisabled ? 'badge-success' : 'badge-neutral'}`}>
-                    {isParentDisabled ? 'Completed' : 'Assigned'}
-                  </span>
-                </div>
-
-                <div className="meta">
-                  <span className="meta-key">Assigned</span>
-                  <span className="meta-val">{formatDate(assignment.assignedDate)}</span>
-                </div>
-
-                {assignment.subAssignments?.length > 0 && (
-                  <div className="meta">
-                    <span className="meta-key">Progress</span>
-                    <span className="meta-val">
-                      {assignment.subAssignments.filter(sub => sub.isCompleted).length} / {assignment.subAssignments.length} completed
-                    </span>
-                  </div>
-                )}
-
-                <div className="card-actions">
-                  <button
-                    className="btn"
-                    onClick={() => handleStart(assignment._id)}
-                    disabled={isParentDisabled}
-                  >
-                    {isParentDisabled
-                      ? 'Completed'
-                      : assignment.subAssignments?.length > 0
-                      ? 'View Sections'
-                      : 'Start'}
-                  </button>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      ) : (
-       <div className="empty-state">
-          <div className="empty-icon">
-            <FiClock />
+      return (
+        <div key={index} className="card">
+          <div className="card-head">
+            <h3 className="card-title">{assignment.moduleName}</h3>
+            <span className={`badge ${isParentDisabled ? 'badge-success' : 'badge-neutral'}`}>
+              {isParentDisabled ? 'Completed' : 'Assigned'}
+            </span>
           </div>
-          <div>
-            <h3>No new assignments</h3>
-            <p className="muted">You'll see new items here when assigned.</p>
+
+          <div className="meta">
+            <span className="meta-key">Assigned</span>
+            <span className="meta-val">{formatDate(assignment.assignedDate)}</span>
+          </div>
+
+          {assignment.subAssignments?.length > 0 && (
+            <div className="meta">
+              <span className="meta-key">Progress</span>
+              <span className="meta-val">
+                {assignment.subAssignments.filter(sub => sub.isCompleted).length} / {assignment.subAssignments.length} completed
+              </span>
+            </div>
+          )}
+
+          <div className="card-actions">
+            <button
+              className="btn"
+              onClick={() => handleStart(assignment._id)}
+              disabled={isParentDisabled}
+            >
+              {isParentDisabled
+                ? 'Completed'
+                : assignment.subAssignments?.length > 0
+                ? 'View Sections'
+                : 'Start'}
+            </button>
           </div>
         </div>
-      )}
+      );
+    })}
+  </div>
+) : (
+  <div className="empty-state">
+    <div className="empty-icon">
+      <FiClock />
+    </div>
+    <div>
+      <h3>No assignments are available</h3>
+      <p className="muted">You'll see new items here when assigned.</p>
+    </div>
+  </div>
+)}
     </div>
   );
 };
