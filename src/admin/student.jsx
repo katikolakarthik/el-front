@@ -25,6 +25,10 @@ export default function Students() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
 
+const CATEGORY_OPTIONS = ["CPC", "CCS", "IP-DRG", "SURGERY", "Denials", "ED", "E and M"];
+
+
+
   useEffect(() => {
     fetchStudents();
   }, []);
@@ -408,15 +412,22 @@ export default function Students() {
                   />
                 </div>
 
-                <div className="form-group">
-                  <label>Course:</label>
-                  <input
-                    type="text"
-                    name="courseName"
-                    value={formData.courseName}
-                    onChange={handleInputChange}
-                  />
-                </div>
+               <div className="form-group">
+  <label>Course:</label>
+  <select
+    name="courseName"
+    value={formData.courseName}
+    onChange={handleInputChange}
+    required
+  >
+    <option value="">-- Select a Category --</option>
+    {CATEGORY_OPTIONS.map((option) => (
+      <option key={option} value={option}>
+        {option}
+      </option>
+    ))}
+  </select>
+</div>
 
                 <div className="form-row">
                   <div className="form-group">
