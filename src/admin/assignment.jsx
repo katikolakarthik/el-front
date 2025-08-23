@@ -29,6 +29,7 @@ const Button = ({ onClick, disabled, children, variant = "primary", className = 
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
       style={isHovered && !disabled ? { filter: "brightness(0.9)" } : {}}
+      type="button"
     >
       {children}
     </button>
@@ -46,7 +47,7 @@ const Modal = ({ isOpen, onClose, title, children }) => {
       <div role="dialog" aria-modal="true" aria-labelledby="modal-title" tabIndex={-1} className="modal-content">
         <div className="modal-header">
           <h3 id="modal-title" className="modal-title">{title}</h3>
-          <button onClick={onClose} aria-label="Close modal" className="modal-close-button">&times;</button>
+          <button onClick={onClose} aria-label="Close modal" className="modal-close-button" type="button">&times;</button>
         </div>
         <div className="modal-body">{children}</div>
       </div>
@@ -55,7 +56,17 @@ const Modal = ({ isOpen, onClose, title, children }) => {
 };
 
 // =======================
+// Small helpers (display)
+// =======================
+const Field = ({ label, children }) => (
+  <p><strong>{label}:</strong> {children ?? "-"}</p>
+);
+
+const ListOrDash = (arr) => (Array.isArray(arr) && arr.length ? arr.join(", ") : "-");
+
+// =======================
 // Student Summary (one student's detailed result)
+// Supports both new shape (parentSummary/subModulesSummary) and legacy (submittedAnswers)
 // =======================
 const StudentSummaryView = ({ result, onBack }) => {
   if (!result) return null;
@@ -67,8 +78,94 @@ const StudentSummaryView = ({ result, onBack }) => {
     totalWrong,
     overallProgress,
     submissionDate,
+    // New shape:
+    parentSummary,
+    subModulesSummary,
+    // Legacy fallback:
     submittedAnswers
   } = result;
+
+  const hasNewShape = Array.isArray(subModulesSummary) || parentSummary;
+  const hasLegacy = Array.isArray(submittedAnswers);
+
+  // Render dynamic questions list (enteredValues shape)
+  const DynamicQuestions = ({ dq = [] }) => {
+    if (!Array.isArray(dq) || dq.length === 0) return null;
+    return (
+      <div className="mt-1">
+        <h5>Dynamic Questions</h5>
+        <ul className="dq-list">
+          {dq.map((q, idx) => (
+            <li key={q._id || idx} className="dq-item">
+              <Field label={`Q${idx + 1}`}>{q.questionText || "-"}</Field>
+              <Field label="Options">{ListOrDash(q.options)}</Field>
+              <Field label="Correct Answer">{q.correctAnswer ?? q.answer ?? "-"}</Field>
+              <Field label="Submitted Answer">{q.submittedAnswer ?? "-"}</Field>
+              <Field label="Is Correct?">{q.isCorrect ? "Yes" : "No"}</Field>
+            </li>
+          ))}
+        </ul>
+      </div>
+    );
+  };
+
+  // One block rendering for an "enteredValues + scores" section
+  const EnteredValuesBlock = ({ title, enteredValues, correctCount, wrongCount, progressPercent }) => {
+    if (!enteredValues) return null;
+    const { patientName, ageOrDob, icdCodes, cptCodes, notes, dynamicQuestions } = enteredValues;
+    return (
+      <div className="subassignment-block">
+        <h4 className="sub-title">{title}</h4>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+          <div>
+            <Field label="Patient Name">{patientName || "-"}</Field>
+            <Field label="Age/DOB">{ageOrDob || "-"}</Field>
+            <Field label="ICD Codes">{ListOrDash(icdCodes)}</Field>
+            <Field label="CPT Codes">{ListOrDash(cptCodes)}</Field>
+            <Field label="Notes">{notes || "-"}</Field>
+          </div>
+          <div>
+            <Field label="Correct">{correctCount ?? "-"}</Field>
+            <Field label="Wrong">{wrongCount ?? "-"}</Field>
+            <Field label="Progress">{progressPercent ?? 0}%</Field>
+          </div>
+        </div>
+        <DynamicQuestions dq={dynamicQuestions} />
+        <hr className="divider" />
+      </div>
+    );
+  };
+
+  // Sub-module row renderer for new shape
+  const SubModuleRow = ({ sub }) => {
+    const ev = sub?.enteredValues || {};
+    return (
+      <div className="subassignment-block">
+        <h4 className="sub-title">
+          {sub?.subModuleName ? `Sub-Module: ${sub.subModuleName}` : "Sub-Module"}
+          {sub?.subAssignmentId ? ` — ${sub.subAssignmentId}` : ""}
+        </h4>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+          <div>
+            <Field label="Patient Name">{ev.patientName || "-"}</Field>
+            <Field label="Age/DOB">{ev.ageOrDob || "-"}</Field>
+            <Field label="ICD Codes">{ListOrDash(ev.icdCodes)}</Field>
+            <Field label="CPT Codes">{ListOrDash(ev.cptCodes)}</Field>
+            <Field label="Notes">{ev.notes || "-"}</Field>
+          </div>
+          <div>
+            <Field label="Correct">{sub?.correctCount ?? "-"}</Field>
+            <Field label="Wrong">{sub?.wrongCount ?? "-"}</Field>
+            <Field label="Progress">{sub?.progressPercent ?? 0}%</Field>
+          </div>
+        </div>
+
+        <DynamicQuestions dq={ev.dynamicQuestions} />
+        <hr className="divider" />
+      </div>
+    );
+  };
 
   return (
     <div className="student-summary-container">
@@ -76,7 +173,7 @@ const StudentSummaryView = ({ result, onBack }) => {
 
       <div className="card">
         <div className="card-header">
-          <h3 className="card-title">{studentName} — {courseName}</h3>
+          <h3 className="card-title">{studentName} {courseName ? `— ${courseName}` : ""}</h3>
           <div className="card-meta">
             <span>Submitted: {submissionDate ? new Date(submissionDate).toLocaleString() : "-"}</span>
             <span className="ml-1">Overall Progress: {overallProgress ?? 0}%</span>
@@ -86,48 +183,73 @@ const StudentSummaryView = ({ result, onBack }) => {
         </div>
 
         <div className="card-body">
-          {(!submittedAnswers || submittedAnswers.length === 0) && (
-            <p className="no-data-text">No sub-assignment details found.</p>
+          {/* New shape: parent + sub modules */}
+          {hasNewShape && (
+            <>
+              {/* Parent-level (if exists) */}
+              {parentSummary?.enteredValues ? (
+                <EnteredValuesBlock
+                  title="Parent Assignment (Overall Entry)"
+                  enteredValues={parentSummary.enteredValues}
+                  correctCount={parentSummary.correctCount}
+                  wrongCount={parentSummary.wrongCount}
+                  progressPercent={parentSummary.progressPercent}
+                />
+              ) : null}
+
+              {/* Sub-modules */}
+              {Array.isArray(subModulesSummary) && subModulesSummary.length > 0 ? (
+                subModulesSummary.map((sa, idx) => <SubModuleRow key={sa.subAssignmentId || idx} sub={sa} />)
+              ) : !parentSummary?.enteredValues ? (
+                <p className="no-data-text">No sub-assignment details found.</p>
+              ) : null}
+            </>
           )}
 
-          {submittedAnswers?.map((sa, idx) => (
-            <div key={sa._id || idx} className="subassignment-block">
-              <h4 className="sub-title">Sub-Assignment: {sa.subAssignmentId}</h4>
+          {/* Legacy shape: submittedAnswers */}
+          {!hasNewShape && hasLegacy && (
+            <>
+              {submittedAnswers.length === 0 && <p className="no-data-text">No sub-assignment details found.</p>}
+              {submittedAnswers.map((sa, idx) => (
+                <div key={sa._id || idx} className="subassignment-block">
+                  <h4 className="sub-title">Sub-Assignment: {sa.subAssignmentId || "-"}</h4>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                <div>
-                  <p><strong>Patient Name:</strong> {sa.patientName || '-'}</p>
-                  <p><strong>Age/DOB:</strong> {sa.ageOrDob || '-'}</p>
-                  <p><strong>ICD Codes:</strong> {Array.isArray(sa.icdCodes) && sa.icdCodes.length ? sa.icdCodes.join(', ') : '-'}</p>
-                  <p><strong>CPT Codes:</strong> {Array.isArray(sa.cptCodes) && sa.cptCodes.length ? sa.cptCodes.join(', ') : '-'}</p>
-                  <p><strong>Notes:</strong> {sa.notes || '-'}</p>
-                </div>
-                <div>
-                  <p><strong>Correct:</strong> {sa.correctCount ?? '-'}</p>
-                  <p><strong>Wrong:</strong> {sa.wrongCount ?? '-'}</p>
-                  <p><strong>Progress:</strong> {sa.progressPercent ?? 0}%</p>
-                </div>
-              </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                    <div>
+                      <Field label="Patient Name">{sa.patientName || "-"}</Field>
+                      <Field label="Age/DOB">{sa.ageOrDob || "-"}</Field>
+                      <Field label="ICD Codes">{ListOrDash(sa.icdCodes)}</Field>
+                      <Field label="CPT Codes">{ListOrDash(sa.cptCodes)}</Field>
+                      <Field label="Notes">{sa.notes || "-"}</Field>
+                    </div>
+                    <div>
+                      <Field label="Correct">{sa.correctCount ?? "-"}</Field>
+                      <Field label="Wrong">{sa.wrongCount ?? "-"}</Field>
+                      <Field label="Progress">{sa.progressPercent ?? 0}%</Field>
+                    </div>
+                  </div>
 
-              {Array.isArray(sa.dynamicQuestions) && sa.dynamicQuestions.length > 0 && (
-                <div className="mt-1">
-                  <h5>Dynamic Questions</h5>
-                  <ul className="dq-list">
-                    {sa.dynamicQuestions.map((q, qIdx) => (
-                      <li key={qIdx} className="dq-item">
-                        <p><strong>Q{qIdx + 1}:</strong> {q.questionText || '-'}</p>
-                        <p><strong>Correct Answer:</strong> {q.correctAnswer ?? '-'}</p>
-                        <p><strong>Submitted Answer:</strong> {q.submittedAnswer ?? '-'}</p>
-                        <p><strong>Is Correct?</strong> {q.isCorrect ? 'Yes' : 'No'}</p>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
+                  {Array.isArray(sa.dynamicQuestions) && sa.dynamicQuestions.length > 0 && (
+                    <div className="mt-1">
+                      <h5>Dynamic Questions</h5>
+                      <ul className="dq-list">
+                        {sa.dynamicQuestions.map((q, qIdx) => (
+                          <li key={qIdx} className="dq-item">
+                            <Field label={`Q${qIdx + 1}`}>{q.questionText || "-"}</Field>
+                            <Field label="Correct Answer">{q.correctAnswer ?? "-"}</Field>
+                            <Field label="Submitted Answer">{q.submittedAnswer ?? "-"}</Field>
+                            <Field label="Is Correct?">{q.isCorrect ? "Yes" : "No"}</Field>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
 
-              <hr className="divider" />
-            </div>
-          ))}
+                  <hr className="divider" />
+                </div>
+              ))}
+            </>
+          )}
         </div>
       </div>
     </div>
@@ -175,7 +297,9 @@ const StudentsModal = ({
           onClick={() => onSelectStudent(r)}
           title="View result"
         >
-          <strong>{r.studentName}</strong> ({r.courseName}) — Submitted: {r.submissionDate ? new Date(r.submissionDate).toLocaleDateString() : "-"}
+          <strong>{r.studentName || "Unnamed Student"}</strong>
+          {r.courseName ? ` (${r.courseName})` : ""} — Submitted:{" "}
+          {r.submissionDate ? new Date(r.submissionDate).toLocaleDateString() : "-"}
         </li>
       ))}
     </ul>
@@ -199,7 +323,6 @@ const AssignmentCard = ({
       <div className="card-header">
         <h3 className="card-title">{moduleName}</h3>
         <div className="card-actions">
-          {/* If you keep edit features, wire them here; removed per request to simplify */}
           <Button
             onClick={() => onDeleteModule(moduleId)}
             disabled={!!deleting[moduleId]}
@@ -354,7 +477,7 @@ export default function AssignmentsManager() {
       // {
       //   assignmentId: "...",
       //   moduleName: "...",
-      //   results: [ { studentId, studentName, courseName, submittedAnswers: [...], ... } ]
+      //   results: [ { studentId, studentName, courseName, parentSummary, subModulesSummary, totalCorrect, totalWrong, overallProgress, submissionDate } ]
       // }
       setModuleSubmissions(data);
     } catch (err) {
