@@ -72,6 +72,10 @@ const hasStaticData = (obj = {}) => {
     hasStr(obj.ageOrDob) ||
     hasArr(obj.icdCodes) ||
     hasArr(obj.cptCodes) ||
+    hasArr(obj.pcsCodes) ||      // NEW
+    hasArr(obj.hcpcsCodes) ||    // NEW
+    hasArr(obj.modifiers) ||     // NEW
+    hasStr(obj.drgValue) ||      // NEW
     hasStr(obj.notes)
   );
 };
@@ -156,6 +160,10 @@ const StudentSummaryView = ({ result, onBack }) => {
             <Field label="Age/DOB">{submitted.ageOrDob || "-"}</Field>
             <Field label="ICD Codes">{ListOrDash(submitted.icdCodes)}</Field>
             <Field label="CPT Codes">{ListOrDash(submitted.cptCodes)}</Field>
+            <Field label="PCS Codes">{ListOrDash(submitted.pcsCodes)}</Field>         {/* NEW */}
+            <Field label="HCPCS Codes">{ListOrDash(submitted.hcpcsCodes)}</Field>     {/* NEW */}
+            <Field label="DRG Value">{submitted.drgValue || "-"}</Field>              {/* NEW */}
+            <Field label="Modifiers">{ListOrDash(submitted.modifiers)}</Field>        {/* NEW */}
             <Field label="Notes">{submitted.notes || "-"}</Field>
           </div>
         )}
@@ -167,6 +175,10 @@ const StudentSummaryView = ({ result, onBack }) => {
             <Field label="Age/DOB">{correct.ageOrDob || "-"}</Field>
             <Field label="ICD Codes">{ListOrDash(correct.icdCodes)}</Field>
             <Field label="CPT Codes">{ListOrDash(correct.cptCodes)}</Field>
+            <Field label="PCS Codes">{ListOrDash(correct.pcsCodes)}</Field>           {/* NEW */}
+            <Field label="HCPCS Codes">{ListOrDash(correct.hcpcsCodes)}</Field>       {/* NEW */}
+            <Field label="DRG Value">{correct.drgValue || "-"}</Field>                {/* NEW */}
+            <Field label="Modifiers">{ListOrDash(correct.modifiers)}</Field>          {/* NEW */}
             <Field label="Notes">{correct.notes || "-"}</Field>
           </div>
         )}
@@ -279,9 +291,13 @@ const StudentSummaryView = ({ result, onBack }) => {
                       <Field label="Age/DOB">{sa.ageOrDob || "-"}</Field>
                       <Field label="ICD Codes">{ListOrDash(sa.icdCodes)}</Field>
                       <Field label="CPT Codes">{ListOrDash(sa.cptCodes)}</Field>
+                      <Field label="PCS Codes">{ListOrDash(sa.pcsCodes)}</Field>         {/* NEW */}
+                      <Field label="HCPCS Codes">{ListOrDash(sa.hcpcsCodes)}</Field>     {/* NEW */}
+                      <Field label="DRG Value">{sa.drgValue || "-"}</Field>              {/* NEW */}
+                      <Field label="Modifiers">{ListOrDash(sa.modifiers)}</Field>        {/* NEW */}
                       <Field label="Notes">{sa.notes || "-"}</Field>
                     </div>
-                    {/* no known answerKey in legacy */}
+                    {/* Legacy view didn't include an explicit correct panel */}
                   </div>
                 )}
 
@@ -346,7 +362,7 @@ const SubmissionsModal = ({
 
   if (results.length === 0) {
     return <p className="no-data-text">No submissions found for this module.</p>;
-  }
+    }
 
   return (
     <ul className="student-list">
