@@ -17,6 +17,7 @@ export default function Students() {
     paidAmount: 0,
     remainingAmount: 0,
     enrolledDate: new Date().toISOString().split('T')[0],
+    expiryDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // Default: 30 days from now
     profileImage: null
   });
   const [selectedFile, setSelectedFile] = useState(null);
@@ -25,9 +26,7 @@ export default function Students() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
 
-const CATEGORY_OPTIONS = ["CPC", "CCS", "IP-DRG", "SURGERY", "Denials", "ED", "E and M"];
-
-
+  const CATEGORY_OPTIONS = ["CPC", "CCS", "IP-DRG", "SURGERY", "Denials", "ED", "E and M"];
 
   useEffect(() => {
     fetchStudents();
@@ -77,6 +76,7 @@ const CATEGORY_OPTIONS = ["CPC", "CCS", "IP-DRG", "SURGERY", "Denials", "ED", "E
         paidAmount: student.paidAmount || 0,
         remainingAmount: student.remainingAmount || 0,
         enrolledDate: student.enrolledDate ? student.enrolledDate.split('T')[0] : new Date().toISOString().split('T')[0],
+        expiryDate: student.expiryDate ? student.expiryDate.split('T')[0] : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
         profileImage: student.profileImage || null
       });
     } else {
@@ -89,6 +89,7 @@ const CATEGORY_OPTIONS = ["CPC", "CCS", "IP-DRG", "SURGERY", "Denials", "ED", "E
         paidAmount: 0,
         remainingAmount: 0,
         enrolledDate: new Date().toISOString().split('T')[0],
+        expiryDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
         profileImage: null
       });
     }
@@ -131,7 +132,7 @@ const CATEGORY_OPTIONS = ["CPC", "CCS", "IP-DRG", "SURGERY", "Denials", "ED", "E
   const handleSubmit = async (e) => {
     e.preventDefault();
     setIsSubmitting(true);
-    
+
     const formDataToSend = new FormData();
     formDataToSend.append('name', formData.name);
     formDataToSend.append('password', formData.password);
@@ -139,6 +140,7 @@ const CATEGORY_OPTIONS = ["CPC", "CCS", "IP-DRG", "SURGERY", "Denials", "ED", "E
     formDataToSend.append('paidAmount', formData.paidAmount);
     formDataToSend.append('remainingAmount', formData.remainingAmount);
     formDataToSend.append('enrolledDate', formData.enrolledDate);
+    formDataToSend.append('expiryDate', formData.expiryDate);
     if (selectedFile) {
       formDataToSend.append('profileImage', selectedFile);
     }
@@ -176,6 +178,21 @@ const CATEGORY_OPTIONS = ["CPC", "CCS", "IP-DRG", "SURGERY", "Denials", "ED", "E
       return acc;
     }, {});
 
+  // Function to format date and add expiry status
+  const formatDateWithStatus = (dateString) => {
+    if (!dateString) return "—";
+    
+    const date = new Date(dateString);
+    const now = new Date();
+    const isExpired = date < now;
+    
+    return (
+      <span className={isExpired ? "expired-date" : "active-date"}>
+        {date.toLocaleDateString()} {isExpired && "(Expired)"}
+      </span>
+    );
+  };
+
   return (
     <div className="students-container">
       <div className="students-header">
@@ -187,7 +204,7 @@ const CATEGORY_OPTIONS = ["CPC", "CCS", "IP-DRG", "SURGERY", "Denials", "ED", "E
           <FaPlus /> Add Student
         </button>
       </div>
-      
+
       {isLoading ? (
         <div className="loading-container">
           <div className="loading-spinner"></div>
@@ -201,6 +218,7 @@ const CATEGORY_OPTIONS = ["CPC", "CCS", "IP-DRG", "SURGERY", "Denials", "ED", "E
               <th>Name</th>
               <th>Course</th>
               <th>Enrolled Date</th>
+              <th>Expiry Date</th>
               <th>Actions</th>
             </tr>
           </thead>
@@ -230,7 +248,8 @@ const CATEGORY_OPTIONS = ["CPC", "CCS", "IP-DRG", "SURGERY", "Denials", "ED", "E
                     </td>  
                     <td className="student-name">{s.name}</td>  
                     <td>{s.courseName || "—"}</td>  
-                    <td>{enrolledDate}</td>  
+                    <td>{enrolledDate}</td>
+                    <td>{formatDateWithStatus(s.expiryDate)}</td>
                     <td className="actions-cell">  
                       <div className="actions-wrapper">  
                         <button  
@@ -254,7 +273,7 @@ const CATEGORY_OPTIONS = ["CPC", "CCS", "IP-DRG", "SURGERY", "Denials", "ED", "E
               })
             ) : (
               <tr>
-                <td colSpan="5" className="no-students-message">
+                <td colSpan="6" className="no-students-message">
                   No students found
                 </td>
               </tr>
@@ -289,6 +308,7 @@ const CATEGORY_OPTIONS = ["CPC", "CCS", "IP-DRG", "SURGERY", "Denials", "ED", "E
                 <div className="info-section">  
                   <p><strong>Course:</strong> {selectedStudent.courseName || "—"}</p>  
                   <p><strong>Enrolled Date:</strong> {selectedStudent.enrolledDate ? new Date(selectedStudent.enrolledDate).toLocaleDateString() : "—"}</p>  
+                  <p><strong>Expiry Date:</strong> {formatDateWithStatus(selectedStudent.expiryDate)}</p>
                   <p><strong>Paid Amount:</strong> {selectedStudent.paidAmount ?? 0}</p>  
                   <p><strong>Remaining Amount:</strong> {selectedStudent.remainingAmount ?? 0}</p>  
                   <p><strong>Overall Progress:</strong> {selectedStudent.progress?.overallProgress ?? 0}%</p>  
@@ -412,22 +432,22 @@ const CATEGORY_OPTIONS = ["CPC", "CCS", "IP-DRG", "SURGERY", "Denials", "ED", "E
                   />
                 </div>
 
-               <div className="form-group">
-  <label>Course:</label>
-  <select
-    name="courseName"
-    value={formData.courseName}
-    onChange={handleInputChange}
-    required
-  >
-    <option value="">-- Select a Category --</option>
-    {CATEGORY_OPTIONS.map((option) => (
-      <option key={option} value={option}>
-        {option}
-      </option>
-    ))}
-  </select>
-</div>
+                <div className="form-group">
+                  <label>Course:</label>
+                  <select
+                    name="courseName"
+                    value={formData.courseName}
+                    onChange={handleInputChange}
+                    required
+                  >
+                    <option value="">-- Select a Category --</option>
+                    {CATEGORY_OPTIONS.map((option) => (
+                      <option key={option} value={option}>
+                        {option}
+                      </option>
+                    ))}
+                  </select>
+                </div>
 
                 <div className="form-row">
                   <div className="form-group">
@@ -451,14 +471,27 @@ const CATEGORY_OPTIONS = ["CPC", "CCS", "IP-DRG", "SURGERY", "Denials", "ED", "E
                   </div>
                 </div>
 
-                <div className="form-group">
-                  <label>Enrolled Date:</label>
-                  <input
-                    type="date"
-                    name="enrolledDate"
-                    value={formData.enrolledDate}
-                    onChange={handleInputChange}
-                  />
+                <div className="form-row">
+                  <div className="form-group">
+                    <label>Enrolled Date:</label>
+                    <input
+                      type="date"
+                      name="enrolledDate"
+                      value={formData.enrolledDate}
+                      onChange={handleInputChange}
+                    />
+                  </div>
+
+                  <div className="form-group">
+                    <label>Expiry Date:</label>
+                    <input
+                      type="date"
+                      name="expiryDate"
+                      value={formData.expiryDate}
+                      onChange={handleInputChange}
+                      required
+                    />
+                  </div>
                 </div>
 
                 <div className="form-group">
