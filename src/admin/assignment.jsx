@@ -88,6 +88,16 @@ const EditAssignmentForm = ({ assignment, onSave, onCancel, students }) => {
         assignmentPdf: null,
         assignmentPdfUrl: sub.assignmentPdf || null
       };
+      console.log("🔍 Mapped sub-assignment:", {
+        _id: sub._id,
+        subModuleName: sub.subModuleName,
+        isDynamic: dynamicQuestions.length > 0,
+        answerPatientName: answerKey.patientName,
+        answerAgeOrDob: answerKey.ageOrDob,
+        answerIcdCodes: answerKey.icdCodes,
+        answerCptCodes: answerKey.cptCodes,
+        answerNotes: answerKey.notes
+      });
     }) || [{
       subModuleName: "",
       isDynamic: false,
@@ -247,8 +257,7 @@ const EditAssignmentForm = ({ assignment, onSave, onCancel, students }) => {
       alert(`Error updating assignment: ${err.message}`);
     }
   };
-
-  return (
+return (
     <div className="edit-assignment-form">
       <div className="edit-mode-header">
         <h3>✏️ Edit Assignment: {assignment.moduleName}</h3>
@@ -463,7 +472,8 @@ const EditAssignmentForm = ({ assignment, onSave, onCancel, students }) => {
             </div>
           </div>
         )}
- <h3>Sub-Assignments</h3>
+
+        <h3>Sub-Assignments</h3>
         {subAssignments.map((sub, idx) => (
           <div key={idx} className="sub-assignment-card">
             <div className="sub-header">
@@ -594,8 +604,7 @@ const EditAssignmentForm = ({ assignment, onSave, onCancel, students }) => {
                 </div>
               </div>
             )}
-
-            {/* Dynamic Questions */}
+  {/* Dynamic Questions */}
             {sub.isDynamic && (
               <div className="dynamic-questions">
                 <h4>Dynamic Questions 
@@ -734,7 +743,6 @@ const EditAssignmentForm = ({ assignment, onSave, onCancel, students }) => {
     </div>
   );
 };
-
 
 // --- Enhanced Student Summary View ---
 const StudentSummaryView = ({ summary, onBack, loading, error }) => {
@@ -922,7 +930,6 @@ const StudentsModal = ({ module, studentSummaryProps }) => {
     </ul>
   );
 };
-
 // --- Simplified Assignment Card ---
 const AssignmentCard = ({ assignment, onDeleteModule, onDeleteSubAssignment, onOpenStudentsModal, onEditModule, onEditSubAssignment, deleting }) => {
   const { _id: moduleId, moduleName, assignedDate, subAssignments, assignmentPdf } = assignment;
@@ -1096,7 +1103,6 @@ export default function AssignmentsManager() {
     setSummaryError(null);
   };
 
-  // UPDATED: Fetch student results from the new API endpoint
   const handleSelectStudent = async (student, moduleId) => {
     setSelectedStudent(student);
     setSummaryLoading(true);
@@ -1104,44 +1110,23 @@ export default function AssignmentsManager() {
     setStudentSummary(null);
 
     try {
-      // Use the new API endpoint for fetching student submissions
-      const res = await axios.get(`https://el-backend-ashen.vercel.app/assignments/${moduleId}/submissions`);
+      // Use the provided URL to fetch student submissions
+      const url = `https://el-backend-ashen.vercel.app/assignments/${moduleId}/submissions`;
+      const res = await axios.get(url);
       
-      // Find the specific student's results
-      const studentResults = res.data.results.find(result => 
+      // Find the specific student's result
+      const studentResult = res.data.results.find(result => 
         result.studentId === student._id
       );
       
-      if (studentResults) {
-        setStudentSummary({
-          studentName: studentResults.studentName,
-          courseName: studentResults.courseName,
-          totalCorrect: studentResults.totalCorrect,
-          totalWrong: studentResults.totalWrong,
-          overallProgress: studentResults.overallProgress,
-          submissionDate: studentResults.submissionDate,
-          // Map submitted answers to match the expected format
-          subModulesSummary: studentResults.submittedAnswers.map(answer => ({
-            subModuleName: "Sub Assignment", // You might want to map this to actual sub-assignment names
-            enteredValues: {
-              patientName: answer.patientName,
-              ageOrDob: answer.ageOrDob,
-              icdCodes: answer.icdCodes,
-              cptCodes: answer.cptCodes,
-              notes: answer.notes,
-              dynamicQuestions: answer.dynamicQuestions
-            },
-            correctCount: answer.correctCount,
-            wrongCount: answer.wrongCount,
-            progressPercent: answer.progressPercent
-          }))
-        });
+      if (studentResult) {
+        setStudentSummary(studentResult);
       } else {
-        setSummaryError("No submissions found for this student");
+        setSummaryError("No submission found for this student");
       }
     } catch (err) {
       console.error("Error fetching student submissions:", err);
-      setSummaryError("Failed to fetch student submissions");
+      setSummaryError("Failed to fetch student submission data");
     } finally {
       setSummaryLoading(false);
     }
