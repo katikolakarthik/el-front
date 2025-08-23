@@ -56,12 +56,25 @@ const Modal = ({ isOpen, onClose, title, children }) => {
 };
 
 // =======================
-// Small display helpers
+// Display helpers
 // =======================
 const Field = ({ label, children }) => (
   <p><strong>{label}:</strong> {children ?? "-"}</p>
 );
+
 const ListOrDash = (arr) => (Array.isArray(arr) && arr.length ? arr.join(", ") : "-");
+
+const hasStaticData = (obj = {}) => {
+  const hasStr = (v) => typeof v === "string" && v.trim() !== "";
+  const hasArr = (v) => Array.isArray(v) && v.length > 0;
+  return (
+    hasStr(obj.patientName) ||
+    hasStr(obj.ageOrDob) ||
+    hasArr(obj.icdCodes) ||
+    hasArr(obj.cptCodes) ||
+    hasStr(obj.notes)
+  );
+};
 
 // =======================
 // "Assignment Results" header
@@ -118,52 +131,77 @@ const StudentSummaryView = ({ result, onBack }) => {
                 <Field label="Correct Answer">{q.correctAnswer ?? q.answer ?? "-"}</Field>
               </div>
             </div>
-            <Field label="Options">{ListOrDash(q.options)}</Field>
+            {Array.isArray(q.options) && q.options.length > 0 && (
+              <Field label="Options">{q.options.join(", ")}</Field>
+            )}
           </div>
         ))}
       </div>
     );
   };
 
-  // Block for static fields in Submitted vs Correct layout
-  const StaticTwoColumn = ({ submitted = {}, correct = {} }) => (
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-      <div className="panel panel-left">
-        <h5 className="panel-title">Submitted Answers</h5>
-        <Field label="Patient Name">{submitted.patientName || "-"}</Field>
-        <Field label="Age/DOB">{submitted.ageOrDob || "-"}</Field>
-        <Field label="ICD Codes">{ListOrDash(submitted.icdCodes)}</Field>
-        <Field label="CPT Codes">{ListOrDash(submitted.cptCodes)}</Field>
-        <Field label="Notes">{submitted.notes || "-"}</Field>
+  // Static two-column panel with conditional side rendering
+  const StaticTwoColumn = ({ submitted, correct }) => {
+    const showSubmitted = hasStaticData(submitted);
+    const showCorrect = hasStaticData(correct);
+
+    if (!showSubmitted && !showCorrect) return null;
+
+    return (
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+        {showSubmitted && (
+          <div className="panel panel-left">
+            <h5 className="panel-title">Submitted Answers</h5>
+            <Field label="Patient Name">{submitted.patientName || "-"}</Field>
+            <Field label="Age/DOB">{submitted.ageOrDob || "-"}</Field>
+            <Field label="ICD Codes">{ListOrDash(submitted.icdCodes)}</Field>
+            <Field label="CPT Codes">{ListOrDash(submitted.cptCodes)}</Field>
+            <Field label="Notes">{submitted.notes || "-"}</Field>
+          </div>
+        )}
+
+        {showCorrect && (
+          <div className="panel panel-right">
+            <h5 className="panel-title">Correct Answers</h5>
+            <Field label="Patient Name">{correct.patientName || "-"}</Field>
+            <Field label="Age/DOB">{correct.ageOrDob || "-"}</Field>
+            <Field label="ICD Codes">{ListOrDash(correct.icdCodes)}</Field>
+            <Field label="CPT Codes">{ListOrDash(correct.cptCodes)}</Field>
+            <Field label="Notes">{correct.notes || "-"}</Field>
+          </div>
+        )}
       </div>
-      <div className="panel panel-right">
-        <h5 className="panel-title">Correct Answers</h5>
-        <Field label="Patient Name">{correct.patientName || "-"}</Field>
-        <Field label="Age/DOB">{correct.ageOrDob || "-"}</Field>
-        <Field label="ICD Codes">{ListOrDash(correct.icdCodes)}</Field>
-        <Field label="CPT Codes">{ListOrDash(correct.cptCodes)}</Field>
-        <Field label="Notes">{correct.notes || "-"}</Field>
-      </div>
-    </div>
-  );
+    );
+  };
 
   // Sub-module section (matches your screenshot structure)
-  const SubModuleSection = ({ title, enteredValues, answerKey, correctCount, wrongCount, progressPercent }) => (
-    <div className="submodule card">
-      <h3 className="submodule-title">{title}</h3>
+  const SubModuleSection = ({ title, enteredValues = {}, answerKey = {}, correctCount, wrongCount, progressPercent }) => {
+    const showStaticBlock = hasStaticData(enteredValues) || hasStaticData(answerKey);
+    const hasDq = Array.isArray(enteredValues.dynamicQuestions) && enteredValues.dynamicQuestions.length > 0;
 
-      <StaticTwoColumn submitted={enteredValues} correct={answerKey} />
+    // If nothing at all to show, skip the section entirely
+    if (!showStaticBlock && !hasDq) return null;
 
-      {/* Dynamic questions (if any) */}
-      <DynamicQuestions dq={enteredValues?.dynamicQuestions} />
+    return (
+      <div className="submodule card">
+        <h3 className="submodule-title">{title}</h3>
 
-      <div className="submodule-footer">
-        <span>Correct: <strong>{correctCount ?? 0}</strong></span>
-        <span>Wrong: <strong>{wrongCount ?? 0}</strong></span>
-        <span>Progress: <strong>{progressPercent ?? 0}%</strong></span>
+        {/* Static block only if there is static data on at least one side */}
+        {showStaticBlock && (
+          <StaticTwoColumn submitted={enteredValues} correct={answerKey} />
+        )}
+
+        {/* Dynamic questions (if any) */}
+        {hasDq && <DynamicQuestions dq={enteredValues.dynamicQuestions} />}
+
+        <div className="submodule-footer">
+          <span>Correct: <strong>{correctCount ?? 0}</strong></span>
+          <span>Wrong: <strong>{wrongCount ?? 0}</strong></span>
+          <span>Progress: <strong>{progressPercent ?? 0}%</strong></span>
+        </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   return (
     <div className="student-summary-container">
@@ -189,7 +227,7 @@ const StudentSummaryView = ({ result, onBack }) => {
       {/* New shape rendering */}
       {hasNewShape && (
         <>
-          {/* Parent-level (if exists and has entries) */}
+          {/* Parent-level (only if it actually has data) */}
           {parentSummary?.enteredValues && (
             <SubModuleSection
               title="Parent"
@@ -201,7 +239,7 @@ const StudentSummaryView = ({ result, onBack }) => {
             />
           )}
 
-          {/* Sub-modules */}
+          {/* Sub-modules (render only those that actually have data) */}
           {Array.isArray(subModulesSummary) && subModulesSummary.length > 0 ? (
             subModulesSummary.map((sa, idx) => (
               <SubModuleSection
@@ -224,55 +262,54 @@ const StudentSummaryView = ({ result, onBack }) => {
       {!hasNewShape && hasLegacy && (
         <>
           {submittedAnswers.length === 0 && <p className="no-data-text">No sub-assignment details found.</p>}
-          {submittedAnswers.map((sa, idx) => (
-            <div key={sa._id || idx} className="submodule card">
-              <h3 className="submodule-title">Sub-Module {sa.subAssignmentId || idx + 1}</h3>
+          {submittedAnswers.map((sa, idx) => {
+            const hasLegacyStatic = hasStaticData(sa);
+            const hasLegacyDQ = Array.isArray(sa.dynamicQuestions) && sa.dynamicQuestions.length > 0;
+            if (!hasLegacyStatic && !hasLegacyDQ) return null;
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                <div className="panel panel-left">
-                  <h5 className="panel-title">Submitted Answers</h5>
-                  <Field label="Patient Name">{sa.patientName || "-"}</Field>
-                  <Field label="Age/DOB">{sa.ageOrDob || "-"}</Field>
-                  <Field label="ICD Codes">{ListOrDash(sa.icdCodes)}</Field>
-                  <Field label="CPT Codes">{ListOrDash(sa.cptCodes)}</Field>
-                  <Field label="Notes">{sa.notes || "-"}</Field>
-                </div>
-                <div className="panel panel-right">
-                  <h5 className="panel-title">Correct Answers</h5>
-                  {/* In legacy we may not have explicit answerKey; omit or keep blank */}
-                  <Field label="Patient Name">-</Field>
-                  <Field label="Age/DOB">-</Field>
-                  <Field label="ICD Codes">-</Field>
-                  <Field label="CPT Codes">-</Field>
-                  <Field label="Notes">-</Field>
-                </div>
-              </div>
+            return (
+              <div key={sa._id || idx} className="submodule card">
+                <h3 className="submodule-title">Sub-Module {sa.subAssignmentId || idx + 1}</h3>
 
-              {/* Legacy dynamic questions */}
-              {Array.isArray(sa.dynamicQuestions) && sa.dynamicQuestions.length > 0 && (
-                <div className="mt-1">
-                  {sa.dynamicQuestions.map((q, qIdx) => (
-                    <div key={qIdx} className="dq-card">
-                      <h5 className="dq-title">Q{qIdx + 1}: {q.questionText || "-"}</h5>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                        <div><Field label="Submitted Answer">{q.submittedAnswer ?? "-"}</Field></div>
-                        <div><Field label="Correct Answer">{q.correctAnswer ?? "-"}</Field></div>
-                      </div>
-                      {Array.isArray(q.options) && q.options.length > 0 && (
-                        <Field label="Options">{q.options.join(", ")}</Field>
-                      )}
+                {hasLegacyStatic && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                    <div className="panel panel-left">
+                      <h5 className="panel-title">Submitted Answers</h5>
+                      <Field label="Patient Name">{sa.patientName || "-"}</Field>
+                      <Field label="Age/DOB">{sa.ageOrDob || "-"}</Field>
+                      <Field label="ICD Codes">{ListOrDash(sa.icdCodes)}</Field>
+                      <Field label="CPT Codes">{ListOrDash(sa.cptCodes)}</Field>
+                      <Field label="Notes">{sa.notes || "-"}</Field>
                     </div>
-                  ))}
-                </div>
-              )}
+                    {/* no known answerKey in legacy */}
+                  </div>
+                )}
 
-              <div className="submodule-footer">
-                <span>Correct: <strong>{sa.correctCount ?? 0}</strong></span>
-                <span>Wrong: <strong>{sa.wrongCount ?? 0}</strong></span>
-                <span>Progress: <strong>{sa.progressPercent ?? 0}%</strong></span>
+                {hasLegacyDQ && (
+                  <div className="mt-1">
+                    {sa.dynamicQuestions.map((q, qIdx) => (
+                      <div key={qIdx} className="dq-card">
+                        <h5 className="dq-title">Q{qIdx + 1}: {q.questionText || "-"}</h5>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                          <div><Field label="Submitted Answer">{q.submittedAnswer ?? "-"}</Field></div>
+                          <div><Field label="Correct Answer">{q.correctAnswer ?? "-"}</Field></div>
+                        </div>
+                        {Array.isArray(q.options) && q.options.length > 0 && (
+                          <Field label="Options">{q.options.join(", ")}</Field>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <div className="submodule-footer">
+                  <span>Correct: <strong>{sa.correctCount ?? 0}</strong></span>
+                  <span>Wrong: <strong>{sa.wrongCount ?? 0}</strong></span>
+                  <span>Progress: <strong>{sa.progressPercent ?? 0}%</strong></span>
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </>
       )}
     </div>
