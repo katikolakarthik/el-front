@@ -327,15 +327,20 @@ const EditAssignmentForm = ({ assignment, onSave, onCancel, loading }) => {
                   />
                 </div>
 
-              <div className="form-group">
-                <label>Age or Date of Birth</label>
-                <input
-                  type="text"
-                  placeholder="e.g. 35 or 01/01/1990"
-                  value={sub.answerAgeOrDob}
-                  onChange={(e) => handleSubChange(idx, "answerAgeOrDob", e.target.value)}
-                />
-              </div>
+                              <div className="form-group">
+                  <label>Age or Date of Birth</label>
+                  {sub.answerAgeOrDob && (
+                    <div className="current-value-indicator">
+                      <small>Current: {sub.answerAgeOrDob}</small>
+                    </div>
+                  )}
+                  <input
+                    type="text"
+                    placeholder="e.g. 35 or 01/01/1990"
+                    value={sub.answerAgeOrDob}
+                    onChange={(e) => handleSubChange(idx, "answerAgeOrDob", e.target.value)}
+                  />
+                </div>
 
                               <div className="form-group">
                   <label>ICD Codes</label>
@@ -352,64 +357,94 @@ const EditAssignmentForm = ({ assignment, onSave, onCancel, loading }) => {
                   />
                 </div>
 
-              <div className="form-group">
-                <label>CPT Codes</label>
-                <input
-                  type="text"
-                  placeholder="Comma separated CPT codes"
-                  value={sub.answerCptCodes}
-                  onChange={(e) => handleSubChange(idx, "answerCptCodes", e.target.value)}
-                />
-              </div>
+                              <div className="form-group">
+                  <label>CPT Codes</label>
+                  {sub.answerCptCodes && (
+                    <div className="current-value-indicator">
+                      <small>Current: {sub.answerCptCodes}</small>
+                    </div>
+                  )}
+                  <input
+                    type="text"
+                    placeholder="Comma separated CPT codes"
+                    value={sub.answerCptCodes}
+                    onChange={(e) => handleSubChange(idx, "answerCptCodes", e.target.value)}
+                  />
+                </div>
 
-              <div className="form-group">
-                <label>PCS Codes</label>
-                <input
-                  type="text"
-                  placeholder="Comma separated ICD-10-PCS codes"
-                  value={sub.answerPcsCodes}
-                  onChange={(e) => handleSubChange(idx, "answerPcsCodes", e.target.value)}
-                />
-              </div>
+                              <div className="form-group">
+                  <label>PCS Codes</label>
+                  {sub.answerPcsCodes && (
+                    <div className="current-value-indicator">
+                      <small>Current: {sub.answerPcsCodes}</small>
+                    </div>
+                  )}
+                  <input
+                    type="text"
+                    placeholder="Comma separated ICD-10-PCS codes"
+                    value={sub.answerPcsCodes}
+                    onChange={(e) => handleSubChange(idx, "answerPcsCodes", e.target.value)}
+                  />
+                </div>
 
-              <div className="form-group">
-                <label>HCPCS Codes</label>
-                <input
-                  type="text"
-                  placeholder="Comma separated HCPCS codes"
-                  value={sub.answerHcpcsCodes}
-                  onChange={(e) => handleSubChange(idx, "answerHcpcsCodes", e.target.value)}
-                />
-              </div>
+                              <div className="form-group">
+                  <label>HCPCS Codes</label>
+                  {sub.answerHcpcsCodes && (
+                    <div className="current-value-indicator">
+                      <small>Current: {sub.answerHcpcsCodes}</small>
+                    </div>
+                  )}
+                  <input
+                    type="text"
+                    placeholder="Comma separated HCPCS codes"
+                    value={sub.answerHcpcsCodes}
+                    onChange={(e) => handleSubChange(idx, "answerHcpcsCodes", e.target.value)}
+                  />
+                </div>
 
-              <div className="form-group">
-                <label>DRG Value</label>
-                <input
-                  type="text"
-                  placeholder="e.g. 470 or 470-xx"
-                  value={sub.answerDrgValue}
-                  onChange={(e) => handleSubChange(idx, "answerDrgValue", e.target.value)}
-                />
-              </div>
+                              <div className="form-group">
+                  <label>DRG Value</label>
+                  {sub.answerDrgValue && (
+                    <div className="current-value-indicator">
+                      <small>Current: {sub.answerDrgValue}</small>
+                    </div>
+                  )}
+                  <input
+                    type="text"
+                    placeholder="e.g. 470 or 470-xx"
+                    value={sub.answerDrgValue}
+                    onChange={(e) => handleSubChange(idx, "answerDrgValue", e.target.value)}
+                  />
+                </div>
 
-              <div className="form-group">
-                <label>Modifiers</label>
-                <input
-                  type="text"
-                  placeholder="Comma separated modifiers (e.g. 26, 59, LT)"
-                  value={sub.answerModifiers}
-                  onChange={(e) => handleSubChange(idx, "answerModifiers", e.target.value)}
-                />
-              </div>
+                              <div className="form-group">
+                  <label>Modifiers</label>
+                  {sub.answerModifiers && (
+                    <div className="current-value-indicator">
+                      <small>Current: {sub.answerModifiers}</small>
+                    </div>
+                  )}
+                  <input
+                    type="text"
+                    placeholder="Comma separated modifiers (e.g. 26, 59, LT)"
+                    value={sub.answerModifiers}
+                    onChange={(e) => handleSubChange(idx, "answerModifiers", e.target.value)}
+                  />
+                </div>
 
-              <div className="form-group">
-                <label>Notes</label>
-                <textarea
-                  placeholder="Additional notes"
-                  value={sub.answerNotes}
-                  onChange={(e) => handleSubChange(idx, "answerNotes", e.target.value)}
-                />
-              </div>
+                              <div className="form-group">
+                  <label>Notes</label>
+                  {sub.answerNotes && (
+                    <div className="current-value-indicator">
+                      <small>Current: {sub.answerNotes}</small>
+                    </div>
+                  )}
+                  <textarea
+                    placeholder="Additional notes"
+                    value={sub.answerNotes}
+                    onChange={(e) => handleSubChange(idx, "answerNotes", e.target.value)}
+                  />
+                </div>
             </div>
           )}
 
