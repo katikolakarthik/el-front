@@ -213,7 +213,7 @@ const EditAssignmentForm = ({ assignment, onSave, onCancel, loading }) => {
           type="text"
           value={formData.moduleName}
           onChange={(e) => setFormData({ ...formData, moduleName: e.target.value })}
-          placeholder="Enter module name"
+          placeholder={formData.moduleName || "Enter module name"}
           required
         />
       </div>
@@ -224,7 +224,7 @@ const EditAssignmentForm = ({ assignment, onSave, onCancel, loading }) => {
           type="text"
           value={formData.category}
           onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-          placeholder="Enter category"
+          placeholder={formData.category || "Enter category"}
           required
         />
       </div>
@@ -249,7 +249,7 @@ const EditAssignmentForm = ({ assignment, onSave, onCancel, loading }) => {
             <label>Sub-Module Name*</label>
             <input
               type="text"
-              placeholder="Enter sub-module name"
+              placeholder={sub.subModuleName || "Enter sub-module name"}
               value={sub.subModuleName}
               onChange={(e) => handleSubChange(idx, "subModuleName", e.target.value)}
               required
@@ -284,9 +284,14 @@ const EditAssignmentForm = ({ assignment, onSave, onCancel, loading }) => {
               
               <div className="form-group">
                 <label>Patient Name</label>
+                {sub.answerPatientName && (
+                  <div className="current-value-indicator">
+                    <small>Current: {sub.answerPatientName}</small>
+                  </div>
+                )}
                 <input
                   type="text"
-                  placeholder="Patient name"
+                  placeholder={sub.answerPatientName || "Enter patient name"}
                   value={sub.answerPatientName}
                   onChange={(e) => handleSubChange(idx, "answerPatientName", e.target.value)}
                 />
@@ -296,7 +301,7 @@ const EditAssignmentForm = ({ assignment, onSave, onCancel, loading }) => {
                 <label>Age or Date of Birth</label>
                 <input
                   type="text"
-                  placeholder="e.g. 35 or 01/01/1990"
+                  placeholder={sub.answerAgeOrDob || "e.g. 35 or 01/01/1990"}
                   value={sub.answerAgeOrDob}
                   onChange={(e) => handleSubChange(idx, "answerAgeOrDob", e.target.value)}
                 />
@@ -304,9 +309,14 @@ const EditAssignmentForm = ({ assignment, onSave, onCancel, loading }) => {
 
               <div className="form-group">
                 <label>ICD Codes</label>
+                {sub.answerIcdCodes && (
+                  <div className="current-value-indicator">
+                    <small>Current: {sub.answerIcdCodes}</small>
+                  </div>
+                )}
                 <input
                   type="text"
-                  placeholder="Comma separated ICD codes"
+                  placeholder={sub.answerIcdCodes || "Comma separated ICD codes"}
                   value={sub.answerIcdCodes}
                   onChange={(e) => handleSubChange(idx, "answerIcdCodes", e.target.value)}
                 />
@@ -316,7 +326,7 @@ const EditAssignmentForm = ({ assignment, onSave, onCancel, loading }) => {
                 <label>CPT Codes</label>
                 <input
                   type="text"
-                  placeholder="Comma separated CPT codes"
+                  placeholder={sub.answerCptCodes || "Comma separated CPT codes"}
                   value={sub.answerCptCodes}
                   onChange={(e) => handleSubChange(idx, "answerCptCodes", e.target.value)}
                 />
@@ -326,7 +336,7 @@ const EditAssignmentForm = ({ assignment, onSave, onCancel, loading }) => {
                 <label>PCS Codes</label>
                 <input
                   type="text"
-                  placeholder="Comma separated ICD-10-PCS codes"
+                  placeholder={sub.answerPcsCodes || "Comma separated ICD-10-PCS codes"}
                   value={sub.answerPcsCodes}
                   onChange={(e) => handleSubChange(idx, "answerPcsCodes", e.target.value)}
                 />
@@ -336,7 +346,7 @@ const EditAssignmentForm = ({ assignment, onSave, onCancel, loading }) => {
                 <label>HCPCS Codes</label>
                 <input
                   type="text"
-                  placeholder="Comma separated HCPCS codes"
+                  placeholder={sub.answerHcpcsCodes || "Comma separated HCPCS codes"}
                   value={sub.answerHcpcsCodes}
                   onChange={(e) => handleSubChange(idx, "answerHcpcsCodes", e.target.value)}
                 />
@@ -346,7 +356,7 @@ const EditAssignmentForm = ({ assignment, onSave, onCancel, loading }) => {
                 <label>DRG Value</label>
                 <input
                   type="text"
-                  placeholder="e.g. 470 or 470-xx"
+                  placeholder={sub.answerDrgValue || "e.g. 470 or 470-xx"}
                   value={sub.answerDrgValue}
                   onChange={(e) => handleSubChange(idx, "answerDrgValue", e.target.value)}
                 />
@@ -356,7 +366,7 @@ const EditAssignmentForm = ({ assignment, onSave, onCancel, loading }) => {
                 <label>Modifiers</label>
                 <input
                   type="text"
-                  placeholder="Comma separated modifiers (e.g. 26, 59, LT)"
+                  placeholder={sub.answerModifiers || "Comma separated modifiers (e.g. 26, 59, LT)"}
                   value={sub.answerModifiers}
                   onChange={(e) => handleSubChange(idx, "answerModifiers", e.target.value)}
                 />
@@ -365,7 +375,7 @@ const EditAssignmentForm = ({ assignment, onSave, onCancel, loading }) => {
               <div className="form-group">
                 <label>Notes</label>
                 <textarea
-                  placeholder="Additional notes"
+                  placeholder={sub.answerNotes || "Additional notes"}
                   value={sub.answerNotes}
                   onChange={(e) => handleSubChange(idx, "answerNotes", e.target.value)}
                 />
@@ -383,7 +393,7 @@ const EditAssignmentForm = ({ assignment, onSave, onCancel, loading }) => {
                     <label>Question Text*</label>
                     <input
                       type="text"
-                      placeholder="Enter question text"
+                      placeholder={q.questionText || "Enter question text"}
                       value={q.questionText}
                       onChange={(e) =>
                         handleDynamicQuestionChange(idx, qIdx, "questionText", e.target.value)
@@ -396,7 +406,7 @@ const EditAssignmentForm = ({ assignment, onSave, onCancel, loading }) => {
                     <label>Options (for MCQ, comma separated)</label>
                     <input
                       type="text"
-                      placeholder="Option 1, Option 2, Option 3"
+                      placeholder={q.options || "Option 1, Option 2, Option 3"}
                       value={q.options}
                       onChange={(e) =>
                         handleDynamicQuestionChange(idx, qIdx, "options", e.target.value)
@@ -408,7 +418,7 @@ const EditAssignmentForm = ({ assignment, onSave, onCancel, loading }) => {
                     <label>Correct Answer*</label>
                     <input
                       type="text"
-                      placeholder="Enter correct answer"
+                      placeholder={q.answer || "Enter correct answer"}
                       value={q.answer}
                       onChange={(e) =>
                         handleDynamicQuestionChange(idx, qIdx, "answer", e.target.value)
@@ -441,6 +451,36 @@ const EditAssignmentForm = ({ assignment, onSave, onCancel, loading }) => {
 
           <div className="form-group">
             <label>Assignment PDF</label>
+            {/* Show existing PDF if available */}
+            {assignment.subAssignments?.[idx]?.assignmentPdf && (
+              <div className="existing-pdf-info">
+                <p><strong>Current PDF:</strong></p>
+                <a 
+                  href={assignment.subAssignments[idx].assignmentPdf} 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="existing-pdf-link"
+                >
+                  📄 View Current PDF
+                </a>
+                <small>Upload a new file to replace the current PDF</small>
+              </div>
+            )}
+            {/* Show parent-level PDF if no sub-assignment PDF */}
+            {!assignment.subAssignments?.[idx]?.assignmentPdf && assignment.assignmentPdf && idx === 0 && (
+              <div className="existing-pdf-info">
+                <p><strong>Current PDF:</strong></p>
+                <a 
+                  href={assignment.assignmentPdf} 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="existing-pdf-link"
+                >
+                  📄 View Current PDF
+                </a>
+                <small>Upload a new file to replace the current PDF</small>
+              </div>
+            )}
             <input
               type="file"
               accept="application/pdf"
