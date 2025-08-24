@@ -7,8 +7,8 @@ import "./assignment.css";
 // =======================
 // API base URLs
 // =======================
-const API_BASE = "https://el-backend-ashen.vercel.app/admin"; // existing admin APIs
-const API_SUBMISSIONS_BASE = "https://el-backend-ashen.vercel.app/assignments"; // submissions API
+const API_BASE = "http://localhost:5000/admin"; // existing admin APIs
+const API_SUBMISSIONS_BASE = "http://localhost:5000/assignments"; // submissions API
 
 // =======================
 // Reusable Button

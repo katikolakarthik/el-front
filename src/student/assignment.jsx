@@ -6,7 +6,7 @@ import { Worker, Viewer, SpecialZoomLevel } from '@react-pdf-viewer/core';
 import '@react-pdf-viewer/core/lib/styles/index.css';
 import './AssignmentFlow.css';
 
-const API_BASE = 'https://el-backend-ashen.vercel.app';
+const API_BASE = 'http://localhost:5000';
 
 /* --------- Lightweight PDF viewer (no toolbar, no download) ---------- */
 const PdfReader = ({ url, height = '60vh', watermark = '' }) => {

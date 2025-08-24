@@ -2,13 +2,19 @@
 import React, { useState, useEffect } from "react";
 import { FaBars, FaTimes, FaGraduationCap, FaUserFriends, FaClipboardList, FaSignOutAlt } from "react-icons/fa";
 import { Link, useNavigate } from "react-router-dom";
+import axios from "axios";
 import AIAssistance from "./components/AIAssistance";
+import CRSWidget from "./components/CRSWidget";
+import useSessionValidation from "./hooks/useSessionValidation";
 import "./layout.css";
 
 const Layout = ({ children }) => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [user, setUser] = useState(null);
   const navigate = useNavigate();
+  
+  // Use session validation hook
+  useSessionValidation();
 
   useEffect(() => {
   const storedUser = JSON.parse(localStorage.getItem("user"));
@@ -20,10 +26,26 @@ const Layout = ({ children }) => {
   const toggleSidebar = () => setIsSidebarOpen(!isSidebarOpen);
   const closeSidebar = () => setIsSidebarOpen(false);
 
-  const handleLogout = () => {
-    localStorage.removeItem("user");
-    localStorage.removeItem("userId");
-    navigate("/login");
+  const handleLogout = async () => {
+    try {
+      const sessionId = localStorage.getItem("sessionId");
+      if (sessionId) {
+        // Call logout endpoint to invalidate session
+        await axios.post("http://localhost:5000/logout", {}, {
+          headers: {
+            'x-session-id': sessionId
+          }
+        });
+      }
+    } catch (error) {
+      console.error("Logout error:", error);
+    } finally {
+      // Clear local storage and redirect
+      localStorage.removeItem("user");
+      localStorage.removeItem("userId");
+      localStorage.removeItem("sessionId");
+      navigate("/login");
+    }
   };
 
   // Sidebar links based on role
@@ -134,6 +156,9 @@ const Layout = ({ children }) => {
         {/* Page Content */}
         <main className="content">{children}</main>
       </div>
+      
+      {/* CRS Widget - Only for Students */}
+      {user?.role === "user" && <CRSWidget />}
       
       {/* AI Assistance Widget - Only for Students */}
       {user?.role === "user" && <AIAssistance />}

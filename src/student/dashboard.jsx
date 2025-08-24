@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import axios from 'axios';
+import api from '../utils/api';
 import {
   FiBook,
   FiCheckCircle,
@@ -44,24 +44,24 @@ const StudentDashboard = () => {
 
   // --- Fetchers ---
   const fetchStats = useCallback(async (userId, courseName) => {
-    const res = await axios.get(
-      `https://el-backend-ashen.vercel.app/stats/${encodeURIComponent(courseName)}/${encodeURIComponent(userId)}`
+    const res = await api.get(
+      `/stats/${encodeURIComponent(courseName)}/${encodeURIComponent(userId)}`
     );
     if (!res.data) throw new Error('No stats data received');
     return res.data;
   }, []);
 
   const fetchPaymentDetails = useCallback(async (userId) => {
-    const res = await axios.get(
-      `https://el-backend-ashen.vercel.app/payment-details?studentId=${encodeURIComponent(userId)}`
+    const res = await api.get(
+      `/payment-details?studentId=${encodeURIComponent(userId)}`
     );
     if (!res.data) throw new Error('No payment data received');
     return res.data;
   }, []);
 
   const fetchAssignments = useCallback(async (userId) => {
-    const res = await axios.get(
-      `https://el-backend-ashen.vercel.app/submitted-assignments?studentId=${encodeURIComponent(userId)}`
+    const res = await api.get(
+      `/submitted-assignments?studentId=${encodeURIComponent(userId)}`
     );
     if (res.data?.assignments) {
       return res.data.assignments || [];
@@ -129,8 +129,8 @@ const StudentDashboard = () => {
   const fetchResultData = async (studentId, assignmentId) => {
     try {
       setResultLoading(true);
-      const response = await axios.post(
-        'https://el-backend-ashen.vercel.app/result',
+      const response = await api.post(
+        '/result',
         { studentId, assignmentId }
       );
       setResultData(response.data);

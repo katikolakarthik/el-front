@@ -14,13 +14,15 @@ const handleLogin = async (e) => {
   e.preventDefault();
 
   try {
-    const res = await axios.post("https://el-backend-ashen.vercel.app/login", {
+    const res = await axios.post("http://localhost:5000/login", {
       name,
       password,
     });
 
     if (res.data.success) {
+      // Store user data and session
       localStorage.setItem("user", JSON.stringify(res.data.user));
+      localStorage.setItem("sessionId", res.data.sessionId);
       const userId = res.data.user.id || res.data.user._id;
       localStorage.setItem("userId", userId);
 
