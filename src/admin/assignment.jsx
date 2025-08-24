@@ -94,7 +94,8 @@ const EditAssignmentForm = ({ assignment, onSave, onCancel, loading }) => {
             answer: q.answer || ""
           })) || [],
 
-          assignmentPdf: null // Will be handled separately
+          assignmentPdf: null, // Will be handled separately
+          existingPdf: sub.assignmentPdf || null // Store existing PDF URL
         })) || []
       });
 
@@ -126,7 +127,8 @@ const EditAssignmentForm = ({ assignment, onSave, onCancel, loading }) => {
               answer: q.answer || ""
             })) || [],
 
-            assignmentPdf: null
+            assignmentPdf: null,
+            existingPdf: assignment.assignmentPdf || null // Store existing parent-level PDF URL
           }]
         }));
       }
@@ -213,7 +215,7 @@ const EditAssignmentForm = ({ assignment, onSave, onCancel, loading }) => {
           type="text"
           value={formData.moduleName}
           onChange={(e) => setFormData({ ...formData, moduleName: e.target.value })}
-          placeholder={formData.moduleName || "Enter module name"}
+          placeholder="Enter module name"
           required
         />
       </div>
@@ -224,9 +226,28 @@ const EditAssignmentForm = ({ assignment, onSave, onCancel, loading }) => {
           type="text"
           value={formData.category}
           onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-          placeholder={formData.category || "Enter category"}
+          placeholder="Enter category"
           required
         />
+      </div>
+
+      {/* Current Assignment Summary */}
+      <div className="current-assignment-summary">
+        <h3>Current Assignment Summary</h3>
+        <div className="summary-grid">
+          <div className="summary-item">
+            <strong>Module Name:</strong> {formData.moduleName || "Not set"}
+          </div>
+          <div className="summary-item">
+            <strong>Category:</strong> {formData.category || "Not set"}
+          </div>
+          <div className="summary-item">
+            <strong>Total Sub-Assignments:</strong> {formData.subAssignments.length}
+          </div>
+          <div className="summary-item">
+            <strong>Type:</strong> {formData.subAssignments.length === 1 ? "Single Assignment" : "Multiple Sub-Assignments"}
+          </div>
+        </div>
       </div>
 
       <h3>Sub-Assignments</h3>
@@ -249,84 +270,93 @@ const EditAssignmentForm = ({ assignment, onSave, onCancel, loading }) => {
             <label>Sub-Module Name*</label>
             <input
               type="text"
-              placeholder={sub.subModuleName || "Enter sub-module name"}
+              placeholder="Enter sub-module name"
               value={sub.subModuleName}
               onChange={(e) => handleSubChange(idx, "subModuleName", e.target.value)}
               required
             />
           </div>
 
-          <div className="question-type-toggle">
-            <label>
-              <input
-                type="radio"
-                name={`type-${idx}`}
-                checked={!sub.isDynamic}
-                onChange={() => handleSubChange(idx, "isDynamic", false)}
-              />
-              Predefined Questions
-            </label>
-            <label>
-              <input
-                type="radio"
-                name={`type-${idx}`}
-                checked={sub.isDynamic}
-                onChange={() => handleSubChange(idx, "isDynamic", true)}
-              />
-              Dynamic Questions
-            </label>
-          </div>
+                      <div className="question-type-toggle">
+              <label>
+                <input
+                  type="radio"
+                  name={`type-${idx}`}
+                  checked={!sub.isDynamic}
+                  onChange={() => handleSubChange(idx, "isDynamic", false)}
+                />
+                Predefined Questions
+              </label>
+              <label>
+                <input
+                  type="radio"
+                  name={`type-${idx}`}
+                  checked={sub.isDynamic}
+                  onChange={() => handleSubChange(idx, "isDynamic", true)}
+                />
+                Dynamic Questions
+              </label>
+              {sub.isDynamic ? (
+                <div className="current-type-indicator">
+                  <small>Currently: Dynamic Questions ({sub.dynamicQuestions.length} questions)</small>
+                </div>
+              ) : (
+                <div className="current-type-indicator">
+                  <small>Currently: Predefined Questions</small>
+                </div>
+              )}
+            </div>
 
           {/* Predefined Answer Fields */}
           {!sub.isDynamic && (
             <div className="predefined-fields">
               <h4>Predefined Answer Key</h4>
               
-              <div className="form-group">
-                <label>Patient Name</label>
-                {sub.answerPatientName && (
-                  <div className="current-value-indicator">
-                    <small>Current: {sub.answerPatientName}</small>
-                  </div>
-                )}
-                <input
-                  type="text"
-                  placeholder={sub.answerPatientName || "Enter patient name"}
-                  value={sub.answerPatientName}
-                  onChange={(e) => handleSubChange(idx, "answerPatientName", e.target.value)}
-                />
-              </div>
+                              <div className="form-group">
+                  <label>Patient Name</label>
+                  {sub.answerPatientName && (
+                    <div className="current-value-indicator">
+                      <small>Current: {sub.answerPatientName}</small>
+                    </div>
+                  )}
+                  <input
+                    type="text"
+                    placeholder="Patient name"
+                    value={sub.answerPatientName}
+                    onChange={(e) => handleSubChange(idx, "answerPatientName", e.target.value)}
+                  />
+                </div>
 
               <div className="form-group">
                 <label>Age or Date of Birth</label>
                 <input
                   type="text"
-                  placeholder={sub.answerAgeOrDob || "e.g. 35 or 01/01/1990"}
+                  placeholder="e.g. 35 or 01/01/1990"
                   value={sub.answerAgeOrDob}
                   onChange={(e) => handleSubChange(idx, "answerAgeOrDob", e.target.value)}
                 />
               </div>
 
-              <div className="form-group">
-                <label>ICD Codes</label>
-                {sub.answerIcdCodes && (
-                  <div className="current-value-indicator">
-                    <small>Current: {sub.answerIcdCodes}</small>
-                  </div>
-                )}
-                <input
-                  type="text"
-                  placeholder={sub.answerIcdCodes || "Comma separated ICD codes"}
-                  value={sub.answerIcdCodes}
-                  onChange={(e) => handleSubChange(idx, "answerIcdCodes", e.target.value)}
-                />
-              </div>
+                              <div className="form-group">
+                  <label>ICD Codes</label>
+                  {sub.answerIcdCodes && (
+                    <div className="current-value-indicator">
+                      <small>Current: {sub.answerIcdCodes}</small>
+                    </div>
+                  )}
+                  <input
+                    type="text"
+                    placeholder="Comma separated ICD codes"
+                    value={sub.answerIcdCodes}
+                    onChange={(e) => handleSubChange(idx, "answerIcdCodes", e.target.value)}
+                  />
+                </div>
 
               <div className="form-group">
                 <label>CPT Codes</label>
                 <input
                   type="text"
-                  placeholder={sub.answerCptCodes || "Comma separated CPT codes"}
+                  placeholder="Comma separated CPT codes"
                   value={sub.answerCptCodes}
                   onChange={(e) => handleSubChange(idx, "answerCptCodes", e.target.value)}
                 />
@@ -336,7 +366,7 @@ const EditAssignmentForm = ({ assignment, onSave, onCancel, loading }) => {
                 <label>PCS Codes</label>
                 <input
                   type="text"
-                  placeholder={sub.answerPcsCodes || "Comma separated ICD-10-PCS codes"}
+                  placeholder="Comma separated ICD-10-PCS codes"
                   value={sub.answerPcsCodes}
                   onChange={(e) => handleSubChange(idx, "answerPcsCodes", e.target.value)}
                 />
@@ -346,7 +376,7 @@ const EditAssignmentForm = ({ assignment, onSave, onCancel, loading }) => {
                 <label>HCPCS Codes</label>
                 <input
                   type="text"
-                  placeholder={sub.answerHcpcsCodes || "Comma separated HCPCS codes"}
+                  placeholder="Comma separated HCPCS codes"
                   value={sub.answerHcpcsCodes}
                   onChange={(e) => handleSubChange(idx, "answerHcpcsCodes", e.target.value)}
                 />
@@ -356,7 +386,7 @@ const EditAssignmentForm = ({ assignment, onSave, onCancel, loading }) => {
                 <label>DRG Value</label>
                 <input
                   type="text"
-                  placeholder={sub.answerDrgValue || "e.g. 470 or 470-xx"}
+                  placeholder="e.g. 470 or 470-xx"
                   value={sub.answerDrgValue}
                   onChange={(e) => handleSubChange(idx, "answerDrgValue", e.target.value)}
                 />
@@ -366,7 +396,7 @@ const EditAssignmentForm = ({ assignment, onSave, onCancel, loading }) => {
                 <label>Modifiers</label>
                 <input
                   type="text"
-                  placeholder={sub.answerModifiers || "Comma separated modifiers (e.g. 26, 59, LT)"}
+                  placeholder="Comma separated modifiers (e.g. 26, 59, LT)"
                   value={sub.answerModifiers}
                   onChange={(e) => handleSubChange(idx, "answerModifiers", e.target.value)}
                 />
@@ -375,7 +405,7 @@ const EditAssignmentForm = ({ assignment, onSave, onCancel, loading }) => {
               <div className="form-group">
                 <label>Notes</label>
                 <textarea
-                  placeholder={sub.answerNotes || "Additional notes"}
+                  placeholder="Additional notes"
                   value={sub.answerNotes}
                   onChange={(e) => handleSubChange(idx, "answerNotes", e.target.value)}
                 />
@@ -383,17 +413,17 @@ const EditAssignmentForm = ({ assignment, onSave, onCancel, loading }) => {
             </div>
           )}
 
-          {/* Dynamic Questions */}
-          {sub.isDynamic && (
-            <div className="dynamic-questions">
-              <h4>Dynamic Questions</h4>
+                      {/* Dynamic Questions */}
+            {sub.isDynamic && (
+              <div className="dynamic-questions">
+                <h4>Dynamic Questions ({sub.dynamicQuestions.length} questions)</h4>
               {sub.dynamicQuestions.map((q, qIdx) => (
                 <div key={qIdx} className="question-card">
                   <div className="form-group">
                     <label>Question Text*</label>
                     <input
                       type="text"
-                      placeholder={q.questionText || "Enter question text"}
+                      placeholder="Enter question text"
                       value={q.questionText}
                       onChange={(e) =>
                         handleDynamicQuestionChange(idx, qIdx, "questionText", e.target.value)
@@ -406,7 +436,7 @@ const EditAssignmentForm = ({ assignment, onSave, onCancel, loading }) => {
                     <label>Options (for MCQ, comma separated)</label>
                     <input
                       type="text"
-                      placeholder={q.options || "Option 1, Option 2, Option 3"}
+                      placeholder="Option 1, Option 2, Option 3"
                       value={q.options}
                       onChange={(e) =>
                         handleDynamicQuestionChange(idx, qIdx, "options", e.target.value)
@@ -418,7 +448,7 @@ const EditAssignmentForm = ({ assignment, onSave, onCancel, loading }) => {
                     <label>Correct Answer*</label>
                     <input
                       type="text"
-                      placeholder={q.answer || "Enter correct answer"}
+                      placeholder="Enter correct answer"
                       value={q.answer}
                       onChange={(e) =>
                         handleDynamicQuestionChange(idx, qIdx, "answer", e.target.value)
@@ -449,45 +479,32 @@ const EditAssignmentForm = ({ assignment, onSave, onCancel, loading }) => {
             </div>
           )}
 
-          <div className="form-group">
-            <label>Assignment PDF</label>
-            {/* Show existing PDF if available */}
-            {assignment.subAssignments?.[idx]?.assignmentPdf && (
-              <div className="existing-pdf-info">
-                <p><strong>Current PDF:</strong></p>
-                <a 
-                  href={assignment.subAssignments[idx].assignmentPdf} 
-                  target="_blank" 
-                  rel="noopener noreferrer"
-                  className="existing-pdf-link"
-                >
-                  📄 View Current PDF
-                </a>
-                <small>Upload a new file to replace the current PDF</small>
-              </div>
-            )}
-            {/* Show parent-level PDF if no sub-assignment PDF */}
-            {!assignment.subAssignments?.[idx]?.assignmentPdf && assignment.assignmentPdf && idx === 0 && (
-              <div className="existing-pdf-info">
-                <p><strong>Current PDF:</strong></p>
-                <a 
-                  href={assignment.assignmentPdf} 
-                  target="_blank" 
-                  rel="noopener noreferrer"
-                  className="existing-pdf-link"
-                >
-                  📄 View Current PDF
-                </a>
-                <small>Upload a new file to replace the current PDF</small>
-              </div>
-            )}
-            <input
-              type="file"
-              accept="application/pdf"
-              onChange={(e) => handlePdfChange(idx, e.target.files[0])}
-            />
-            <small>Leave empty to keep existing PDF</small>
-          </div>
+                      <div className="form-group">
+              <label>Assignment PDF</label>
+              
+              {/* Show existing PDF if available */}
+              {sub.existingPdf && (
+                <div className="existing-pdf-info">
+                  <p><strong>Current PDF:</strong></p>
+                  <a 
+                    href={sub.existingPdf} 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="existing-pdf-link"
+                  >
+                    📄 View Current PDF
+                  </a>
+                  <small>Upload a new file to replace the current PDF</small>
+                </div>
+              )}
+              
+              <input
+                type="file"
+                accept="application/pdf"
+                onChange={(e) => handlePdfChange(idx, e.target.files[0])}
+              />
+              <small>Leave empty to keep existing PDF</small>
+            </div>
         </div>
       ))}
 

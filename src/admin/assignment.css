@@ -712,59 +712,6 @@ a:focus-visible {
   border: 1px solid #e5e7eb;
 }
 
-/* ===== EXISTING PDF INFO ===== */
-.existing-pdf-info {
-  margin-bottom: 1rem;
-  padding: 1rem;
-  background: #f0f9ff;
-  border: 1px solid #0ea5e9;
-  border-radius: 0.375rem;
-}
-
-.existing-pdf-info p {
-  margin: 0 0 0.5rem 0;
-  font-weight: 500;
-  color: #0c4a6e;
-}
-
-.existing-pdf-info .existing-pdf-link {
-  display: inline-block;
-  margin-bottom: 0.5rem;
-  padding: 0.5rem 1rem;
-  background: #0ea5e9;
-  color: white;
-  text-decoration: none;
-  border-radius: 0.25rem;
-  font-weight: 500;
-  transition: all 0.2s;
-}
-
-.existing-pdf-info .existing-pdf-link:hover {
-  background: #0284c7;
-  transform: translateY(-1px);
-}
-
-.existing-pdf-info small {
-  display: block;
-  color: #0369a1;
-  font-size: 0.875rem;
-}
-
-/* ===== CURRENT VALUE INDICATOR ===== */
-.current-value-indicator {
-  margin-bottom: 0.5rem;
-  padding: 0.25rem 0.5rem;
-  background: #f0fdf4;
-  border: 1px solid #22c55e;
-  border-radius: 0.25rem;
-  font-size: 0.875rem;
-}
-
-.current-value-indicator small {
-  color: #15803d;
-  font-weight: 500;
-}
-
 /* ===== CATEGORY GRID ===== */
 .category-grid {
   display: grid;
@@ -992,4 +939,105 @@ a:focus-visible {
 /* ===== ADD ASSIGNMENT BUTTON ===== */
 .add-assignment-btn {
   white-space: nowrap;
+}
+
+/* ===== EXISTING PDF INFO ===== */
+.existing-pdf-info {
+  margin-bottom: 1rem;
+  padding: 1rem;
+  background: #f0f9ff;
+  border: 1px solid #0ea5e9;
+  border-radius: 0.375rem;
+}
+
+.existing-pdf-info p {
+  margin: 0 0 0.5rem 0;
+  font-weight: 500;
+  color: #0c4a6e;
+}
+
+.existing-pdf-info .existing-pdf-link {
+  display: inline-block;
+  margin-bottom: 0.5rem;
+  padding: 0.5rem 1rem;
+  background: #0ea5e9;
+  color: white;
+  text-decoration: none;
+  border-radius: 0.25rem;
+  font-weight: 500;
+  transition: all 0.2s;
+}
+
+.existing-pdf-info .existing-pdf-link:hover {
+  background: #0284c7;
+  transform: translateY(-1px);
+}
+
+.existing-pdf-info small {
+  display: block;
+  color: #0369a1;
+  font-size: 0.875rem;
+}
+
+/* ===== CURRENT VALUE INDICATOR ===== */
+.current-value-indicator {
+  margin-bottom: 0.5rem;
+  padding: 0.25rem 0.5rem;
+  background: #f0fdf4;
+  border: 1px solid #22c55e;
+  border-radius: 0.25rem;
+  font-size: 0.875rem;
+}
+
+.current-value-indicator small {
+  color: #15803d;
+  font-weight: 500;
+}
+
+/* ===== CURRENT TYPE INDICATOR ===== */
+.current-type-indicator {
+  margin-top: 0.5rem;
+  padding: 0.5rem;
+  background: #fef3c7;
+  border: 1px solid #f59e0b;
+  border-radius: 0.25rem;
+  text-align: center;
+}
+
+.current-type-indicator small {
+  color: #92400e;
+  font-weight: 500;
+}
+
+/* ===== CURRENT ASSIGNMENT SUMMARY ===== */
+.current-assignment-summary {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 0.5rem;
+  padding: 1.5rem;
+  margin-bottom: 2rem;
+}
+
+.current-assignment-summary h3 {
+  margin: 0 0 1rem 0;
+  color: #1e293b;
+  font-size: 1.125rem;
+}
+
+.summary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1rem;
+}
+
+.summary-item {
+  padding: 0.75rem;
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 0.375rem;
+  font-size: 0.875rem;
+}
+
+.summary-item strong {
+  color: #475569;
 }
