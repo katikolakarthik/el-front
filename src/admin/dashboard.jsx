@@ -35,13 +35,14 @@ export default function Dashboard() {
   const [recentAssignments, setRecentAssignments] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  // category popup state
+  // Category Popup state
   const [catOpen, setCatOpen] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState(null);
   const [catLoading, setCatLoading] = useState(false);
   const [catError, setCatError] = useState("");
-  const [catData, setCatData] = useState(null); // { totals, assignments, students, ... }
-  const [detailView, setDetailView] = useState(null); // { type: 'assignment'|'student', data: {...} }
+  const [catData, setCatData] = useState(null); // API result
+  const [catSection, setCatSection] = useState(null); // null | 'assignments' | 'students'
+  const [detailView, setDetailView] = useState(null); // {type: 'assignment'|'student', data: {...}}
 
   useEffect(() => {
     const fetchData = async () => {
@@ -66,6 +67,7 @@ export default function Dashboard() {
   const openCategory = async (category) => {
     setSelectedCategory(category);
     setCatOpen(true);
+    setCatSection(null);     // step-1: show options
     setDetailView(null);
     setCatData(null);
     setCatError("");
@@ -85,12 +87,14 @@ export default function Dashboard() {
     setCatOpen(false);
     setSelectedCategory(null);
     setCatData(null);
+    setCatSection(null);
     setDetailView(null);
     setCatError("");
   };
 
-  const showAssignment = (assignment) => setDetailView({ type: "assignment", data: assignment });
-  const showStudent = (student) => setDetailView({ type: "student", data: student });
+  const showAssignment = (a) => setDetailView({ type: "assignment", data: a });
+  const showStudent = (s) => setDetailView({ type: "student", data: s });
+  const backToOptions = () => { setDetailView(null); setCatSection(null); };
   const backToList = () => setDetailView(null);
 
   if (loading) {
@@ -165,9 +169,8 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* Recent Students & Assignments */}
+      {/* Recent */}
       <div className="recent-container">
-        {/* Recent Students */}
         <div className="recent-box">
           <h3>Recent Students</h3>
           {recentStudents.length === 0 ? (
@@ -185,7 +188,6 @@ export default function Dashboard() {
           )}
         </div>
 
-        {/* Recent Assignments */}
         <div className="recent-box">
           <h3>Recent Assignments</h3>
           {recentAssignments.length === 0 ? (
@@ -196,9 +198,7 @@ export default function Dashboard() {
                 <MdAssignment className="avatar blue" />
                 <div>
                   <p className="name">{assignment.moduleName}</p>
-                  <small>
-                    {new Date(assignment.assignedDate).toLocaleDateString()}
-                  </small>
+                  <small>{new Date(assignment.assignedDate).toLocaleDateString()}</small>
                 </div>
               </div>
             ))
@@ -227,163 +227,140 @@ export default function Dashboard() {
 
         {!catLoading && !catError && catData && (
           <>
-            {!detailView && (
-              <>
-                {/* Totals */}
-                <div className="cat-totals">
-                  <div className="mini-card">
-                    <MdAssignment className="mini-ico" />
-                    <div>
-                      <small>Assignments</small>
-                      <h4>{catData?.totals?.assignments ?? 0}</h4>
-                    </div>
-                  </div>
-                  <div className="mini-card">
-                    <FaUsers className="mini-ico" />
-                    <div>
-                      <small>Students</small>
-                      <h4>{catData?.totals?.students ?? 0}</h4>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Lists */}
-                <div className="cat-lists">
-                  <div className="cat-column">
+            {/* STEP 1: Only options (Assignments / Students) */}
+            {!catSection && !detailView && (
+              <div className="cat-options">
+                <button className="option-card" onClick={() => setCatSection("assignments")}>
+                  <div className="option-icon"><MdAssignment /></div>
+                  <div className="option-meta">
                     <h4>Assignments</h4>
-                    {catData.assignments?.length ? (
-                      <ul className="click-list">
-                        {catData.assignments.map((a) => (
-                          <li key={a._id} onClick={() => showAssignment(a)}>
-                            <div className="row">
-                              <div className="left">
-                                <MdAssignment />{" "}
-                                <span className="title">{a.moduleName}</span>
-                              </div>
-                              <div className="right">
-                                <small>
-                                  {a.subAssignmentsCount ?? (a.subAssignments?.length || 0)} subs
-                                </small>
-                              </div>
-                            </div>
-                            <small className="muted">
-                              {new Date(a.assignedDate).toLocaleDateString()}
-                            </small>
-                          </li>
-                        ))}
-                      </ul>
-                    ) : (
-                      <p className="muted">No assignments</p>
-                    )}
+                    <p>{catData?.totals?.assignments ?? 0} total</p>
                   </div>
+                </button>
 
-                  <div className="cat-column">
+                <button className="option-card" onClick={() => setCatSection("students")}>
+                  <div className="option-icon"><FaUsers /></div>
+                  <div className="option-meta">
                     <h4>Students</h4>
-                    {catData.students?.length ? (
-                      <ul className="click-list">
-                        {catData.students.map((s) => (
-                          <li key={s._id} onClick={() => showStudent(s)}>
-                            <div className="row">
-                              <div className="left">
-                                <FaUserCircle />{" "}
-                                <span className="title">{s.name}</span>
-                              </div>
-                              <div className="right">
-                                <small>{s.courseName}</small>
-                              </div>
-                            </div>
-                            <small className="muted">
-                              Enrolled:{" "}
-                              {s.enrolledDate
-                                ? new Date(s.enrolledDate).toLocaleDateString()
-                                : "-"}
-                            </small>
-                          </li>
-                        ))}
-                      </ul>
-                    ) : (
-                      <p className="muted">No students</p>
-                    )}
+                    <p>{catData?.totals?.students ?? 0} total</p>
                   </div>
-                </div>
-              </>
+                </button>
+              </div>
             )}
 
-            {/* Detail Views */}
+            {/* STEP 2A: Assignments list */}
+            {catSection === "assignments" && !detailView && (
+              <div className="section-wrap">
+                <div className="section-top">
+                  <button className="back-btn" onClick={backToOptions}>← Back</button>
+                  <h4>Assignments</h4>
+                </div>
+                {catData.assignments?.length ? (
+                  <ul className="click-list">
+                    {catData.assignments.map((a) => (
+                      <li key={a._id} onClick={() => showAssignment(a)}>
+                        <div className="row">
+                          <div className="left">
+                            <MdAssignment /> <span className="title">{a.moduleName}</span>
+                          </div>
+                          <div className="right">
+                            <small>
+                              {(a.subAssignmentsCount ?? (a.subAssignments?.length || 0))} subs
+                            </small>
+                          </div>
+                        </div>
+                        <small className="muted">
+                          {new Date(a.assignedDate).toLocaleDateString()}
+                        </small>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="muted">No assignments</p>
+                )}
+              </div>
+            )}
+
+            {/* STEP 2B: Students list */}
+            {catSection === "students" && !detailView && (
+              <div className="section-wrap">
+                <div className="section-top">
+                  <button className="back-btn" onClick={backToOptions}>← Back</button>
+                  <h4>Students</h4>
+                </div>
+                {catData.students?.length ? (
+                  <ul className="click-list">
+                    {catData.students.map((s) => (
+                      <li key={s._id} onClick={() => showStudent(s)}>
+                        <div className="row">
+                          <div className="left">
+                            <FaUserCircle /> <span className="title">{s.name}</span>
+                          </div>
+                          <div className="right">
+                            <small>{s.courseName}</small>
+                          </div>
+                        </div>
+                        <small className="muted">
+                          Enrolled: {s.enrolledDate ? new Date(s.enrolledDate).toLocaleDateString() : "-"}
+                        </small>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="muted">No students</p>
+                )}
+              </div>
+            )}
+
+            {/* DETAIL: Assignment */}
             {detailView?.type === "assignment" && (
               <div className="detail-view">
-                <button className="back-btn" onClick={backToList}>← Back</button>
-                <h4>Assignment</h4>
-                <div className="kv">
-                  <span>Module</span>
-                  <b>{detailView.data.moduleName}</b>
+                <div className="section-top">
+                  <button className="back-btn" onClick={backToList}>← Back</button>
+                  <h4>Assignment</h4>
                 </div>
-                <div className="kv">
-                  <span>Category</span>
-                  <b>{detailView.data.category}</b>
-                </div>
+                <div className="kv"><span>Module</span><b>{detailView.data.moduleName}</b></div>
+                <div className="kv"><span>Category</span><b>{detailView.data.category}</b></div>
                 {detailView.data.assignmentPdf && (
                   <div className="kv">
                     <span>PDF</span>
-                    <a href={detailView.data.assignmentPdf} target="_blank" rel="noreferrer">
-                      Open PDF
-                    </a>
-                </div>
+                    <a href={detailView.data.assignmentPdf} target="_blank" rel="noreferrer">Open PDF</a>
+                  </div>
                 )}
                 <div className="kv">
                   <span>Assigned</span>
                   <b>{new Date(detailView.data.assignedDate).toLocaleString()}</b>
                 </div>
-
                 <div className="section">
                   <h5>Answer Key (parent)</h5>
                   {detailView.data.answerKey ? (
-                    <pre className="pre">
-{JSON.stringify(detailView.data.answerKey, null, 2)}
-                    </pre>
-                  ) : (
-                    <p className="muted">—</p>
-                  )}
+                    <pre className="pre">{JSON.stringify(detailView.data.answerKey, null, 2)}</pre>
+                  ) : (<p className="muted">—</p>)}
                 </div>
-
                 <div className="section">
                   <h5>Sub-assignments</h5>
                   {detailView.data.subAssignments?.length ? (
-                    <pre className="pre">
-{JSON.stringify(detailView.data.subAssignments, null, 2)}
-                    </pre>
-                  ) : (
-                    <p className="muted">None</p>
-                  )}
+                    <pre className="pre">{JSON.stringify(detailView.data.subAssignments, null, 2)}</pre>
+                  ) : (<p className="muted">None</p>)}
                 </div>
               </div>
             )}
 
+            {/* DETAIL: Student */}
             {detailView?.type === "student" && (
               <div className="detail-view">
-                <button className="back-btn" onClick={backToList}>← Back</button>
-                <h4>Student</h4>
-                <div className="kv">
-                  <span>Name</span>
-                  <b>{detailView.data.name}</b>
+                <div className="section-top">
+                  <button className="back-btn" onClick={backToList}>← Back</button>
+                  <h4>Student</h4>
                 </div>
-                <div className="kv">
-                  <span>Course</span>
-                  <b>{detailView.data.courseName}</b>
-                </div>
+                <div className="kv"><span>Name</span><b>{detailView.data.name}</b></div>
+                <div className="kv"><span>Course</span><b>{detailView.data.courseName}</b></div>
                 <div className="kv">
                   <span>Enrolled</span>
-                  <b>
-                    {detailView.data.enrolledDate
-                      ? new Date(detailView.data.enrolledDate).toLocaleString()
-                      : "-"}
-                  </b>
+                  <b>{detailView.data.enrolledDate ? new Date(detailView.data.enrolledDate).toLocaleString() : "-"}</b>
                 </div>
                 {detailView.data.expiryDate && (
-                  <div className="kv">
-                    <span>Expiry</span>
-                    <b>{new Date(detailView.data.expiryDate).toLocaleString()}</b>
-                  </div>
+                  <div className="kv"><span>Expiry</span><b>{new Date(detailView.data.expiryDate).toLocaleString()}</b></div>
                 )}
               </div>
             )}
