@@ -390,6 +390,7 @@ const AssignmentCard = ({
   onDeleteModule,
   onDeleteSubAssignment,
   onOpenSubmissionsModal,
+  onEditAssignment,
   deleting
 }) => {
   const { _id: moduleId, moduleName, assignedDate, subAssignments = [], assignmentPdf } = assignment;
@@ -399,6 +400,14 @@ const AssignmentCard = ({
       <div className="card-header">
         <h3 className="card-title">{moduleName}</h3>
         <div className="card-actions">
+          <Button
+            onClick={() => onEditAssignment(assignment)}
+            variant="secondary"
+            className="edit-btn"
+          >
+            Edit Assignment
+          </Button>
+
           <Button
             onClick={() => onDeleteModule(moduleId)}
             disabled={!!deleting[moduleId]}
@@ -617,6 +626,12 @@ export default function AssignmentsManager() {
     setShowCategoryModal(true);
   };
 
+  const handleEditAssignment = (assignment) => {
+    navigate(`/assignment/edit/${assignment._id}`, { 
+      state: { assignment } 
+    });
+  };
+
   const goToAddWithCategory = (cat) => {
     setShowCategoryModal(false);
     navigate(`/assignment/add?category=${encodeURIComponent(cat)}`);
@@ -649,6 +664,7 @@ export default function AssignmentsManager() {
             onDeleteModule={handleDeleteModule}
             onDeleteSubAssignment={handleDeleteSubAssignment}
             onOpenSubmissionsModal={openSubmissionsModal}
+            onEditAssignment={handleEditAssignment}
             deleting={deleting}
           />
         ))}

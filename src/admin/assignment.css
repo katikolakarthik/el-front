@@ -96,6 +96,15 @@
   color: white;
 }
 
+.edit-btn {
+  background: #10b981;
+  color: white;
+}
+
+.edit-btn:hover {
+  background: #059669;
+}
+
 /* ===== MODAL ===== */
 .modal-overlay {
   position: fixed;
@@ -326,6 +335,7 @@
   display: flex;
   gap: 0.5rem;
   flex-wrap: wrap;
+  align-items: center;
 }
 
 /* ===== LINKS ===== */

@@ -7,6 +7,7 @@ import Layout from "./layout.jsx";
 import Student from "./admin/student.jsx";
 import Assignment from "./admin/assignment.jsx";
 import Addassignment from "./admin/addAssignment.jsx";
+import EditAssignment from "./admin/editAssignment.jsx";
 import StudentAssignment from "./student/assignment.jsx";
 import ProtectedRoute from "./ProtectedRoute.jsx";
 import Credential from "./admin/credential.jsx";
@@ -65,6 +66,14 @@ function App() {
         element={
           <ProtectedRoute allowed={["admin", "subadmin"]}>
             <Layout><Addassignment /></Layout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/assignment/edit/:id"
+        element={
+          <ProtectedRoute allowed={["admin", "subadmin"]}>
+            <Layout><EditAssignment /></Layout>
           </ProtectedRoute>
         }
       />
