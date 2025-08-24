@@ -131,10 +131,39 @@ export default function EditAssignment() {
           console.log("⚠️ Using formatted data from dashboard - some fields may not be editable");
         }
         
-        return {
-        _id: sub._id,
-        subModuleName: sub.subModuleName || "",
-        isDynamic: !sub.answerKey || Object.keys(sub.answerKey).every(key => !sub.answerKey[key]),
+                 // Better logic to determine if this is dynamic or predefined
+         // Check if there are actual predefined answers
+         const hasPredefinedAnswers = sub.answerKey && (
+           sub.answerKey.patientName || 
+           sub.answerKey.ageOrDob || 
+           sub.answerKey.icdCodes?.length > 0 || 
+           sub.answerKey.cptCodes?.length > 0 || 
+           sub.answerKey.pcsCodes?.length > 0 || 
+           sub.answerKey.hcpcsCodes?.length > 0 || 
+           sub.answerKey.drgValue || 
+           sub.answerKey.modifiers?.length > 0 || 
+           sub.answerKey.notes
+         );
+         
+         // Check if there are dynamic questions
+         const hasDynamicQuestions = sub.dynamicQuestions && sub.dynamicQuestions.length > 0 && 
+           sub.dynamicQuestions.some(q => q.questionText || q.answer);
+         
+         // Determine type: if has predefined answers, it's predefined; if has dynamic questions, it's dynamic
+         const isDynamic = !hasPredefinedAnswers && hasDynamicQuestions;
+         
+         console.log(`🔍 Sub-assignment ${sub.subModuleName} analysis:`, {
+           hasPredefinedAnswers,
+           hasDynamicQuestions,
+           isDynamic,
+           answerKey: sub.answerKey,
+           dynamicQuestions: sub.dynamicQuestions
+         });
+         
+         return {
+           _id: sub._id,
+           subModuleName: sub.subModuleName || "",
+           isDynamic,
         
         // Predefined answer fields
         answerPatientName: sub.answerKey?.patientName || "",
@@ -163,8 +192,34 @@ export default function EditAssignment() {
     } else {
       console.log("📋 Single assignment at parent level");
       
-      // Single assignment at parent level
-      const isDynamic = !assignment.answerKey || Object.keys(assignment.answerKey).every(key => !assignment.answerKey[key]);
+             // Single assignment at parent level
+       // Better logic to determine if this is dynamic or predefined
+       const hasPredefinedAnswers = assignment.answerKey && (
+         assignment.answerKey.patientName || 
+         assignment.answerKey.ageOrDob || 
+         assignment.answerKey.icdCodes?.length > 0 || 
+         assignment.answerKey.cptCodes?.length > 0 || 
+         assignment.answerKey.pcsCodes?.length > 0 || 
+         assignment.answerKey.hcpcsCodes?.length > 0 || 
+         assignment.answerKey.drgValue || 
+         assignment.answerKey.modifiers?.length > 0 || 
+         assignment.answerKey.notes
+       );
+       
+       // Check if there are dynamic questions
+       const hasDynamicQuestions = assignment.dynamicQuestions && assignment.dynamicQuestions.length > 0 && 
+         assignment.dynamicQuestions.some(q => q.questionText || q.answer);
+       
+       // Determine type: if has predefined answers, it's predefined; if has dynamic questions, it's dynamic
+       const isDynamic = !hasPredefinedAnswers && hasDynamicQuestions;
+       
+       console.log(`🔍 Parent assignment analysis:`, {
+         hasPredefinedAnswers,
+         hasDynamicQuestions,
+         isDynamic,
+         answerKey: assignment.answerKey,
+         dynamicQuestions: assignment.dynamicQuestions
+       });
       
       console.log("📝 Parent assignment:", {
         answerKey: assignment.answerKey,
@@ -424,23 +479,102 @@ export default function EditAssignment() {
     <div className="add-assignment-container">
       <h2>Edit Assignment</h2>
       
-      {/* Debug: Show raw data for troubleshooting */}
-      <div style={{ 
-        background: '#f0f0f0', 
-        padding: '1rem', 
-        margin: '1rem 0', 
-        borderRadius: '4px',
-        fontSize: '0.9rem'
-      }}>
-        <h4>🔍 Debug Info:</h4>
-        <p><strong>Module Name:</strong> {moduleName}</p>
-        <p><strong>Category:</strong> {category}</p>
-        <p><strong>Sub-Assignments Count:</strong> {subAssignments.length}</p>
-        <p><strong>First Sub-Assignment Data:</strong></p>
-        <pre style={{ background: 'white', padding: '0.5rem', overflow: 'auto' }}>
-          {subAssignments.length > 0 ? JSON.stringify(subAssignments[0], null, 2) : 'No data'}
-        </pre>
-      </div>
+             {/* Debug: Show raw data for troubleshooting */}
+       <div style={{ 
+         background: '#f0f0f0', 
+         padding: '1rem', 
+         margin: '1rem 0', 
+         borderRadius: '4px',
+         fontSize: '0.9rem'
+       }}>
+         <h4>🔍 Debug Info:</h4>
+         <p><strong>Module Name:</strong> {moduleName}</p>
+         <p><strong>Category:</strong> {category}</p>
+         <p><strong>Sub-Assignments Count:</strong> {subAssignments.length}</p>
+         <p><strong>First Sub-Assignment Data:</strong></p>
+         <pre style={{ background: 'white', padding: '0.5rem', overflow: 'auto' }}>
+           {subAssignments.length > 0 ? JSON.stringify(subAssignments[0], null, 2) : 'No data'}
+         </pre>
+         
+         {/* Test buttons */}
+         <div style={{ marginTop: '1rem', padding: '0.5rem', background: 'white', borderRadius: '4px' }}>
+           <h5>🧪 Test Functions:</h5>
+           <button 
+             type="button" 
+             onClick={() => {
+               if (subAssignments.length > 0) {
+                 const updated = [...subAssignments];
+                 updated[0].isDynamic = false;
+                 updated[0].answerPatientName = "John Doe";
+                 updated[0].answerAgeOrDob = "35";
+                 updated[0].answerIcdCodes = "K35.90, K35.91";
+                 updated[0].answerCptCodes = "44950, 44960";
+                 updated[0].answerDrgValue = "470";
+                 updated[0].answerModifiers = "26, 59";
+                 updated[0].answerNotes = "Sample patient data for testing";
+                 setSubAssignments(updated);
+                 console.log("✅ Test data populated");
+               }
+             }}
+             style={{ 
+               background: '#007bff', 
+               color: 'white', 
+               border: 'none', 
+               padding: '0.5rem 1rem', 
+               borderRadius: '4px',
+               marginRight: '0.5rem'
+             }}
+           >
+             🧪 Populate Test Data
+           </button>
+           <button 
+             type="button" 
+             onClick={() => {
+               if (subAssignments.length > 0) {
+                 const updated = [...subAssignments];
+                 updated[0].isDynamic = true;
+                 updated[0].dynamicQuestions = [
+                   { questionText: "What is the primary diagnosis?", options: "Appendicitis, Cholecystitis, Diverticulitis", answer: "Appendicitis" },
+                   { questionText: "What is the recommended treatment?", options: "Surgery, Antibiotics, Observation", answer: "Surgery" }
+                 ];
+                 setSubAssignments(updated);
+                 console.log("✅ Test dynamic questions populated");
+               }
+             }}
+             style={{ 
+               background: '#28a745', 
+               color: 'white', 
+               border: 'none', 
+               padding: '0.5rem 1rem', 
+               borderRadius: '4px' 
+             }}
+                        >
+             🧪 Test Dynamic Questions
+           </button>
+           <button 
+             type="button" 
+             onClick={() => {
+               console.log("🔍 Current assignment data:", {
+                 moduleName,
+                 category,
+                 subAssignments,
+                 assignedStudents
+               });
+               console.log("🔍 Raw assignment from state:", assignmentFromState);
+             }}
+             style={{ 
+               background: '#ffc107', 
+               color: 'black', 
+               border: 'none', 
+               padding: '0.5rem 1rem', 
+               borderRadius: '4px',
+               marginLeft: '0.5rem'
+             }}
+           >
+             🔍 Log Current State
+           </button>
+         </div>
+       </div>
       
       <form onSubmit={handleSubmit} className="assignment-form">
         <div className="form-group">
@@ -509,26 +643,36 @@ export default function EditAssignment() {
               />
             </div>
 
-            <div className="question-type-toggle">
-              <label>
-                <input
-                  type="radio"
-                  name={`type-${idx}`}
-                  checked={!sub.isDynamic}
-                  onChange={() => handleSubChange(idx, "isDynamic", false)}
-                />
-                Predefined Questions
-              </label>
-              <label>
-                <input
-                  type="radio"
-                  name={`type-${idx}`}
-                  checked={sub.isDynamic}
-                  onChange={() => handleSubChange(idx, "isDynamic", true)}
-                />
-                Dynamic Questions
-              </label>
-            </div>
+                         <div className="question-type-toggle">
+               <div style={{ marginBottom: '0.5rem' }}>
+                 <small style={{ color: '#666' }}>
+                   Current type: <strong>{sub.isDynamic ? 'Dynamic Questions' : 'Predefined Questions'}</strong>
+                 </small>
+               </div>
+               <label>
+                 <input
+                   type="radio"
+                   name={`type-${idx}`}
+                   checked={!sub.isDynamic}
+                   onChange={() => handleSubChange(idx, "isDynamic", false)}
+                 />
+                 Predefined Questions
+               </label>
+               <label>
+                 <input
+                   type="radio"
+                   name={`type-${idx}`}
+                   checked={sub.isDynamic}
+                   onChange={() => handleSubChange(idx, "isDynamic", true)}
+                 />
+                 Dynamic Questions
+               </label>
+               <div style={{ marginTop: '0.5rem' }}>
+                 <small style={{ color: '#666' }}>
+                   💡 Tip: Choose "Predefined Questions" to edit existing answers, "Dynamic Questions" to edit questions
+                 </small>
+               </div>
+             </div>
 
             {/* Predefined Answer Fields */}
             {!sub.isDynamic && (
