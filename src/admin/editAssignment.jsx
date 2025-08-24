@@ -27,18 +27,23 @@ export default function EditAssignment() {
     }
   }, [id, assignmentFromState]);
 
+  // Debug: Log form data changes
+  useEffect(() => {
+    console.log("📊 Current form state:", {
+      moduleName,
+      category,
+      subAssignments,
+      assignedStudents
+    });
+  }, [moduleName, category, subAssignments, assignedStudents]);
+
   const fetchAssignmentData = async () => {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`https://el-backend-ashen.vercel.app/admin/assignments`);
-      if (!res.ok) throw new Error("Failed to fetch assignments");
-      const assignments = await res.json();
-      const assignment = assignments.find(a => a._id === id);
-      
-      if (!assignment) {
-        throw new Error("Assignment not found");
-      }
+      const res = await fetch(`https://el-backend-ashen.vercel.app/admin/assignments/${id}/edit`);
+      if (!res.ok) throw new Error("Failed to fetch assignment");
+      const assignment = await res.json();
       
       populateFormWithAssignment(assignment);
     } catch (err) {
@@ -49,14 +54,39 @@ export default function EditAssignment() {
   };
 
   const populateFormWithAssignment = (assignment) => {
+    console.log("🔍 Populating form with assignment:", assignment);
+    console.log("🔍 Raw assignment data structure:", {
+      moduleName: assignment.moduleName,
+      category: assignment.category,
+      answerKey: assignment.answerKey,
+      dynamicQuestions: assignment.dynamicQuestions,
+      subAssignments: assignment.subAssignments
+    });
+    
     setModuleName(assignment.moduleName || "");
     setCategory(assignment.category || "");
     setAssignedStudents(assignment.assignedStudents || []);
 
     // Handle sub-assignments
     if (assignment.subAssignments && assignment.subAssignments.length > 0) {
+      console.log("📋 Multiple sub-assignments found:", assignment.subAssignments);
+      
       // Multiple sub-assignments
-      const formattedSubs = assignment.subAssignments.map(sub => ({
+      const formattedSubs = assignment.subAssignments.map(sub => {
+        console.log(`📝 Sub-assignment ${sub.subModuleName}:`, {
+          answerKey: sub.answerKey,
+          dynamicQuestions: sub.dynamicQuestions
+        });
+        
+        // Check if we have the raw data or the formatted data
+        const hasRawData = sub.answerKey || sub.dynamicQuestions;
+        const hasFormattedData = sub.questions || sub.dynamicAnswerKey;
+        
+        if (!hasRawData && hasFormattedData) {
+          console.log("⚠️ Using formatted data from dashboard - some fields may not be editable");
+        }
+        
+        return {
         _id: sub._id,
         subModuleName: sub.subModuleName || "",
         isDynamic: !sub.answerKey || Object.keys(sub.answerKey).every(key => !sub.answerKey[key]),
@@ -82,10 +112,28 @@ export default function EditAssignment() {
 
         assignmentPdf: sub.assignmentPdf || null // Preserve existing PDF path
       }));
+      console.log("✅ Final formatted sub-assignments:", formattedSubs);
+      console.log("✅ Sample sub-assignment data:", formattedSubs[0]);
       setSubAssignments(formattedSubs);
     } else {
+      console.log("📋 Single assignment at parent level");
+      
       // Single assignment at parent level
       const isDynamic = !assignment.answerKey || Object.keys(assignment.answerKey).every(key => !assignment.answerKey[key]);
+      
+      console.log("📝 Parent assignment:", {
+        answerKey: assignment.answerKey,
+        dynamicQuestions: assignment.dynamicQuestions,
+        isDynamic
+      });
+      
+      // Check if we have the raw data or the formatted data
+      const hasRawData = assignment.answerKey || assignment.dynamicQuestions;
+      const hasFormattedData = assignment.questions || assignment.dynamicAnswerKey;
+      
+      if (!hasRawData && hasFormattedData) {
+        console.log("⚠️ Using formatted data from dashboard - some fields may not be editable");
+      }
       
       setSubAssignments([{
         _id: assignment._id,
@@ -112,7 +160,10 @@ export default function EditAssignment() {
         })) : [{ questionText: "", options: "", answer: "" }],
 
         assignmentPdf: assignment.assignmentPdf || null // Preserve existing PDF path
-      }]);
+      }];
+      
+      console.log("✅ Final formatted single assignment:", formattedSingle);
+      setSubAssignments(formattedSingle);
     }
   };
 
