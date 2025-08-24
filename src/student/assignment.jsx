@@ -1,75 +1,10 @@
-// NewAssignments.jsx
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { FiBook, FiClock } from 'react-icons/fi';
 import './AssignmentFlow.css';
 
 const API_BASE = 'https://el-backend-ashen.vercel.app';
 
-/* ---------- Reusable PDF Block (Google gview + sandbox + fullscreen) ---------- */
-function PdfBlock({ pdfUrl, height = '70vh' }) {
-  const wrapRef = useRef(null);
-
-  const toggleFullscreen = async () => {
-    const el = wrapRef.current;
-    if (!el) return;
-    try {
-      if (!document.fullscreenElement) {
-        if (el.requestFullscreen) await el.requestFullscreen();
-        else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
-      } else {
-        if (document.exitFullscreen) await document.exitFullscreen();
-        else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
-      }
-    } catch (_) {
-      // swallow
-    }
-  };
-
-  if (!pdfUrl) return null;
-
-  return (
-    <div
-      ref={wrapRef}
-      style={{
-        position: 'relative',
-        border: '1px solid #eee',
-        borderRadius: 8,
-        overflow: 'hidden',
-        background: '#fff',
-      }}
-    >
-      <iframe
-        title="Assignment PDF"
-        src={`https://docs.google.com/gview?url=${encodeURIComponent(pdfUrl)}&embedded=true`}
-        style={{ width: '100%', height }}
-        frameBorder="0"
-        // blocks downloads but allows scripts/viewer to run
-        sandbox="allow-scripts allow-same-origin allow-popups"
-      />
-      <button
-        onClick={toggleFullscreen}
-        style={{
-          position: 'absolute',
-          right: 12,
-          bottom: 12,
-          padding: '8px 12px',
-          borderRadius: 8,
-          border: 'none',
-          background: '#4f46e5',
-          color: '#fff',
-          fontWeight: 600,
-          cursor: 'pointer',
-          boxShadow: '0 4px 10px rgba(0,0,0,0.15)',
-        }}
-      >
-        Toggle Fullscreen
-      </button>
-    </div>
-  );
-}
-
-/* ---------------------------- Helpers & Component ---------------------------- */
 const normalizeAssignment = (raw) => {
   const norm = { ...raw };
 
@@ -128,7 +63,7 @@ const NewAssignments = () => {
         const userId = localStorage.getItem('userId');
         if (!userId) throw new Error('User ID not found');
 
-        // 1) Get courseName for this userId
+        // 1) Course for user
         const courseResp = await axios.get(`${API_BASE}/student/${userId}/course`);
         const courseName =
           courseResp?.data?.courseName ||
@@ -138,12 +73,11 @@ const NewAssignments = () => {
 
         if (!courseName) throw new Error('Course name not found for this student');
 
-        // 2) Fetch assignments by course/category with studentId parameter
+        // 2) Assignments by course/category
         const asgResp = await axios.get(
           `${API_BASE}/category/${encodeURIComponent(courseName)}?studentId=${userId}`
         );
 
-        // Normalize various possible shapes
         let assignmentsData = [];
         if (asgResp?.data?.success && Array.isArray(asgResp.data.assignments)) {
           assignmentsData = asgResp.data.assignments;
@@ -187,15 +121,13 @@ const NewAssignments = () => {
       if (!fromList) throw new Error('Assignment not found in list');
 
       const assignmentData = normalizeAssignment(fromList);
+
       assignmentData.isCompleted = fromList.isCompleted || false;
 
       if (fromList && Array.isArray(fromList.subAssignments)) {
         assignmentData.subAssignments = (assignmentData.subAssignments || []).map((sub) => {
           const originalSub = fromList.subAssignments.find((s) => String(s._id) === String(sub._id));
-          return {
-            ...sub,
-            isCompleted: originalSub ? originalSub.isCompleted : false,
-          };
+          return { ...sub, isCompleted: originalSub ? originalSub.isCompleted : false };
         });
       }
 
@@ -283,6 +215,7 @@ const NewAssignments = () => {
         return;
       }
 
+      // mark completed locally
       if (activeSubAssignment) {
         setActiveAssignment((prev) => {
           if (!prev) return prev;
@@ -296,6 +229,7 @@ const NewAssignments = () => {
         setActiveAssignment((prev) => (prev ? { ...prev, isCompleted: true } : prev));
       }
 
+      // refresh list (best-effort)
       try {
         const courseResp2 = await axios.get(`${API_BASE}/student/${userId}/course`);
         const courseName2 =
@@ -321,9 +255,10 @@ const NewAssignments = () => {
           setAssignments(sortByAssignedDesc(refreshedData));
         }
       } catch {
-        // ignore refresh errors
+        /* ignore */
       }
 
+      // next sub or close
       if (activeSubAssignment && (activeAssignment.subAssignments || []).length > 0) {
         const currentIndex = activeAssignment.subAssignments.findIndex(
           (sub) => String(sub._id) === String(activeSubAssignment._id)
@@ -588,11 +523,8 @@ const NewAssignments = () => {
           <button
             className="btn btn-ghost"
             onClick={() => {
-              if (activeSubAssignment) {
-                setActiveSubAssignment(null);
-              } else {
-                setActiveAssignment(null);
-              }
+              if (activeSubAssignment) setActiveSubAssignment(null);
+              else setActiveAssignment(null);
             }}
           >
             Back
@@ -602,10 +534,23 @@ const NewAssignments = () => {
           </h3>
         </div>
 
-        {/* === PDF VIEWER (Option-B) === */}
-        <PdfBlock pdfUrl={pdfUrl} height="70vh" />
+        {/* ====== PDF VIEWER (Google gview + sandbox; download blocked, scroll enabled) ====== */}
+        {pdfUrl && (
+          <iframe
+            src={`https://docs.google.com/gview?url=${encodeURIComponent(
+              pdfUrl
+            )}&embedded=true`}
+            title="Assignment PDF"
+            width="100%"
+            height="60vh"
+            frameBorder="0"
+            // Do NOT include "allow-downloads"; this blocks file downloads while keeping scroll
+            sandbox="allow-scripts allow-same-origin allow-popups"
+            style={{ width: '100%', height: '60vh', border: '1px solid #eee', borderRadius: 8, overflow: 'auto' }}
+          />
+        )}
 
-        <div className="panel" style={{ marginTop: 16 }}>
+        <div className="panel">
           <div className="panel-head">
             <h4>Questions</h4>
             {isCompleted && <span className="badge badge-success">Completed</span>}
@@ -635,8 +580,7 @@ const NewAssignments = () => {
         <div className="grid">
           {assignments.map((assignment, index) => {
             const allSubsCompleted = areAllSubAssignmentsCompleted(assignment);
-            const isParentDisabled =
-              assignment.subAssignments?.length > 0 ? allSubsCompleted : assignment.isCompleted;
+            const isParentDisabled = assignment.subAssignments?.length > 0 ? allSubsCompleted : assignment.isCompleted;
 
             return (
               <div key={index} className="card">
