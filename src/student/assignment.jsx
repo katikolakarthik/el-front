@@ -1,13 +1,81 @@
+// NewAssignments.jsx
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { FiBook, FiClock } from 'react-icons/fi';
+import { Worker, Viewer, SpecialZoomLevel } from '@react-pdf-viewer/core';
+import '@react-pdf-viewer/core/lib/styles/index.css';
 import './AssignmentFlow.css';
 
 const API_BASE = 'https://el-backend-ashen.vercel.app';
 
+/* --------- Lightweight PDF viewer (no toolbar, no download) ---------- */
+const PdfReader = ({ url, height = '60vh', watermark = '' }) => {
+  const [fileData, setFileData] = useState(null);
+  const [err, setErr] = useState('');
+
+  useEffect(() => {
+    const ctrl = new AbortController();
+    (async () => {
+      try {
+        setErr('');
+        setFileData(null);
+        // Fetch as ArrayBuffer so the browser doesn't open its native PDF viewer
+        const res = await fetch(url, { signal: ctrl.signal });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const buf = await res.arrayBuffer();
+        setFileData(new Uint8Array(buf));
+      } catch (e) {
+        if (e.name !== 'AbortError') setErr('Unable to load PDF');
+      }
+    })();
+    return () => ctrl.abort();
+  }, [url]);
+
+  return (
+    <div
+      style={{
+        position: 'relative',
+        height,
+        border: '1px solid #eee',
+        borderRadius: 8,
+        overflow: 'hidden',
+        userSelect: 'none',
+        WebkitTouchCallout: 'none',
+      }}
+      onContextMenu={(e) => e.preventDefault()}
+    >
+      {watermark && (
+        <div
+          style={{
+            pointerEvents: 'none',
+            position: 'absolute',
+            inset: 0,
+            display: 'grid',
+            placeItems: 'center',
+            opacity: 0.08,
+            fontSize: 28,
+            fontWeight: 700,
+            textAlign: 'center',
+          }}
+        >
+          {watermark}
+        </div>
+      )}
+
+      <Worker workerUrl="https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.worker.min.js">
+        {err && <div style={{ padding: 16, color: '#b00020' }}>{err}</div>}
+        {!fileData && !err && <div style={{ padding: 16 }}>Loading PDF…</div>}
+        {fileData && (
+          <Viewer fileUrl={fileData} defaultScale={SpecialZoomLevel.PageWidth} />
+        )}
+      </Worker>
+    </div>
+  );
+};
+/* --------------------------------------------------------------------- */
+
 const normalizeAssignment = (raw) => {
   const norm = { ...raw };
-
   if (Array.isArray(norm.dynamicQuestions) && norm.dynamicQuestions.length > 0) {
     norm.questions = norm.dynamicQuestions.map((q) => ({ ...q, type: 'dynamic' }));
   } else if (norm.answerKey) {
@@ -15,22 +83,14 @@ const normalizeAssignment = (raw) => {
   } else {
     norm.questions = norm.questions || [];
   }
-
   norm.subAssignments = (norm.subAssignments || []).map((sub) => {
     if (Array.isArray(sub.dynamicQuestions) && sub.dynamicQuestions.length > 0) {
-      return {
-        ...sub,
-        questions: sub.dynamicQuestions.map((q) => ({ ...q, type: 'dynamic' })),
-      };
+      return { ...sub, questions: sub.dynamicQuestions.map((q) => ({ ...q, type: 'dynamic' })) };
     } else if (sub.answerKey) {
-      return {
-        ...sub,
-        questions: [{ type: 'predefined', answerKey: sub.answerKey }],
-      };
+      return { ...sub, questions: [{ type: 'predefined', answerKey: sub.answerKey }] };
     }
     return { ...sub, questions: sub.questions || [] };
   });
-
   return norm;
 };
 
@@ -63,17 +123,13 @@ const NewAssignments = () => {
         const userId = localStorage.getItem('userId');
         if (!userId) throw new Error('User ID not found');
 
-        // 1) Course for user
         const courseResp = await axios.get(`${API_BASE}/student/${userId}/course`);
         const courseName =
           courseResp?.data?.courseName ||
           courseResp?.data?.course?.name ||
-          courseResp?.data?.course?.courseName ||
-          null;
-
+          courseResp?.data?.course?.courseName || null;
         if (!courseName) throw new Error('Course name not found for this student');
 
-        // 2) Assignments by course/category
         const asgResp = await axios.get(
           `${API_BASE}/category/${encodeURIComponent(courseName)}?studentId=${userId}`
         );
@@ -91,11 +147,8 @@ const NewAssignments = () => {
 
         setAssignments(sortByAssignedDesc(assignmentsData));
       } catch (err) {
-        if (err.response?.status === 404) {
-          setAssignments([]);
-        } else {
-          setError(err?.message || 'Failed to fetch assignments');
-        }
+        if (err.response?.status === 404) setAssignments([]);
+        else setError(err?.message || 'Failed to fetch assignments');
       } finally {
         setLoading(false);
       }
@@ -105,43 +158,28 @@ const NewAssignments = () => {
 
   const formatDate = (dateString) =>
     dateString
-      ? new Date(dateString).toLocaleDateString(undefined, {
-          year: 'numeric',
-          month: 'short',
-          day: 'numeric',
-        })
+      ? new Date(dateString).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })
       : '—';
 
   const handleStart = async (assignmentId, subAssignmentId = null) => {
     try {
       setLoading(true);
       setError(null);
-
       const fromList = assignments.find((a) => String(a._id) === String(assignmentId));
       if (!fromList) throw new Error('Assignment not found in list');
-
       const assignmentData = normalizeAssignment(fromList);
-
       assignmentData.isCompleted = fromList.isCompleted || false;
-
       if (fromList && Array.isArray(fromList.subAssignments)) {
         assignmentData.subAssignments = (assignmentData.subAssignments || []).map((sub) => {
           const originalSub = fromList.subAssignments.find((s) => String(s._id) === String(sub._id));
           return { ...sub, isCompleted: originalSub ? originalSub.isCompleted : false };
         });
       }
-
       setActiveAssignment(assignmentData);
-
       if (subAssignmentId) {
-        const sub = (assignmentData.subAssignments || []).find(
-          (s) => String(s._id) === String(subAssignmentId)
-        );
+        const sub = (assignmentData.subAssignments || []).find((s) => String(s._id) === String(subAssignmentId));
         setActiveSubAssignment(sub || null);
-      } else {
-        setActiveSubAssignment(null);
-      }
-
+      } else setActiveSubAssignment(null);
       setAnswers({});
     } catch (err) {
       setError(err.message);
@@ -150,29 +188,16 @@ const NewAssignments = () => {
     }
   };
 
-  const csvToArray = (str = '') =>
-    str
-      .split(',')
-      .map((s) => s.trim())
-      .filter(Boolean);
+  const csvToArray = (str = '') => str.split(',').map((s) => s.trim()).filter(Boolean);
 
   const handleSubmit = async () => {
     try {
       const userId = localStorage.getItem('userId');
       if (!userId) throw new Error('User ID not found');
 
-      const payload = {
-        studentId: userId,
-        assignmentId: activeAssignment._id,
-        submittedAnswers: [],
-      };
-
+      const payload = { studentId: userId, assignmentId: activeAssignment._id, submittedAnswers: [] };
       const buildDynamic = (qs, prefix = 'dynamic') =>
-        qs.map((q, idx) => ({
-          questionText: q.questionText,
-          submittedAnswer: answers[`${prefix}-${idx}`] || '',
-        }));
-
+        qs.map((q, idx) => ({ questionText: q.questionText, submittedAnswer: answers[`${prefix}-${idx}`] || '' }));
       const buildPredefinedPayload = () => ({
         patientName: answers.patientName || '',
         ageOrDob: answers.ageOrDob || '',
@@ -192,30 +217,19 @@ const NewAssignments = () => {
             dynamicQuestions: buildDynamic(activeSubAssignment.questions, 'dynamic'),
           });
         } else {
-          payload.submittedAnswers.push({
-            subAssignmentId: activeSubAssignment._id,
-            ...buildPredefinedPayload(),
-          });
+          payload.submittedAnswers.push({ subAssignmentId: activeSubAssignment._id, ...buildPredefinedPayload() });
         }
       } else {
         if ((activeAssignment.questions || []).some((q) => q.type === 'dynamic')) {
-          payload.submittedAnswers.push({
-            dynamicQuestions: buildDynamic(activeAssignment.questions, 'dynamic'),
-          });
+          payload.submittedAnswers.push({ dynamicQuestions: buildDynamic(activeAssignment.questions, 'dynamic') });
         } else {
-          payload.submittedAnswers.push({
-            ...buildPredefinedPayload(),
-          });
+          payload.submittedAnswers.push({ ...buildPredefinedPayload() });
         }
       }
 
       const res = await axios.post(`${API_BASE}/student/submit-assignment`, payload);
-      if (!res.data?.success) {
-        alert('Failed to submit assignment');
-        return;
-      }
+      if (!res.data?.success) return alert('Failed to submit assignment');
 
-      // mark completed locally
       if (activeSubAssignment) {
         setActiveAssignment((prev) => {
           if (!prev) return prev;
@@ -229,44 +243,31 @@ const NewAssignments = () => {
         setActiveAssignment((prev) => (prev ? { ...prev, isCompleted: true } : prev));
       }
 
-      // refresh list (best-effort)
+      // refresh list (best effort)
       try {
         const courseResp2 = await axios.get(`${API_BASE}/student/${userId}/course`);
         const courseName2 =
-          courseResp2?.data?.courseName ||
-          courseResp2?.data?.course?.name ||
-          courseResp2?.data?.course?.courseName ||
-          null;
-
+          courseResp2?.data?.courseName || courseResp2?.data?.course?.name || courseResp2?.data?.course?.courseName;
         if (courseName2) {
           const asgResp2 = await axios.get(
             `${API_BASE}/category/${encodeURIComponent(courseName2)}?studentId=${userId}`
           );
-          let refreshedData = [];
-          if (asgResp2?.data?.success && Array.isArray(asgResp2.data.assignments)) {
-            refreshedData = asgResp2.data.assignments;
-          } else if (Array.isArray(asgResp2?.data)) {
-            refreshedData = asgResp2.data;
-          } else if (Array.isArray(asgResp2?.data?.data)) {
-            refreshedData = asgResp2.data.data;
-          } else if (asgResp2?.data?.assignment) {
-            refreshedData = [asgResp2.data.assignment];
-          }
-          setAssignments(sortByAssignedDesc(refreshedData));
+          let refreshed = [];
+          if (asgResp2?.data?.success && Array.isArray(asgResp2.data.assignments)) refreshed = asgResp2.data.assignments;
+          else if (Array.isArray(asgResp2?.data)) refreshed = asgResp2.data;
+          else if (Array.isArray(asgResp2?.data?.data)) refreshed = asgResp2.data.data;
+          else if (asgResp2?.data?.assignment) refreshed = [asgResp2.data.assignment];
+          setAssignments(sortByAssignedDesc(refreshed));
         }
-      } catch {
-        /* ignore */
-      }
+      } catch {}
 
-      // next sub or close
       if (activeSubAssignment && (activeAssignment.subAssignments || []).length > 0) {
-        const currentIndex = activeAssignment.subAssignments.findIndex(
+        const idx = activeAssignment.subAssignments.findIndex(
           (sub) => String(sub._id) === String(activeSubAssignment._id)
         );
-        if (currentIndex < activeAssignment.subAssignments.length - 1) {
+        if (idx < activeAssignment.subAssignments.length - 1) {
           alert('Assignment submitted successfully..wait for next');
-          const nextSub = activeAssignment.subAssignments[currentIndex + 1];
-          setActiveSubAssignment(nextSub);
+          setActiveSubAssignment(activeAssignment.subAssignments[idx + 1]);
         } else {
           alert('Assignment completed successfully!');
           setActiveSubAssignment(null);
@@ -275,20 +276,16 @@ const NewAssignments = () => {
         alert('Assignment submitted successfully!');
         setActiveAssignment(null);
       }
-
       setAnswers({});
     } catch (err) {
       alert('Error: ' + err.message);
     }
   };
 
-  const handleAnswerChange = (key, value) => {
-    setAnswers((prev) => ({ ...prev, [key]: value }));
-  };
+  const handleAnswerChange = (key, value) => setAnswers((p) => ({ ...p, [key]: value }));
 
   const renderQuestions = (target) => {
     if (!target) return null;
-
     const qs = target.questions || [];
     const dynamicQs = qs.filter((q) => q.type === 'dynamic');
 
@@ -450,11 +447,7 @@ const NewAssignments = () => {
             <FiBook className="icon" /> New Assignments
           </h2>
         </div>
-        <div className="skeleton-list">
-          {[...Array(3)].map((_, i) => (
-            <div className="skeleton-card" key={i} />
-          ))}
-        </div>
+        <div className="skeleton-list">{[...Array(3)].map((_, i) => <div className="skeleton-card" key={i} />)}</div>
       </div>
     );
   }
@@ -463,9 +456,7 @@ const NewAssignments = () => {
     return (
       <div className="container">
         <div className="empty-state error">
-          <div className="empty-icon">
-            <FiClock />
-          </div>
+          <div className="empty-icon"><FiClock /></div>
           <div>
             <h3>Something went wrong</h3>
             <p>{error}</p>
@@ -481,9 +472,7 @@ const NewAssignments = () => {
       return (
         <div className="container">
           <div className="page-header">
-            <button className="btn btn-ghost" onClick={() => setActiveAssignment(null)}>
-              Back
-            </button>
+            <button className="btn btn-ghost" onClick={() => setActiveAssignment(null)}>Back</button>
             <h3 className="title-sm">{activeAssignment.moduleName}</h3>
           </div>
 
@@ -496,13 +485,8 @@ const NewAssignments = () => {
                     {sub.isCompleted ? 'Completed' : 'Pending'}
                   </span>
                 </div>
-
                 <div className="card-actions">
-                  <button
-                    className="btn"
-                    onClick={() => handleStart(activeAssignment._id, sub._id)}
-                    disabled={sub.isCompleted}
-                  >
+                  <button className="btn" onClick={() => handleStart(activeAssignment._id, sub._id)} disabled={sub.isCompleted}>
                     {sub.isCompleted ? 'Completed' : 'Start'}
                   </button>
                 </div>
@@ -522,31 +506,19 @@ const NewAssignments = () => {
         <div className="page-header">
           <button
             className="btn btn-ghost"
-            onClick={() => {
-              if (activeSubAssignment) setActiveSubAssignment(null);
-              else setActiveAssignment(null);
-            }}
+            onClick={() => (activeSubAssignment ? setActiveSubAssignment(null) : setActiveAssignment(null))}
           >
             Back
           </button>
-          <h3 className="title-sm">
-            {activeSubAssignment?.subModuleName || activeAssignment.moduleName}
-          </h3>
+          <h3 className="title-sm">{activeSubAssignment?.subModuleName || activeAssignment.moduleName}</h3>
         </div>
 
-        {/* ====== PDF VIEWER (Google gview + sandbox; download blocked, scroll enabled) ====== */}
+        {/* PDF VIEWER (no download UI) */}
         {pdfUrl && (
-          <iframe
-            src={`https://docs.google.com/gview?url=${encodeURIComponent(
-              pdfUrl
-            )}&embedded=true`}
-            title="Assignment PDF"
-            width="100%"
+          <PdfReader
+            url={pdfUrl}           // works with Cloudinary
             height="60vh"
-            frameBorder="0"
-            // Do NOT include "allow-downloads"; this blocks file downloads while keeping scroll
-            sandbox="allow-scripts allow-same-origin allow-popups"
-            style={{ width: '100%', height: '60vh', border: '1px solid #eee', borderRadius: 8, overflow: 'auto' }}
+            watermark=""           // add a message if you want
           />
         )}
 
@@ -556,7 +528,6 @@ const NewAssignments = () => {
             {isCompleted && <span className="badge badge-success">Completed</span>}
           </div>
           <div className="panel-body">{renderQuestions(questionSource)}</div>
-
           <div className="panel-actions">
             <button className="btn btn-primary" onClick={handleSubmit} disabled={isCompleted}>
               {isCompleted ? 'Already Submitted' : 'Submit Assignment'}
@@ -571,9 +542,7 @@ const NewAssignments = () => {
   return (
     <div className="container">
       <div className="page-header">
-        <h2 className="title">
-          <FiBook className="icon" /> New Assignments
-        </h2>
+        <h2 className="title"><FiBook className="icon" /> New Assignments</h2>
       </div>
 
       {assignments.length > 0 ? (
@@ -600,24 +569,14 @@ const NewAssignments = () => {
                   <div className="meta">
                     <span className="meta-key">Progress</span>
                     <span className="meta-val">
-                      {assignment.subAssignments.filter((sub) => sub.isCompleted).length} /{' '}
-                      {assignment.subAssignments.length}{' '}
-                      completed
+                      {assignment.subAssignments.filter((sub) => sub.isCompleted).length} / {assignment.subAssignments.length} completed
                     </span>
                   </div>
                 )}
 
                 <div className="card-actions">
-                  <button
-                    className="btn"
-                    onClick={() => handleStart(assignment._id)}
-                    disabled={isParentDisabled}
-                  >
-                    {isParentDisabled
-                      ? 'Completed'
-                      : assignment.subAssignments?.length > 0
-                      ? 'View Sections'
-                      : 'Start'}
+                  <button className="btn" onClick={() => handleStart(assignment._id)} disabled={isParentDisabled}>
+                    {isParentDisabled ? 'Completed' : assignment.subAssignments?.length > 0 ? 'View Sections' : 'Start'}
                   </button>
                 </div>
               </div>
@@ -626,9 +585,7 @@ const NewAssignments = () => {
         </div>
       ) : (
         <div className="empty-state">
-          <div className="empty-icon">
-            <FiClock />
-          </div>
+          <div className="empty-icon"><FiClock /></div>
           <div>
             <h3>No assignments are available</h3>
             <p className="muted">Please check back later for new assignments.</p>
