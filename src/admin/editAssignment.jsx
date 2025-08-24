@@ -18,9 +18,17 @@ export default function EditAssignment() {
   const assignmentFromState = location.state?.assignment;
 
   useEffect(() => {
-    // Always fetch fresh data from backend to ensure we get raw data structure
+    // Try to fetch fresh data from backend first
     fetchAssignmentData();
   }, [id]);
+
+  // Fallback: if backend fetch fails, try to use navigation state data
+  useEffect(() => {
+    if (assignmentFromState && subAssignments.length === 0 && !loading && !error) {
+      console.log("🔄 Fallback: Using navigation state data");
+      populateFormWithAssignment(assignmentFromState);
+    }
+  }, [assignmentFromState, subAssignments.length, loading, error]);
 
   // Debug: Log form data changes
   useEffect(() => {
@@ -199,8 +207,35 @@ export default function EditAssignment() {
         assignmentPdf: assignment.assignmentPdf || null // Preserve existing PDF path
       }];
       
-      console.log("✅ Final formatted single assignment:", formattedSingle);
-      setSubAssignments(formattedSingle);
+             const formattedSingle = [{
+         _id: assignment._id,
+         subModuleName: assignment.moduleName || "",
+         isDynamic,
+         
+         // Predefined answer fields
+         answerPatientName: assignment.answerKey?.patientName || "",
+         answerAgeOrDob: assignment.answerKey?.ageOrDob || "",
+         answerIcdCodes: Array.isArray(assignment.answerKey?.icdCodes) ? assignment.answerKey.icdCodes.join(", ") : "",
+         answerCptCodes: Array.isArray(assignment.answerKey?.cptCodes) ? assignment.answerKey.cptCodes.join(", ") : "",
+         answerPcsCodes: Array.isArray(assignment.answerKey?.pcsCodes) ? assignment.answerKey.pcsCodes.join(", ") : "",
+         answerHcpcsCodes: Array.isArray(assignment.answerKey?.hcpcsCodes) ? assignment.answerKey.hcpcsCodes.join(", ") : "",
+         answerDrgValue: assignment.answerKey?.drgValue || "",
+         answerModifiers: Array.isArray(assignment.answerKey?.modifiers) ? assignment.answerKey.modifiers.join(", ") : "",
+         answerNotes: assignment.answerKey?.notes || "",
+
+         // Dynamic questions
+         dynamicQuestions: assignment.dynamicQuestions ? assignment.dynamicQuestions.map(q => ({
+           _id: q._id,
+           questionText: q.questionText || "",
+           options: Array.isArray(q.options) ? q.options.join(", ") : "",
+           answer: q.answer || ""
+         })) : [{ questionText: "", options: "", answer: "" }],
+
+         assignmentPdf: assignment.assignmentPdf || null // Preserve existing PDF path
+       }];
+       
+       console.log("✅ Final formatted single assignment:", formattedSingle);
+       setSubAssignments(formattedSingle);
     }
   };
 
@@ -388,6 +423,25 @@ export default function EditAssignment() {
   return (
     <div className="add-assignment-container">
       <h2>Edit Assignment</h2>
+      
+      {/* Debug: Show raw data for troubleshooting */}
+      <div style={{ 
+        background: '#f0f0f0', 
+        padding: '1rem', 
+        margin: '1rem 0', 
+        borderRadius: '4px',
+        fontSize: '0.9rem'
+      }}>
+        <h4>🔍 Debug Info:</h4>
+        <p><strong>Module Name:</strong> {moduleName}</p>
+        <p><strong>Category:</strong> {category}</p>
+        <p><strong>Sub-Assignments Count:</strong> {subAssignments.length}</p>
+        <p><strong>First Sub-Assignment Data:</strong></p>
+        <pre style={{ background: 'white', padding: '0.5rem', overflow: 'auto' }}>
+          {subAssignments.length > 0 ? JSON.stringify(subAssignments[0], null, 2) : 'No data'}
+        </pre>
+      </div>
+      
       <form onSubmit={handleSubmit} className="assignment-form">
         <div className="form-group">
           <label>Category*</label>
