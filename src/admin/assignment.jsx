@@ -56,6 +56,420 @@ const Modal = ({ isOpen, onClose, title, children }) => {
 };
 
 // =======================
+// Edit Assignment Form
+// =======================
+const EditAssignmentForm = ({ assignment, onSave, onCancel, loading }) => {
+  const [formData, setFormData] = useState({
+    moduleName: "",
+    category: "",
+    subAssignments: []
+  });
+
+  useEffect(() => {
+    if (assignment) {
+      setFormData({
+        moduleName: assignment.moduleName || "",
+        category: assignment.category || "",
+        subAssignments: assignment.subAssignments?.map(sub => ({
+          _id: sub._id,
+          subModuleName: sub.subModuleName || "",
+          isDynamic: !!(sub.dynamicQuestions && sub.dynamicQuestions.length > 0),
+          
+          // Predefined answer fields
+          answerPatientName: sub.answerKey?.patientName || "",
+          answerAgeOrDob: sub.answerKey?.ageOrDob || "",
+          answerIcdCodes: sub.answerKey?.icdCodes?.join(", ") || "",
+          answerCptCodes: sub.answerKey?.cptCodes?.join(", ") || "",
+          answerPcsCodes: sub.answerKey?.pcsCodes?.join(", ") || "",
+          answerHcpcsCodes: sub.answerKey?.hcpcsCodes?.join(", ") || "",
+          answerDrgValue: sub.answerKey?.drgValue || "",
+          answerModifiers: sub.answerKey?.modifiers?.join(", ") || "",
+          answerNotes: sub.answerKey?.notes || "",
+
+          // Dynamic questions
+          dynamicQuestions: sub.dynamicQuestions?.map(q => ({
+            _id: q._id,
+            questionText: q.questionText || "",
+            options: q.options?.join(", ") || "",
+            answer: q.answer || ""
+          })) || [],
+
+          assignmentPdf: null // Will be handled separately
+        })) || []
+      });
+
+      // Handle parent-level assignment (single assignment)
+      if (!assignment.subAssignments || assignment.subAssignments.length === 0) {
+        setFormData(prev => ({
+          ...prev,
+          subAssignments: [{
+            _id: null,
+            subModuleName: assignment.moduleName || "",
+            isDynamic: !!(assignment.dynamicQuestions && assignment.dynamicQuestions.length > 0),
+            
+            // Predefined answer fields
+            answerPatientName: assignment.answerKey?.patientName || "",
+            answerAgeOrDob: assignment.answerKey?.ageOrDob || "",
+            answerIcdCodes: assignment.answerKey?.icdCodes?.join(", ") || "",
+            answerCptCodes: assignment.answerKey?.cptCodes?.join(", ") || "",
+            answerPcsCodes: assignment.answerKey?.pcsCodes?.join(", ") || "",
+            answerHcpcsCodes: assignment.answerKey?.hcpcsCodes?.join(", ") || "",
+            answerDrgValue: assignment.answerKey?.drgValue || "",
+            answerModifiers: assignment.answerKey?.modifiers?.join(", ") || "",
+            answerNotes: assignment.answerKey?.notes || "",
+
+            // Dynamic questions
+            dynamicQuestions: assignment.dynamicQuestions?.map(q => ({
+              _id: q._id,
+              questionText: q.questionText || "",
+              options: q.options?.join(", ") || "",
+              answer: q.answer || ""
+            })) || [],
+
+            assignmentPdf: null
+          }]
+        }));
+      }
+    }
+  }, [assignment]);
+
+  const handleSubChange = (index, field, value) => {
+    const updated = [...formData.subAssignments];
+    updated[index][field] = value;
+    setFormData({ ...formData, subAssignments: updated });
+  };
+
+  const handleDynamicQuestionChange = (subIndex, qIndex, field, value) => {
+    const updated = [...formData.subAssignments];
+    updated[subIndex].dynamicQuestions[qIndex][field] = value;
+    setFormData({ ...formData, subAssignments: updated });
+  };
+
+  const addDynamicQuestion = (subIndex) => {
+    const updated = [...formData.subAssignments];
+    updated[subIndex].dynamicQuestions.push({
+      questionText: "",
+      options: "",
+      answer: ""
+    });
+    setFormData({ ...formData, subAssignments: updated });
+  };
+
+  const removeDynamicQuestion = (subIndex, qIndex) => {
+    const updated = [...formData.subAssignments];
+    updated[subIndex].dynamicQuestions.splice(qIndex, 1);
+    setFormData({ ...formData, subAssignments: updated });
+  };
+
+  const handlePdfChange = (index, file) => {
+    const updated = [...formData.subAssignments];
+    updated[index].assignmentPdf = file;
+    setFormData({ ...formData, subAssignments: updated });
+  };
+
+  const addSubAssignment = () => {
+    setFormData({
+      ...formData,
+      subAssignments: [
+        ...formData.subAssignments,
+        {
+          _id: null,
+          subModuleName: "",
+          isDynamic: false,
+          answerPatientName: "",
+          answerAgeOrDob: "",
+          answerIcdCodes: "",
+          answerCptCodes: "",
+          answerPcsCodes: "",
+          answerHcpcsCodes: "",
+          answerDrgValue: "",
+          answerModifiers: "",
+          answerNotes: "",
+          dynamicQuestions: [{ questionText: "", options: "", answer: "" }],
+          assignmentPdf: null
+        }
+      ]
+    });
+  };
+
+  const removeSubAssignment = (index) => {
+    if (formData.subAssignments.length > 1) {
+      const updated = [...formData.subAssignments];
+      updated.splice(index, 1);
+      setFormData({ ...formData, subAssignments: updated });
+    }
+  };
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    onSave(formData);
+  };
+
+  return (
+    <form onSubmit={handleSubmit} className="edit-assignment-form">
+      <div className="form-group">
+        <label>Module Name*</label>
+        <input
+          type="text"
+          value={formData.moduleName}
+          onChange={(e) => setFormData({ ...formData, moduleName: e.target.value })}
+          placeholder="Enter module name"
+          required
+        />
+      </div>
+
+      <div className="form-group">
+        <label>Category*</label>
+        <input
+          type="text"
+          value={formData.category}
+          onChange={(e) => setFormData({ ...formData, category: e.target.value })}
+          placeholder="Enter category"
+          required
+        />
+      </div>
+
+      <h3>Sub-Assignments</h3>
+      {formData.subAssignments.map((sub, idx) => (
+        <div key={idx} className="sub-assignment-card">
+          <div className="sub-header">
+            <h4>Sub-Assignment #{idx + 1}</h4>
+            {formData.subAssignments.length > 1 && (
+              <button
+                type="button"
+                onClick={() => removeSubAssignment(idx)}
+                className="remove-btn"
+              >
+                Remove
+              </button>
+            )}
+          </div>
+
+          <div className="form-group">
+            <label>Sub-Module Name*</label>
+            <input
+              type="text"
+              placeholder="Enter sub-module name"
+              value={sub.subModuleName}
+              onChange={(e) => handleSubChange(idx, "subModuleName", e.target.value)}
+              required
+            />
+          </div>
+
+          <div className="question-type-toggle">
+            <label>
+              <input
+                type="radio"
+                name={`type-${idx}`}
+                checked={!sub.isDynamic}
+                onChange={() => handleSubChange(idx, "isDynamic", false)}
+              />
+              Predefined Questions
+            </label>
+            <label>
+              <input
+                type="radio"
+                name={`type-${idx}`}
+                checked={sub.isDynamic}
+                onChange={() => handleSubChange(idx, "isDynamic", true)}
+              />
+              Dynamic Questions
+            </label>
+          </div>
+
+          {/* Predefined Answer Fields */}
+          {!sub.isDynamic && (
+            <div className="predefined-fields">
+              <h4>Predefined Answer Key</h4>
+              
+              <div className="form-group">
+                <label>Patient Name</label>
+                <input
+                  type="text"
+                  placeholder="Patient name"
+                  value={sub.answerPatientName}
+                  onChange={(e) => handleSubChange(idx, "answerPatientName", e.target.value)}
+                />
+              </div>
+
+              <div className="form-group">
+                <label>Age or Date of Birth</label>
+                <input
+                  type="text"
+                  placeholder="e.g. 35 or 01/01/1990"
+                  value={sub.answerAgeOrDob}
+                  onChange={(e) => handleSubChange(idx, "answerAgeOrDob", e.target.value)}
+                />
+              </div>
+
+              <div className="form-group">
+                <label>ICD Codes</label>
+                <input
+                  type="text"
+                  placeholder="Comma separated ICD codes"
+                  value={sub.answerIcdCodes}
+                  onChange={(e) => handleSubChange(idx, "answerIcdCodes", e.target.value)}
+                />
+              </div>
+
+              <div className="form-group">
+                <label>CPT Codes</label>
+                <input
+                  type="text"
+                  placeholder="Comma separated CPT codes"
+                  value={sub.answerCptCodes}
+                  onChange={(e) => handleSubChange(idx, "answerCptCodes", e.target.value)}
+                />
+              </div>
+
+              <div className="form-group">
+                <label>PCS Codes</label>
+                <input
+                  type="text"
+                  placeholder="Comma separated ICD-10-PCS codes"
+                  value={sub.answerPcsCodes}
+                  onChange={(e) => handleSubChange(idx, "answerPcsCodes", e.target.value)}
+                />
+              </div>
+
+              <div className="form-group">
+                <label>HCPCS Codes</label>
+                <input
+                  type="text"
+                  placeholder="Comma separated HCPCS codes"
+                  value={sub.answerHcpcsCodes}
+                  onChange={(e) => handleSubChange(idx, "answerHcpcsCodes", e.target.value)}
+                />
+              </div>
+
+              <div className="form-group">
+                <label>DRG Value</label>
+                <input
+                  type="text"
+                  placeholder="e.g. 470 or 470-xx"
+                  value={sub.answerDrgValue}
+                  onChange={(e) => handleSubChange(idx, "answerDrgValue", e.target.value)}
+                />
+              </div>
+
+              <div className="form-group">
+                <label>Modifiers</label>
+                <input
+                  type="text"
+                  placeholder="Comma separated modifiers (e.g. 26, 59, LT)"
+                  value={sub.answerModifiers}
+                  onChange={(e) => handleSubChange(idx, "answerModifiers", e.target.value)}
+                />
+              </div>
+
+              <div className="form-group">
+                <label>Notes</label>
+                <textarea
+                  placeholder="Additional notes"
+                  value={sub.answerNotes}
+                  onChange={(e) => handleSubChange(idx, "answerNotes", e.target.value)}
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Dynamic Questions */}
+          {sub.isDynamic && (
+            <div className="dynamic-questions">
+              <h4>Dynamic Questions</h4>
+              {sub.dynamicQuestions.map((q, qIdx) => (
+                <div key={qIdx} className="question-card">
+                  <div className="form-group">
+                    <label>Question Text*</label>
+                    <input
+                      type="text"
+                      placeholder="Enter question text"
+                      value={q.questionText}
+                      onChange={(e) =>
+                        handleDynamicQuestionChange(idx, qIdx, "questionText", e.target.value)
+                      }
+                      required
+                    />
+                  </div>
+
+                  <div className="form-group">
+                    <label>Options (for MCQ, comma separated)</label>
+                    <input
+                      type="text"
+                      placeholder="Option 1, Option 2, Option 3"
+                      value={q.options}
+                      onChange={(e) =>
+                        handleDynamicQuestionChange(idx, qIdx, "options", e.target.value)
+                      }
+                    />
+                  </div>
+
+                  <div className="form-group">
+                    <label>Correct Answer*</label>
+                    <input
+                      type="text"
+                      placeholder="Enter correct answer"
+                      value={q.answer}
+                      onChange={(e) =>
+                        handleDynamicQuestionChange(idx, qIdx, "answer", e.target.value)
+                      }
+                      required
+                    />
+                  </div>
+
+                  {sub.dynamicQuestions.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => removeDynamicQuestion(idx, qIdx)}
+                      className="remove-question-btn"
+                    >
+                      Remove Question
+                    </button>
+                  )}
+                </div>
+              ))}
+
+              <button
+                type="button"
+                onClick={() => addDynamicQuestion(idx)}
+                className="add-question-btn"
+              >
+                + Add Another Question
+              </button>
+            </div>
+          )}
+
+          <div className="form-group">
+            <label>Assignment PDF</label>
+            <input
+              type="file"
+              accept="application/pdf"
+              onChange={(e) => handlePdfChange(idx, e.target.files[0])}
+            />
+            <small>Leave empty to keep existing PDF</small>
+          </div>
+        </div>
+      ))}
+
+      <div className="form-actions">
+        <button type="button" onClick={addSubAssignment} className="add-sub-btn">
+          + Add Sub-Assignment
+        </button>
+
+        <div className="submit-actions">
+          <button type="button" onClick={onCancel} className="cancel-btn">
+            Cancel
+          </button>
+          <button type="submit" className="submit-btn" disabled={loading}>
+            {loading ? "Updating..." : "Update Assignment"}
+          </button>
+        </div>
+      </div>
+    </form>
+  );
+};
+
+// =======================
 // Display helpers
 // =======================
 const Field = ({ label, children }) => (
@@ -390,7 +804,8 @@ const AssignmentCard = ({
   onDeleteModule,
   onDeleteSubAssignment,
   onOpenSubmissionsModal,
-  deleting
+  deleting,
+  onEditAssignment
 }) => {
   const { _id: moduleId, moduleName, assignedDate, subAssignments = [], assignmentPdf } = assignment;
 
@@ -409,6 +824,10 @@ const AssignmentCard = ({
 
           <Button onClick={() => onOpenSubmissionsModal(assignment)} variant="primary">
             View Submissions ({assignment.assignedStudents?.length ?? 0})
+          </Button>
+
+          <Button onClick={() => onEditAssignment(assignment)} variant="secondary">
+            Edit Assignment
           </Button>
         </div>
       </div>
@@ -623,6 +1042,106 @@ export default function AssignmentsManager() {
   };
 
   // =======================
+  // Edit Assignment flow
+  // =======================
+  const [editingAssignment, setEditingAssignment] = useState(null);
+  const [editLoading, setEditLoading] = useState(false);
+
+  const handleEditAssignment = (assignment) => {
+    setEditingAssignment(assignment);
+  };
+
+  const handleSaveAssignment = async (updatedAssignmentData) => {
+    setEditLoading(true);
+    try {
+      const formData = new FormData();
+      formData.append("moduleName", updatedAssignmentData.moduleName);
+      formData.append("category", updatedAssignmentData.category);
+
+      // Prepare JSON for text data
+      const subDataForJson = updatedAssignmentData.subAssignments.map((sub) => {
+        if (sub.isDynamic) {
+          return {
+            _id: sub._id,
+            subModuleName: sub.subModuleName,
+            isDynamic: true,
+            questions: sub.dynamicQuestions.map((q) => ({
+              _id: q._id,
+              questionText: q.questionText,
+              options: q.options ? q.options.split(",").map((opt) => opt.trim()) : [],
+              answer: q.answer
+            }))
+          };
+        } else {
+          return {
+            _id: sub._id,
+            subModuleName: sub.subModuleName,
+            isDynamic: false,
+            answerPatientName: sub.answerPatientName,
+            answerAgeOrDob: sub.answerAgeOrDob,
+            answerIcdCodes: sub.answerIcdCodes,
+            answerCptCodes: sub.answerCptCodes,
+            answerPcsCodes: sub.answerPcsCodes,
+            answerHcpcsCodes: sub.answerHcpcsCodes,
+            answerDrgValue: sub.answerDrgValue,
+            answerModifiers: sub.answerModifiers,
+            answerNotes: sub.answerNotes
+          };
+        }
+      });
+
+      formData.append("subAssignments", JSON.stringify(subDataForJson));
+
+      // Append PDFs - include existing PDFs if no new ones are provided
+      updatedAssignmentData.subAssignments.forEach((sub, index) => {
+        if (sub.assignmentPdf) {
+          // New PDF file
+          formData.append("assignmentPdf", sub.assignmentPdf);
+        } else if (editingAssignment.subAssignments?.[index]?.assignmentPdf) {
+          // Keep existing PDF URL
+          formData.append(`existingPdf_${index}`, editingAssignment.subAssignments[index].assignmentPdf);
+        } else if (editingAssignment.assignmentPdf && index === 0) {
+          // Keep existing parent-level PDF
+          formData.append(`existingPdf_${index}`, editingAssignment.assignmentPdf);
+        }
+      });
+
+      const res = await axios.put(`${API_BASE}/assignments/${editingAssignment._id}`, formData, {
+        headers: {
+          "Content-Type": "multipart/form-data",
+        },
+      });
+
+      if (res.data.success) {
+        // Update local state
+        setAssignments(prev => prev.map(mod => 
+          mod._id === editingAssignment._id ? res.data.assignment : mod
+        ));
+        
+        // Close edit modal
+        setEditingAssignment(null);
+        
+        // Show success message
+        alert("Assignment updated successfully!");
+        
+        // Redirect to student dashboard
+        navigate("/student/dashboard");
+      } else {
+        throw new Error(res.data.message || "Failed to update assignment");
+      }
+    } catch (err) {
+      console.error("Error updating assignment:", err);
+      alert(err.response?.data?.error || err.message);
+    } finally {
+      setEditLoading(false);
+    }
+  };
+
+  const handleCancelEdit = () => {
+    setEditingAssignment(null);
+  };
+
+  // =======================
   // Render
   // =======================
   if (loading) return <p className="loading-text">Loading assignments...</p>;
@@ -650,6 +1169,7 @@ export default function AssignmentsManager() {
             onDeleteSubAssignment={handleDeleteSubAssignment}
             onOpenSubmissionsModal={openSubmissionsModal}
             deleting={deleting}
+            onEditAssignment={handleEditAssignment}
           />
         ))}
       </div>
@@ -687,6 +1207,22 @@ export default function AssignmentsManager() {
               </Button>
             ))}
           </div>
+        </Modal>
+      )}
+
+      {/* Edit Assignment Modal */}
+      {editingAssignment && (
+        <Modal
+          isOpen={!!editingAssignment}
+          onClose={handleCancelEdit}
+          title={`Edit Assignment: ${editingAssignment.moduleName}`}
+        >
+          <EditAssignmentForm
+            assignment={editingAssignment}
+            onSave={handleSaveAssignment}
+            onCancel={handleCancelEdit}
+            loading={editLoading}
+          />
         </Modal>
       )}
     </div>
