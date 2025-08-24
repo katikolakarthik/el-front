@@ -18,14 +18,9 @@ export default function EditAssignment() {
   const assignmentFromState = location.state?.assignment;
 
   useEffect(() => {
-    if (assignmentFromState) {
-      // Pre-fill form with existing data
-      populateFormWithAssignment(assignmentFromState);
-    } else {
-      // Fetch assignment data if not passed via state
-      fetchAssignmentData();
-    }
-  }, [id, assignmentFromState]);
+    // Always fetch fresh data from backend to ensure we get raw data structure
+    fetchAssignmentData();
+  }, [id]);
 
   // Debug: Log form data changes
   useEffect(() => {
@@ -41,12 +36,21 @@ export default function EditAssignment() {
     setLoading(true);
     setError(null);
     try {
+      console.log("🔍 Fetching assignment data for ID:", id);
       const res = await fetch(`https://el-backend-ashen.vercel.app/admin/assignments/${id}/edit`);
-      if (!res.ok) throw new Error("Failed to fetch assignment");
+      
+      if (!res.ok) {
+        const errorText = await res.text();
+        console.error("❌ Response not OK:", res.status, errorText);
+        throw new Error(`Failed to fetch assignment: ${res.status} ${errorText}`);
+      }
+      
       const assignment = await res.json();
+      console.log("✅ Raw assignment data received:", assignment);
       
       populateFormWithAssignment(assignment);
     } catch (err) {
+      console.error("❌ Error fetching assignment:", err);
       setError(err.message);
     } finally {
       setLoading(false);
@@ -62,6 +66,39 @@ export default function EditAssignment() {
       dynamicQuestions: assignment.dynamicQuestions,
       subAssignments: assignment.subAssignments
     });
+    
+    // Log the actual data values
+    if (assignment.answerKey) {
+      console.log("🔍 Parent answerKey data:", {
+        patientName: assignment.answerKey.patientName,
+        ageOrDob: assignment.answerKey.ageOrDob,
+        icdCodes: assignment.answerKey.icdCodes,
+        cptCodes: assignment.answerKey.cptCodes,
+        pcsCodes: assignment.answerKey.pcsCodes,
+        hcpcsCodes: assignment.answerKey.hcpcsCodes,
+        drgValue: assignment.answerKey.drgValue,
+        modifiers: assignment.answerKey.modifiers,
+        notes: assignment.answerKey.notes
+      });
+    }
+    
+    if (assignment.subAssignments && assignment.subAssignments.length > 0) {
+      assignment.subAssignments.forEach((sub, idx) => {
+        if (sub.answerKey) {
+          console.log(`🔍 Sub-assignment ${idx} answerKey data:`, {
+            patientName: sub.answerKey.patientName,
+            ageOrDob: sub.answerKey.ageOrDob,
+            icdCodes: sub.answerKey.icdCodes,
+            cptCodes: sub.answerKey.cptCodes,
+            pcsCodes: sub.answerKey.pcsCodes,
+            hcpcsCodes: sub.answerKey.hcpcsCodes,
+            drgValue: sub.answerKey.drgValue,
+            modifiers: sub.answerKey.modifiers,
+            notes: sub.answerKey.notes
+          });
+        }
+      });
+    }
     
     setModuleName(assignment.moduleName || "");
     setCategory(assignment.category || "");
@@ -324,8 +361,17 @@ export default function EditAssignment() {
     }
   };
 
-  if (loading && !assignmentFromState) {
-    return <div className="add-assignment-container"><p>Loading assignment...</p></div>;
+  if (loading) {
+    return (
+      <div className="add-assignment-container">
+        <div style={{ textAlign: 'center', padding: '2rem' }}>
+          <p>🔄 Loading assignment data...</p>
+          <p style={{ fontSize: '0.9rem', color: '#666' }}>
+            Fetching existing answers and questions from database...
+          </p>
+        </div>
+      </div>
+    );
   }
 
   if (error) {
