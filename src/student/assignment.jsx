@@ -1,10 +1,75 @@
-import React, { useState, useEffect } from 'react';
+// NewAssignments.jsx
+import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import { FiBook, FiClock } from 'react-icons/fi';
 import './AssignmentFlow.css';
 
 const API_BASE = 'https://el-backend-ashen.vercel.app';
 
+/* ---------- Reusable PDF Block (Google gview + sandbox + fullscreen) ---------- */
+function PdfBlock({ pdfUrl, height = '70vh' }) {
+  const wrapRef = useRef(null);
+
+  const toggleFullscreen = async () => {
+    const el = wrapRef.current;
+    if (!el) return;
+    try {
+      if (!document.fullscreenElement) {
+        if (el.requestFullscreen) await el.requestFullscreen();
+        else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
+      } else {
+        if (document.exitFullscreen) await document.exitFullscreen();
+        else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
+      }
+    } catch (_) {
+      // swallow
+    }
+  };
+
+  if (!pdfUrl) return null;
+
+  return (
+    <div
+      ref={wrapRef}
+      style={{
+        position: 'relative',
+        border: '1px solid #eee',
+        borderRadius: 8,
+        overflow: 'hidden',
+        background: '#fff',
+      }}
+    >
+      <iframe
+        title="Assignment PDF"
+        src={`https://docs.google.com/gview?url=${encodeURIComponent(pdfUrl)}&embedded=true`}
+        style={{ width: '100%', height }}
+        frameBorder="0"
+        // blocks downloads but allows scripts/viewer to run
+        sandbox="allow-scripts allow-same-origin allow-popups"
+      />
+      <button
+        onClick={toggleFullscreen}
+        style={{
+          position: 'absolute',
+          right: 12,
+          bottom: 12,
+          padding: '8px 12px',
+          borderRadius: 8,
+          border: 'none',
+          background: '#4f46e5',
+          color: '#fff',
+          fontWeight: 600,
+          cursor: 'pointer',
+          boxShadow: '0 4px 10px rgba(0,0,0,0.15)',
+        }}
+      >
+        Toggle Fullscreen
+      </button>
+    </div>
+  );
+}
+
+/* ---------------------------- Helpers & Component ---------------------------- */
 const normalizeAssignment = (raw) => {
   const norm = { ...raw };
 
@@ -47,70 +112,62 @@ const NewAssignments = () => {
   const [activeSubAssignment, setActiveSubAssignment] = useState(null);
   const [answers, setAnswers] = useState({});
 
-  // Helper function to check if all sub-assignments are completed
   const areAllSubAssignmentsCompleted = (assignment) => {
     if (!assignment.subAssignments || assignment.subAssignments.length === 0) {
       return assignment.isCompleted || false;
     }
-    return assignment.subAssignments.every(sub => sub.isCompleted);
+    return assignment.subAssignments.every((sub) => sub.isCompleted);
   };
 
-  
+  useEffect(() => {
+    const fetchAssignments = async () => {
+      try {
+        setLoading(true);
+        setError(null);
 
-useEffect(() => {
-  const fetchAssignments = async () => {
-    try {
-      setLoading(true);
-      setError(null);
+        const userId = localStorage.getItem('userId');
+        if (!userId) throw new Error('User ID not found');
 
-      const userId = localStorage.getItem('userId');
-      if (!userId) throw new Error('User ID not found');
+        // 1) Get courseName for this userId
+        const courseResp = await axios.get(`${API_BASE}/student/${userId}/course`);
+        const courseName =
+          courseResp?.data?.courseName ||
+          courseResp?.data?.course?.name ||
+          courseResp?.data?.course?.courseName ||
+          null;
 
-      // 1) Get courseName for this userId
-      const courseResp = await axios.get(`${API_BASE}/student/${userId}/course`);
-      const courseName =
-        courseResp?.data?.courseName ||
-        courseResp?.data?.course?.name ||
-        courseResp?.data?.course?.courseName ||
-        null;
+        if (!courseName) throw new Error('Course name not found for this student');
 
-      if (!courseName) throw new Error('Course name not found for this student');
+        // 2) Fetch assignments by course/category with studentId parameter
+        const asgResp = await axios.get(
+          `${API_BASE}/category/${encodeURIComponent(courseName)}?studentId=${userId}`
+        );
 
-      // 2) Fetch assignments by course/category with studentId parameter
-      const asgResp = await axios.get(
-        `${API_BASE}/category/${encodeURIComponent(courseName)}?studentId=${userId}`
-      );
+        // Normalize various possible shapes
+        let assignmentsData = [];
+        if (asgResp?.data?.success && Array.isArray(asgResp.data.assignments)) {
+          assignmentsData = asgResp.data.assignments;
+        } else if (Array.isArray(asgResp?.data)) {
+          assignmentsData = asgResp.data;
+        } else if (Array.isArray(asgResp?.data?.data)) {
+          assignmentsData = asgResp.data.data;
+        } else if (asgResp?.data?.assignment) {
+          assignmentsData = [asgResp.data.assignment];
+        }
 
-      // Normalize various possible shapes
-      let assignmentsData = [];
-      if (asgResp?.data?.success && Array.isArray(asgResp.data.assignments)) {
-        assignmentsData = asgResp.data.assignments;
-      } else if (Array.isArray(asgResp?.data)) {
-        assignmentsData = asgResp.data;
-      } else if (Array.isArray(asgResp?.data?.data)) {
-        assignmentsData = asgResp.data.data;
-      } else if (asgResp?.data?.assignment) {
-        assignmentsData = [asgResp.data.assignment];
+        setAssignments(sortByAssignedDesc(assignmentsData));
+      } catch (err) {
+        if (err.response?.status === 404) {
+          setAssignments([]);
+        } else {
+          setError(err?.message || 'Failed to fetch assignments');
+        }
+      } finally {
+        setLoading(false);
       }
-
-      setAssignments(sortByAssignedDesc(assignmentsData));
-    } catch (err) {
-      // 👇 Special case for 404 → No assignments
-      if (err.response?.status === 404) {
-        setAssignments([]); // just empty list, no error
-      } else {
-        setError(err?.message || 'Failed to fetch assignments');
-      }
-    } finally {
-      setLoading(false);
-    }
-  };
-  fetchAssignments();
-}, []);
-
-
-
-
+    };
+    fetchAssignments();
+  }, []);
 
   const formatDate = (dateString) =>
     dateString
@@ -126,22 +183,18 @@ useEffect(() => {
       setLoading(true);
       setError(null);
 
-      // Find the assignment from the already-fetched list
       const fromList = assignments.find((a) => String(a._id) === String(assignmentId));
       if (!fromList) throw new Error('Assignment not found in list');
 
-      // Normalize for UI rendering
       const assignmentData = normalizeAssignment(fromList);
-
-      // Preserve completion flags from the API response
       assignmentData.isCompleted = fromList.isCompleted || false;
 
       if (fromList && Array.isArray(fromList.subAssignments)) {
         assignmentData.subAssignments = (assignmentData.subAssignments || []).map((sub) => {
-          const originalSub = fromList.subAssignments.find(s => String(s._id) === String(sub._id));
+          const originalSub = fromList.subAssignments.find((s) => String(s._id) === String(sub._id));
           return {
             ...sub,
-            isCompleted: originalSub ? originalSub.isCompleted : false
+            isCompleted: originalSub ? originalSub.isCompleted : false,
           };
         });
       }
@@ -149,7 +202,9 @@ useEffect(() => {
       setActiveAssignment(assignmentData);
 
       if (subAssignmentId) {
-        const sub = (assignmentData.subAssignments || []).find((s) => String(s._id) === String(subAssignmentId));
+        const sub = (assignmentData.subAssignments || []).find(
+          (s) => String(s._id) === String(subAssignmentId)
+        );
         setActiveSubAssignment(sub || null);
       } else {
         setActiveSubAssignment(null);
@@ -191,10 +246,10 @@ useEffect(() => {
         ageOrDob: answers.ageOrDob || '',
         icdCodes: csvToArray(answers.icdCodes || ''),
         cptCodes: csvToArray(answers.cptCodes || ''),
-        pcsCodes: csvToArray(answers.pcsCodes || ''),         // NEW
-        hcpcsCodes: csvToArray(answers.hcpcsCodes || ''),     // NEW
-        drgValue: answers.drgValue || '',                     // NEW
-        modifiers: csvToArray(answers.modifiers || ''),       // NEW
+        pcsCodes: csvToArray(answers.pcsCodes || ''),
+        hcpcsCodes: csvToArray(answers.hcpcsCodes || ''),
+        drgValue: answers.drgValue || '',
+        modifiers: csvToArray(answers.modifiers || ''),
         notes: answers.notes || '',
       });
 
@@ -228,7 +283,6 @@ useEffect(() => {
         return;
       }
 
-      // Mark as completed in local state
       if (activeSubAssignment) {
         setActiveAssignment((prev) => {
           if (!prev) return prev;
@@ -242,7 +296,6 @@ useEffect(() => {
         setActiveAssignment((prev) => (prev ? { ...prev, isCompleted: true } : prev));
       }
 
-      // Refresh the list to get updated completion status
       try {
         const courseResp2 = await axios.get(`${API_BASE}/student/${userId}/course`);
         const courseName2 =
@@ -271,7 +324,6 @@ useEffect(() => {
         // ignore refresh errors
       }
 
-      // Move to next sub or close
       if (activeSubAssignment && (activeAssignment.subAssignments || []).length > 0) {
         const currentIndex = activeAssignment.subAssignments.findIndex(
           (sub) => String(sub._id) === String(activeSubAssignment._id)
@@ -341,7 +393,8 @@ useEffect(() => {
         );
       });
     }
-const predefined = qs.find((q) => q.type === 'predefined');
+
+    const predefined = qs.find((q) => q.type === 'predefined');
     if (predefined && predefined.answerKey) {
       return (
         <div className="form-grid">
@@ -389,7 +442,6 @@ const predefined = qs.find((q) => q.type === 'predefined');
             />
           </div>
 
-          {/* NEW: PCS Codes */}
           <div className="form-item">
             <label className="label">PCS Codes</label>
             <input
@@ -402,7 +454,6 @@ const predefined = qs.find((q) => q.type === 'predefined');
             />
           </div>
 
-          {/* NEW: HCPCS Codes */}
           <div className="form-item">
             <label className="label">HCPCS Codes</label>
             <input
@@ -415,7 +466,6 @@ const predefined = qs.find((q) => q.type === 'predefined');
             />
           </div>
 
-          {/* NEW: DRG Value */}
           <div className="form-item">
             <label className="label">DRG Value</label>
             <input
@@ -428,7 +478,6 @@ const predefined = qs.find((q) => q.type === 'predefined');
             />
           </div>
 
-          {/* NEW: Modifiers */}
           <div className="form-item">
             <label className="label">Modifiers</label>
             <input
@@ -548,17 +597,15 @@ const predefined = qs.find((q) => q.type === 'predefined');
           >
             Back
           </button>
-          <h3 className="title-sm">{activeSubAssignment?.subModuleName || activeAssignment.moduleName}</h3>
+          <h3 className="title-sm">
+            {activeSubAssignment?.subModuleName || activeAssignment.moduleName}
+          </h3>
         </div>
 
-        {pdfUrl && (
-          <iframe
-            src={`https://docs.google.com/gview?url=${encodeURIComponent(pdfUrl)}&embedded=true`}
-            width="100%" height="500px" frameBorder="0" title="Assignment PDF"
-          ></iframe>
-        )}
+        {/* === PDF VIEWER (Option-B) === */}
+        <PdfBlock pdfUrl={pdfUrl} height="70vh" />
 
-        <div className="panel">
+        <div className="panel" style={{ marginTop: 16 }}>
           <div className="panel-head">
             <h4>Questions</h4>
             {isCompleted && <span className="badge badge-success">Completed</span>}
@@ -566,11 +613,7 @@ const predefined = qs.find((q) => q.type === 'predefined');
           <div className="panel-body">{renderQuestions(questionSource)}</div>
 
           <div className="panel-actions">
-            <button
-              className="btn btn-primary"
-              onClick={handleSubmit}
-              disabled={isCompleted}
-            >
+            <button className="btn btn-primary" onClick={handleSubmit} disabled={isCompleted}>
               {isCompleted ? 'Already Submitted' : 'Submit Assignment'}
             </button>
           </div>
@@ -589,62 +632,65 @@ const predefined = qs.find((q) => q.type === 'predefined');
       </div>
 
       {assignments.length > 0 ? (
-  <div className="grid">
-    {assignments.map((assignment, index) => {
-      const allSubsCompleted = areAllSubAssignmentsCompleted(assignment);
-      const isParentDisabled = assignment.subAssignments?.length > 0 ? allSubsCompleted : assignment.isCompleted;
+        <div className="grid">
+          {assignments.map((assignment, index) => {
+            const allSubsCompleted = areAllSubAssignmentsCompleted(assignment);
+            const isParentDisabled =
+              assignment.subAssignments?.length > 0 ? allSubsCompleted : assignment.isCompleted;
 
-      return (
-        <div key={index} className="card">
-          <div className="card-head">
-            <h3 className="card-title">{assignment.moduleName}</h3>
-            <span className={`badge ${isParentDisabled ? 'badge-success' : 'badge-neutral'}`}>
-              {isParentDisabled ? 'Completed' : 'Assigned'}
-            </span>
+            return (
+              <div key={index} className="card">
+                <div className="card-head">
+                  <h3 className="card-title">{assignment.moduleName}</h3>
+                  <span className={`badge ${isParentDisabled ? 'badge-success' : 'badge-neutral'}`}>
+                    {isParentDisabled ? 'Completed' : 'Assigned'}
+                  </span>
+                </div>
+
+                <div className="meta">
+                  <span className="meta-key">Assigned</span>
+                  <span className="meta-val">{formatDate(assignment.assignedDate)}</span>
+                </div>
+
+                {assignment.subAssignments?.length > 0 && (
+                  <div className="meta">
+                    <span className="meta-key">Progress</span>
+                    <span className="meta-val">
+                      {assignment.subAssignments.filter((sub) => sub.isCompleted).length} /{' '}
+                      {assignment.subAssignments.length}{' '}
+                      completed
+                    </span>
+                  </div>
+                )}
+
+                <div className="card-actions">
+                  <button
+                    className="btn"
+                    onClick={() => handleStart(assignment._id)}
+                    disabled={isParentDisabled}
+                  >
+                    {isParentDisabled
+                      ? 'Completed'
+                      : assignment.subAssignments?.length > 0
+                      ? 'View Sections'
+                      : 'Start'}
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="empty-state">
+          <div className="empty-icon">
+            <FiClock />
           </div>
-
-          <div className="meta">
-            <span className="meta-key">Assigned</span>
-            <span className="meta-val">{formatDate(assignment.assignedDate)}</span>
-          </div>
-
-          {assignment.subAssignments?.length > 0 && (
-            <div className="meta">
-              <span className="meta-key">Progress</span>
-              <span className="meta-val">
-                {assignment.subAssignments.filter(sub => sub.isCompleted).length} / {assignment.subAssignments.length} completed
-              </span>
-            </div>
-          )}
-
-          <div className="card-actions">
-            <button
-              className="btn"
-              onClick={() => handleStart(assignment._id)}
-              disabled={isParentDisabled}
-            >
-              {isParentDisabled
-                ? 'Completed'
-                : assignment.subAssignments?.length > 0
-                ? 'View Sections'
-                : 'Start'}
-            </button>
+          <div>
+            <h3>No assignments are available</h3>
+            <p className="muted">Please check back later for new assignments.</p>
           </div>
         </div>
-      );
-    })}
-  </div>
-) : (
-  <div className="empty-state">
-  <div className="empty-icon">
-    <FiClock />
-  </div>
-  <div>
-    <h3>No assignments are available</h3>
-    <p className="muted">Please check back later for new assignments.</p>
-  </div>
-</div>
-)}
+      )}
     </div>
   );
 };
