@@ -33,69 +33,71 @@ export default function EditAssignment() {
         setCategory(assignment.category || "");
         setStudents(studentsData);
         
-        // Format sub-assignments for the form
-        if (assignment.subAssignments && assignment.subAssignments.length > 0) {
-          // Multiple sub-assignments
-          const formattedSubs = assignment.subAssignments.map(sub => ({
-            _id: sub._id,
-            subModuleName: sub.subModuleName || "",
-            isDynamic: !!(sub.dynamicQuestions && sub.dynamicQuestions.length > 0),
-            
-            // Predefined answer fields (convert arrays to CSV strings)
-            answerPatientName: sub.answerKey?.patientName || "",
-            answerAgeOrDob: sub.answerKey?.ageOrDob || "",
-            answerIcdCodes: Array.isArray(sub.answerKey?.icdCodes) ? sub.answerKey.icdCodes.join(", ") : "",
-            answerCptCodes: Array.isArray(sub.answerKey?.cptCodes) ? sub.answerKey.cptCodes.join(", ") : "",
-            answerPcsCodes: Array.isArray(sub.answerKey?.pcsCodes) ? sub.answerKey.pcsCodes.join(", ") : "",
-            answerHcpcsCodes: Array.isArray(sub.answerKey?.hcpcsCodes) ? sub.answerKey.hcpcsCodes.join(", ") : "",
-            answerDrgValue: sub.answerKey?.drgValue || "",
-            answerModifiers: Array.isArray(sub.answerKey?.modifiers) ? sub.answerKey.modifiers.join(", ") : "",
-            answerNotes: sub.answerKey?.notes || "",
-            
-            // Dynamic questions
-            dynamicQuestions: sub.dynamicQuestions && sub.dynamicQuestions.length > 0 
-              ? sub.dynamicQuestions.map(q => ({
-                  _id: q._id,
-                  questionText: q.questionText || "",
-                  options: Array.isArray(q.options) ? q.options.join(", ") : "",
-                  answer: q.answer || ""
-                }))
-              : [{ questionText: "", options: "", answer: "" }],
-            
-            assignmentPdf: null // We'll handle existing PDFs separately
-          }));
-          setSubAssignments(formattedSubs);
-        } else if (assignment.answerKey || (assignment.dynamicQuestions && assignment.dynamicQuestions.length > 0)) {
-          // Single assignment at parent level
-          const formattedSub = {
-            _id: null,
-            subModuleName: assignment.moduleName || "",
-            isDynamic: !!(assignment.dynamicQuestions && assignment.dynamicQuestions.length > 0),
-            
-            // Predefined answer fields
-            answerPatientName: assignment.answerKey?.patientName || "",
-            answerAgeOrDob: assignment.answerKey?.ageOrDob || "",
-            answerIcdCodes: Array.isArray(assignment.answerKey?.icdCodes) ? assignment.answerKey.icdCodes.join(", ") : "",
-            answerCptCodes: Array.isArray(assignment.answerKey?.cptCodes) ? assignment.answerKey.cptCodes.join(", ") : "",
-            answerPcsCodes: Array.isArray(assignment.answerKey?.pcsCodes) ? assignment.answerKey.pcsCodes.join(", ") : "",
-            answerHcpcsCodes: Array.isArray(assignment.answerKey?.hcpcsCodes) ? assignment.answerKey.hcpcsCodes.join(", ") : "",
-            answerDrgValue: assignment.answerKey?.drgValue || "",
-            answerModifiers: Array.isArray(assignment.answerKey?.modifiers) ? assignment.answerKey.modifiers.join(", ") : "",
-            answerNotes: assignment.answerKey?.notes || "",
-            
-            // Dynamic questions
-            dynamicQuestions: assignment.dynamicQuestions && assignment.dynamicQuestions.length > 0 
-              ? assignment.dynamicQuestions.map(q => ({
-                  _id: q._id,
-                  questionText: q.questionText || "",
-                  options: Array.isArray(q.options) ? q.options.join(", ") : "",
-                  answer: q.answer || ""
-                }))
-              : [{ questionText: "", options: "", answer: "" }],
-            
-            assignmentPdf: null
-          };
-          setSubAssignments([formattedSub]);
+                 // Format sub-assignments for the form
+         if (assignment.subAssignments && assignment.subAssignments.length > 0) {
+           // Multiple sub-assignments
+           const formattedSubs = assignment.subAssignments.map(sub => ({
+             _id: sub._id,
+             subModuleName: sub.subModuleName || "",
+             isDynamic: !!(sub.dynamicQuestions && sub.dynamicQuestions.length > 0),
+             
+             // Predefined answer fields (convert arrays to CSV strings)
+             answerPatientName: sub.answerKey?.patientName || "",
+             answerAgeOrDob: sub.answerKey?.ageOrDob || "",
+             answerIcdCodes: Array.isArray(sub.answerKey?.icdCodes) ? sub.answerKey.icdCodes.join(", ") : "",
+             answerCptCodes: Array.isArray(sub.answerKey?.cptCodes) ? sub.answerKey.cptCodes.join(", ") : "",
+             answerPcsCodes: Array.isArray(sub.answerKey?.pcsCodes) ? sub.answerKey.pcsCodes.join(", ") : "",
+             answerHcpcsCodes: Array.isArray(sub.answerKey?.hcpcsCodes) ? sub.answerKey.hcpcsCodes.join(", ") : "",
+             answerDrgValue: sub.answerKey?.drgValue || "",
+             answerModifiers: Array.isArray(sub.answerKey?.modifiers) ? sub.answerKey.modifiers.join(", ") : "",
+             answerNotes: sub.answerKey?.notes || "",
+             
+             // Dynamic questions
+             dynamicQuestions: sub.dynamicQuestions && sub.dynamicQuestions.length > 0 
+               ? sub.dynamicQuestions.map(q => ({
+                   _id: q._id,
+                   questionText: q.questionText || "",
+                   options: Array.isArray(q.options) ? q.options.join(", ") : "",
+                   answer: q.answer || ""
+                 }))
+               : [{ questionText: "", options: "", answer: "" }],
+             
+             existingPdf: sub.assignmentPdf || null, // Store existing PDF path
+             assignmentPdf: null // New PDF file (if any)
+           }));
+           setSubAssignments(formattedSubs);
+                 } else if (assignment.answerKey || (assignment.dynamicQuestions && assignment.dynamicQuestions.length > 0)) {
+           // Single assignment at parent level
+           const formattedSub = {
+             _id: null,
+             subModuleName: assignment.moduleName || "",
+             isDynamic: !!(assignment.dynamicQuestions && assignment.dynamicQuestions.length > 0),
+             
+             // Predefined answer fields
+             answerPatientName: assignment.answerKey?.patientName || "",
+             answerAgeOrDob: assignment.answerKey?.ageOrDob || "",
+             answerIcdCodes: Array.isArray(assignment.answerKey?.icdCodes) ? assignment.answerKey.icdCodes.join(", ") : "",
+             answerCptCodes: Array.isArray(assignment.answerKey?.cptCodes) ? assignment.answerKey.cptCodes.join(", ") : "",
+             answerPcsCodes: Array.isArray(assignment.answerKey?.pcsCodes) ? assignment.answerKey.pcsCodes.join(", ") : "",
+             answerHcpcsCodes: Array.isArray(assignment.answerKey?.hcpcsCodes) ? assignment.answerKey.hcpcsCodes.join(", ") : "",
+             answerDrgValue: assignment.answerKey?.drgValue || "",
+             answerModifiers: Array.isArray(assignment.answerKey?.modifiers) ? assignment.answerKey.modifiers.join(", ") : "",
+             answerNotes: assignment.answerKey?.notes || "",
+             
+             // Dynamic questions
+             dynamicQuestions: assignment.dynamicQuestions && assignment.dynamicQuestions.length > 0 
+               ? assignment.dynamicQuestions.map(q => ({
+                   _id: q._id,
+                   questionText: q.questionText || "",
+                   options: Array.isArray(q.options) ? q.options.join(", ") : "",
+                   answer: q.answer || ""
+                 }))
+               : [{ questionText: "", options: "", answer: "" }],
+             
+             existingPdf: assignment.assignmentPdf || null, // Store existing PDF path
+             assignmentPdf: null // New PDF file (if any)
+           };
+           setSubAssignments([formattedSub]);
         } else {
           // No sub-assignments or data, start with empty form
           setSubAssignments([{
@@ -530,12 +532,33 @@ export default function EditAssignment() {
 
             <div className="form-group">
               <label>Assignment PDF</label>
+              
+              {/* Show existing PDF if available */}
+              {sub.existingPdf && (
+                <div className="existing-pdf-info">
+                  <p><strong>Current PDF:</strong></p>
+                  <a 
+                    href={sub.existingPdf} 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="existing-pdf-link"
+                  >
+                    📄 View Current PDF
+                  </a>
+                </div>
+              )}
+              
               <input
                 type="file"
                 accept="application/pdf"
                 onChange={(e) => handlePdfChange(idx, e.target.files[0])}
               />
-              <small>Leave empty to keep existing PDF</small>
+              <small>
+                {sub.existingPdf 
+                  ? "Choose a new file to replace the current PDF, or leave empty to keep it"
+                  : "Leave empty to keep existing PDF"
+                }
+              </small>
             </div>
           </div>
         ))}
