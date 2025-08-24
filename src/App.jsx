@@ -70,7 +70,7 @@ function App() {
         }
       />
       <Route
-        path="/assignment/edit/:id"
+        path="/admin/assignments/edit/:id"
         element={
           <ProtectedRoute allowed={["admin", "subadmin"]}>
             <Layout><EditAssignment /></Layout>

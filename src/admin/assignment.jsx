@@ -620,16 +620,17 @@ export default function AssignmentsManager() {
   };
 
   // =======================
+  // Edit Assignment flow
+  // =======================
+  const handleEditAssignment = (assignment) => {
+    navigate(`/admin/assignments/edit/${assignment._id}`);
+  };
+
+  // =======================
   // Add Assignment flow (optional)
   // =======================
   const handleAddAssignment = () => {
     setShowCategoryModal(true);
-  };
-
-  const handleEditAssignment = (assignment) => {
-    navigate(`/assignment/edit/${assignment._id}`, { 
-      state: { assignment } 
-    });
   };
 
   const goToAddWithCategory = (cat) => {

@@ -1,298 +1,130 @@
 import React, { useState, useEffect } from "react";
-import { useNavigate, useParams, useLocation } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
+import axios from "axios";
 import "./addassignment.css";
 
 export default function EditAssignment() {
   const navigate = useNavigate();
   const { id } = useParams();
-  const location = useLocation();
   
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [moduleName, setModuleName] = useState("");
   const [category, setCategory] = useState("");
+  const [students, setStudents] = useState([]);
   const [subAssignments, setSubAssignments] = useState([]);
-  const [assignedStudents, setAssignedStudents] = useState([]);
 
-  // Get assignment data from navigation state or fetch it
-  const assignmentFromState = location.state?.assignment;
-
+  // Fetch assignment data and students on component mount
   useEffect(() => {
-    // Try to fetch fresh data from backend first
-    fetchAssignmentData();
+    const fetchData = async () => {
+      try {
+        setLoading(true);
+        
+        // Fetch assignment data
+        const assignmentRes = await axios.get(`https://el-backend-ashen.vercel.app/admin/assignments/edit/${id}`);
+        const assignment = assignmentRes.data;
+        
+        // Fetch students
+        const studentsRes = await axios.get("https://el-backend-ashen.vercel.app/admin/students");
+        const studentsData = studentsRes.data;
+        
+        // Set assignment data
+        setModuleName(assignment.moduleName || "");
+        setCategory(assignment.category || "");
+        setStudents(studentsData);
+        
+        // Format sub-assignments for the form
+        if (assignment.subAssignments && assignment.subAssignments.length > 0) {
+          // Multiple sub-assignments
+          const formattedSubs = assignment.subAssignments.map(sub => ({
+            _id: sub._id,
+            subModuleName: sub.subModuleName || "",
+            isDynamic: !!(sub.dynamicQuestions && sub.dynamicQuestions.length > 0),
+            
+            // Predefined answer fields (convert arrays to CSV strings)
+            answerPatientName: sub.answerKey?.patientName || "",
+            answerAgeOrDob: sub.answerKey?.ageOrDob || "",
+            answerIcdCodes: Array.isArray(sub.answerKey?.icdCodes) ? sub.answerKey.icdCodes.join(", ") : "",
+            answerCptCodes: Array.isArray(sub.answerKey?.cptCodes) ? sub.answerKey.cptCodes.join(", ") : "",
+            answerPcsCodes: Array.isArray(sub.answerKey?.pcsCodes) ? sub.answerKey.pcsCodes.join(", ") : "",
+            answerHcpcsCodes: Array.isArray(sub.answerKey?.hcpcsCodes) ? sub.answerKey.hcpcsCodes.join(", ") : "",
+            answerDrgValue: sub.answerKey?.drgValue || "",
+            answerModifiers: Array.isArray(sub.answerKey?.modifiers) ? sub.answerKey.modifiers.join(", ") : "",
+            answerNotes: sub.answerKey?.notes || "",
+            
+            // Dynamic questions
+            dynamicQuestions: sub.dynamicQuestions && sub.dynamicQuestions.length > 0 
+              ? sub.dynamicQuestions.map(q => ({
+                  _id: q._id,
+                  questionText: q.questionText || "",
+                  options: Array.isArray(q.options) ? q.options.join(", ") : "",
+                  answer: q.answer || ""
+                }))
+              : [{ questionText: "", options: "", answer: "" }],
+            
+            assignmentPdf: null // We'll handle existing PDFs separately
+          }));
+          setSubAssignments(formattedSubs);
+        } else if (assignment.answerKey || (assignment.dynamicQuestions && assignment.dynamicQuestions.length > 0)) {
+          // Single assignment at parent level
+          const formattedSub = {
+            _id: null,
+            subModuleName: assignment.moduleName || "",
+            isDynamic: !!(assignment.dynamicQuestions && assignment.dynamicQuestions.length > 0),
+            
+            // Predefined answer fields
+            answerPatientName: assignment.answerKey?.patientName || "",
+            answerAgeOrDob: assignment.answerKey?.ageOrDob || "",
+            answerIcdCodes: Array.isArray(assignment.answerKey?.icdCodes) ? assignment.answerKey.icdCodes.join(", ") : "",
+            answerCptCodes: Array.isArray(assignment.answerKey?.cptCodes) ? assignment.answerKey.cptCodes.join(", ") : "",
+            answerPcsCodes: Array.isArray(assignment.answerKey?.pcsCodes) ? assignment.answerKey.pcsCodes.join(", ") : "",
+            answerHcpcsCodes: Array.isArray(assignment.answerKey?.hcpcsCodes) ? assignment.answerKey.hcpcsCodes.join(", ") : "",
+            answerDrgValue: assignment.answerKey?.drgValue || "",
+            answerModifiers: Array.isArray(assignment.answerKey?.modifiers) ? assignment.answerKey.modifiers.join(", ") : "",
+            answerNotes: assignment.answerKey?.notes || "",
+            
+            // Dynamic questions
+            dynamicQuestions: assignment.dynamicQuestions && assignment.dynamicQuestions.length > 0 
+              ? assignment.dynamicQuestions.map(q => ({
+                  _id: q._id,
+                  questionText: q.questionText || "",
+                  options: Array.isArray(q.options) ? q.options.join(", ") : "",
+                  answer: q.answer || ""
+                }))
+              : [{ questionText: "", options: "", answer: "" }],
+            
+            assignmentPdf: null
+          };
+          setSubAssignments([formattedSub]);
+        } else {
+          // No sub-assignments or data, start with empty form
+          setSubAssignments([{
+            subModuleName: "",
+            isDynamic: false,
+            answerPatientName: "",
+            answerAgeOrDob: "",
+            answerIcdCodes: "",
+            answerCptCodes: "",
+            answerPcsCodes: "",
+            answerHcpcsCodes: "",
+            answerDrgValue: "",
+            answerModifiers: "",
+            answerNotes: "",
+            dynamicQuestions: [{ questionText: "", options: "", answer: "" }],
+            assignmentPdf: null
+          }]);
+        }
+        
+      } catch (err) {
+        console.error("Error fetching data:", err);
+        setError(err.response?.data?.error || err.message);
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    fetchData();
   }, [id]);
-
-  // Fallback: if backend fetch fails, try to use navigation state data
-  useEffect(() => {
-    if (assignmentFromState && subAssignments.length === 0 && !loading && !error) {
-      console.log("🔄 Fallback: Using navigation state data");
-      populateFormWithAssignment(assignmentFromState);
-    }
-  }, [assignmentFromState, subAssignments.length, loading, error]);
-
-  // Debug: Log form data changes
-  useEffect(() => {
-    console.log("📊 Current form state:", {
-      moduleName,
-      category,
-      subAssignments,
-      assignedStudents
-    });
-  }, [moduleName, category, subAssignments, assignedStudents]);
-
-  const fetchAssignmentData = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      console.log("🔍 Fetching assignment data for ID:", id);
-      const res = await fetch(`https://el-backend-ashen.vercel.app/admin/assignments/${id}/edit`);
-      
-      if (!res.ok) {
-        const errorText = await res.text();
-        console.error("❌ Response not OK:", res.status, errorText);
-        throw new Error(`Failed to fetch assignment: ${res.status} ${errorText}`);
-      }
-      
-      const assignment = await res.json();
-      console.log("✅ Raw assignment data received:", assignment);
-      
-      populateFormWithAssignment(assignment);
-    } catch (err) {
-      console.error("❌ Error fetching assignment:", err);
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const populateFormWithAssignment = (assignment) => {
-    console.log("🔍 Populating form with assignment:", assignment);
-    console.log("🔍 Raw assignment data structure:", {
-      moduleName: assignment.moduleName,
-      category: assignment.category,
-      answerKey: assignment.answerKey,
-      dynamicQuestions: assignment.dynamicQuestions,
-      subAssignments: assignment.subAssignments
-    });
-    
-    // Log the actual data values
-    if (assignment.answerKey) {
-      console.log("🔍 Parent answerKey data:", {
-        patientName: assignment.answerKey.patientName,
-        ageOrDob: assignment.answerKey.ageOrDob,
-        icdCodes: assignment.answerKey.icdCodes,
-        cptCodes: assignment.answerKey.cptCodes,
-        pcsCodes: assignment.answerKey.pcsCodes,
-        hcpcsCodes: assignment.answerKey.hcpcsCodes,
-        drgValue: assignment.answerKey.drgValue,
-        modifiers: assignment.answerKey.modifiers,
-        notes: assignment.answerKey.notes
-      });
-    }
-    
-    if (assignment.subAssignments && assignment.subAssignments.length > 0) {
-      assignment.subAssignments.forEach((sub, idx) => {
-        if (sub.answerKey) {
-          console.log(`🔍 Sub-assignment ${idx} answerKey data:`, {
-            patientName: sub.answerKey.patientName,
-            ageOrDob: sub.answerKey.ageOrDob,
-            icdCodes: sub.answerKey.icdCodes,
-            cptCodes: sub.answerKey.cptCodes,
-            pcsCodes: sub.answerKey.pcsCodes,
-            hcpcsCodes: sub.answerKey.hcpcsCodes,
-            drgValue: sub.answerKey.drgValue,
-            modifiers: sub.answerKey.modifiers,
-            notes: sub.answerKey.notes
-          });
-        }
-      });
-    }
-    
-    setModuleName(assignment.moduleName || "");
-    setCategory(assignment.category || "");
-    setAssignedStudents(assignment.assignedStudents || []);
-
-    // Handle sub-assignments
-    if (assignment.subAssignments && assignment.subAssignments.length > 0) {
-      console.log("📋 Multiple sub-assignments found:", assignment.subAssignments);
-      
-      // Multiple sub-assignments
-      const formattedSubs = assignment.subAssignments.map(sub => {
-        console.log(`📝 Sub-assignment ${sub.subModuleName}:`, {
-          answerKey: sub.answerKey,
-          dynamicQuestions: sub.dynamicQuestions
-        });
-        
-        // Check if we have the raw data or the formatted data
-        const hasRawData = sub.answerKey || sub.dynamicQuestions;
-        const hasFormattedData = sub.questions || sub.dynamicAnswerKey;
-        
-        if (!hasRawData && hasFormattedData) {
-          console.log("⚠️ Using formatted data from dashboard - some fields may not be editable");
-        }
-        
-                 // Better logic to determine if this is dynamic or predefined
-         // Check if there are actual predefined answers
-         const hasPredefinedAnswers = sub.answerKey && (
-           sub.answerKey.patientName || 
-           sub.answerKey.ageOrDob || 
-           sub.answerKey.icdCodes?.length > 0 || 
-           sub.answerKey.cptCodes?.length > 0 || 
-           sub.answerKey.pcsCodes?.length > 0 || 
-           sub.answerKey.hcpcsCodes?.length > 0 || 
-           sub.answerKey.drgValue || 
-           sub.answerKey.modifiers?.length > 0 || 
-           sub.answerKey.notes
-         );
-         
-         // Check if there are dynamic questions
-         const hasDynamicQuestions = sub.dynamicQuestions && sub.dynamicQuestions.length > 0 && 
-           sub.dynamicQuestions.some(q => q.questionText || q.answer);
-         
-         // Determine type: if has predefined answers, it's predefined; if has dynamic questions, it's dynamic
-         const isDynamic = !hasPredefinedAnswers && hasDynamicQuestions;
-         
-         console.log(`🔍 Sub-assignment ${sub.subModuleName} analysis:`, {
-           hasPredefinedAnswers,
-           hasDynamicQuestions,
-           isDynamic,
-           answerKey: sub.answerKey,
-           dynamicQuestions: sub.dynamicQuestions
-         });
-         
-         return {
-           _id: sub._id,
-           subModuleName: sub.subModuleName || "",
-           isDynamic,
-        
-        // Predefined answer fields
-        answerPatientName: sub.answerKey?.patientName || "",
-        answerAgeOrDob: sub.answerKey?.ageOrDob || "",
-        answerIcdCodes: Array.isArray(sub.answerKey?.icdCodes) ? sub.answerKey.icdCodes.join(", ") : "",
-        answerCptCodes: Array.isArray(sub.answerKey?.cptCodes) ? sub.answerKey.cptCodes.join(", ") : "",
-        answerPcsCodes: Array.isArray(sub.answerKey?.pcsCodes) ? sub.answerKey.pcsCodes.join(", ") : "",
-        answerHcpcsCodes: Array.isArray(sub.answerKey?.hcpcsCodes) ? sub.answerKey.hcpcsCodes.join(", ") : "",
-        answerDrgValue: sub.answerKey?.drgValue || "",
-        answerModifiers: Array.isArray(sub.answerKey?.modifiers) ? sub.answerKey.modifiers.join(", ") : "",
-        answerNotes: sub.answerKey?.notes || "",
-
-        // Dynamic questions
-        dynamicQuestions: sub.dynamicQuestions ? sub.dynamicQuestions.map(q => ({
-          _id: q._id,
-          questionText: q.questionText || "",
-          options: Array.isArray(q.options) ? q.options.join(", ") : "",
-          answer: q.answer || ""
-        })) : [{ questionText: "", options: "", answer: "" }],
-
-        assignmentPdf: sub.assignmentPdf || null // Preserve existing PDF path
-      }));
-      console.log("✅ Final formatted sub-assignments:", formattedSubs);
-      console.log("✅ Sample sub-assignment data:", formattedSubs[0]);
-      setSubAssignments(formattedSubs);
-    } else {
-      console.log("📋 Single assignment at parent level");
-      
-             // Single assignment at parent level
-       // Better logic to determine if this is dynamic or predefined
-       const hasPredefinedAnswers = assignment.answerKey && (
-         assignment.answerKey.patientName || 
-         assignment.answerKey.ageOrDob || 
-         assignment.answerKey.icdCodes?.length > 0 || 
-         assignment.answerKey.cptCodes?.length > 0 || 
-         assignment.answerKey.pcsCodes?.length > 0 || 
-         assignment.answerKey.hcpcsCodes?.length > 0 || 
-         assignment.answerKey.drgValue || 
-         assignment.answerKey.modifiers?.length > 0 || 
-         assignment.answerKey.notes
-       );
-       
-       // Check if there are dynamic questions
-       const hasDynamicQuestions = assignment.dynamicQuestions && assignment.dynamicQuestions.length > 0 && 
-         assignment.dynamicQuestions.some(q => q.questionText || q.answer);
-       
-       // Determine type: if has predefined answers, it's predefined; if has dynamic questions, it's dynamic
-       const isDynamic = !hasPredefinedAnswers && hasDynamicQuestions;
-       
-       console.log(`🔍 Parent assignment analysis:`, {
-         hasPredefinedAnswers,
-         hasDynamicQuestions,
-         isDynamic,
-         answerKey: assignment.answerKey,
-         dynamicQuestions: assignment.dynamicQuestions
-       });
-      
-      console.log("📝 Parent assignment:", {
-        answerKey: assignment.answerKey,
-        dynamicQuestions: assignment.dynamicQuestions,
-        isDynamic
-      });
-      
-      // Check if we have the raw data or the formatted data
-      const hasRawData = assignment.answerKey || assignment.dynamicQuestions;
-      const hasFormattedData = assignment.questions || assignment.dynamicAnswerKey;
-      
-      if (!hasRawData && hasFormattedData) {
-        console.log("⚠️ Using formatted data from dashboard - some fields may not be editable");
-      }
-      
-      setSubAssignments([{
-        _id: assignment._id,
-        subModuleName: assignment.moduleName || "",
-        isDynamic,
-        
-        // Predefined answer fields
-        answerPatientName: assignment.answerKey?.patientName || "",
-        answerAgeOrDob: assignment.answerKey?.ageOrDob || "",
-        answerIcdCodes: Array.isArray(assignment.answerKey?.icdCodes) ? assignment.answerKey.icdCodes.join(", ") : "",
-        answerCptCodes: Array.isArray(assignment.answerKey?.cptCodes) ? assignment.answerKey.cptCodes.join(", ") : "",
-        answerPcsCodes: Array.isArray(assignment.answerKey?.pcsCodes) ? assignment.answerKey.pcsCodes.join(", ") : "",
-        answerHcpcsCodes: Array.isArray(assignment.answerKey?.hcpcsCodes) ? assignment.answerKey.hcpcsCodes.join(", ") : "",
-        answerDrgValue: assignment.answerKey?.drgValue || "",
-        answerModifiers: Array.isArray(assignment.answerKey?.modifiers) ? assignment.answerKey.modifiers.join(", ") : "",
-        answerNotes: assignment.answerKey?.notes || "",
-
-        // Dynamic questions
-        dynamicQuestions: assignment.dynamicQuestions ? assignment.dynamicQuestions.map(q => ({
-          _id: q._id,
-          questionText: q.questionText || "",
-          options: Array.isArray(q.options) ? q.options.join(", ") : "",
-          answer: q.answer || ""
-        })) : [{ questionText: "", options: "", answer: "" }],
-
-        assignmentPdf: assignment.assignmentPdf || null // Preserve existing PDF path
-      }];
-      
-             const formattedSingle = [{
-         _id: assignment._id,
-         subModuleName: assignment.moduleName || "",
-         isDynamic,
-         
-         // Predefined answer fields
-         answerPatientName: assignment.answerKey?.patientName || "",
-         answerAgeOrDob: assignment.answerKey?.ageOrDob || "",
-         answerIcdCodes: Array.isArray(assignment.answerKey?.icdCodes) ? assignment.answerKey.icdCodes.join(", ") : "",
-         answerCptCodes: Array.isArray(assignment.answerKey?.cptCodes) ? assignment.answerKey.cptCodes.join(", ") : "",
-         answerPcsCodes: Array.isArray(assignment.answerKey?.pcsCodes) ? assignment.answerKey.pcsCodes.join(", ") : "",
-         answerHcpcsCodes: Array.isArray(assignment.answerKey?.hcpcsCodes) ? assignment.answerKey.hcpcsCodes.join(", ") : "",
-         answerDrgValue: assignment.answerKey?.drgValue || "",
-         answerModifiers: Array.isArray(assignment.answerKey?.modifiers) ? assignment.answerKey.modifiers.join(", ") : "",
-         answerNotes: assignment.answerKey?.notes || "",
-
-         // Dynamic questions
-         dynamicQuestions: assignment.dynamicQuestions ? assignment.dynamicQuestions.map(q => ({
-           _id: q._id,
-           questionText: q.questionText || "",
-           options: Array.isArray(q.options) ? q.options.join(", ") : "",
-           answer: q.answer || ""
-         })) : [{ questionText: "", options: "", answer: "" }],
-
-         assignmentPdf: assignment.assignmentPdf || null // Preserve existing PDF path
-       }];
-       
-       console.log("✅ Final formatted single assignment:", formattedSingle);
-       setSubAssignments(formattedSingle);
-    }
-  };
 
   // Handle general field changes
   const handleSubChange = (index, field, value) => {
@@ -338,8 +170,6 @@ export default function EditAssignment() {
       {
         subModuleName: "",
         isDynamic: false,
-
-        // Predefined answer fields
         answerPatientName: "",
         answerAgeOrDob: "",
         answerIcdCodes: "",
@@ -349,8 +179,6 @@ export default function EditAssignment() {
         answerDrgValue: "",
         answerModifiers: "",
         answerNotes: "",
-
-        // Dynamic questions
         dynamicQuestions: [{ questionText: "", options: "", answer: "" }],
         assignmentPdf: null
       }
@@ -374,13 +202,9 @@ export default function EditAssignment() {
       return;
     }
 
-    setLoading(true);
-    setError(null);
-
     const formData = new FormData();
     formData.append("moduleName", moduleName);
     formData.append("category", category.trim());
-    formData.append("assignedStudents", assignedStudents.map(s => s._id || s).join(","));
 
     // Prepare JSON for text data
     const subDataForJson = subAssignments.map((sub) => {
@@ -401,8 +225,6 @@ export default function EditAssignment() {
           _id: sub._id, // Preserve existing ID for updates
           subModuleName: sub.subModuleName,
           isDynamic: false,
-
-          // These keys must match backend controller (formatPredefined)
           answerPatientName: sub.answerPatientName,
           answerAgeOrDob: sub.answerAgeOrDob,
           answerIcdCodes: sub.answerIcdCodes,
@@ -418,164 +240,42 @@ export default function EditAssignment() {
 
     formData.append("subAssignments", JSON.stringify(subDataForJson));
 
-    // Append PDFs (only if new ones are selected)
+    // Append PDFs (only new ones)
     subAssignments.forEach((sub) => {
-      if (sub.assignmentPdf && sub.assignmentPdf instanceof File) {
+      if (sub.assignmentPdf) {
         formData.append("assignmentPdf", sub.assignmentPdf);
       }
     });
 
     try {
-      const res = await fetch(
+      const res = await axios.put(
         `https://el-backend-ashen.vercel.app/admin/assignments/${id}`,
-        { 
-          method: "PUT", 
-          body: formData 
+        formData,
+        {
+          headers: {
+            'Content-Type': 'multipart/form-data'
+          }
         }
       );
 
-      if (!res.ok) {
-        const errorData = await res.json();
-        throw new Error(errorData.message || "Failed to update assignment");
+      if (res.data.success) {
+        alert("Assignment updated successfully!");
+        navigate("/admin/assignments");
+      } else {
+        throw new Error(res.data.message || "Failed to update assignment");
       }
-
-      const data = await res.json();
-      console.log("✅ Assignment updated:", data);
-      alert("Assignment updated successfully!");
-      navigate("/admin/assignments");
     } catch (err) {
       console.error("❌ Error:", err);
-      setError(err.message);
-    } finally {
-      setLoading(false);
+      alert(`Error updating assignment: ${err.response?.data?.error || err.message}`);
     }
   };
 
-  if (loading) {
-    return (
-      <div className="add-assignment-container">
-        <div style={{ textAlign: 'center', padding: '2rem' }}>
-          <p>🔄 Loading assignment data...</p>
-          <p style={{ fontSize: '0.9rem', color: '#666' }}>
-            Fetching existing answers and questions from database...
-          </p>
-        </div>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="add-assignment-container">
-        <p className="error-text">Error: {error}</p>
-        <button onClick={() => navigate("/admin/assignments")} className="cancel-btn">
-          Back to Assignments
-        </button>
-      </div>
-    );
-  }
+  if (loading) return <div className="loading-text">Loading assignment data...</div>;
+  if (error) return <div className="error-text">Error: {error}</div>;
 
   return (
     <div className="add-assignment-container">
       <h2>Edit Assignment</h2>
-      
-             {/* Debug: Show raw data for troubleshooting */}
-       <div style={{ 
-         background: '#f0f0f0', 
-         padding: '1rem', 
-         margin: '1rem 0', 
-         borderRadius: '4px',
-         fontSize: '0.9rem'
-       }}>
-         <h4>🔍 Debug Info:</h4>
-         <p><strong>Module Name:</strong> {moduleName}</p>
-         <p><strong>Category:</strong> {category}</p>
-         <p><strong>Sub-Assignments Count:</strong> {subAssignments.length}</p>
-         <p><strong>First Sub-Assignment Data:</strong></p>
-         <pre style={{ background: 'white', padding: '0.5rem', overflow: 'auto' }}>
-           {subAssignments.length > 0 ? JSON.stringify(subAssignments[0], null, 2) : 'No data'}
-         </pre>
-         
-         {/* Test buttons */}
-         <div style={{ marginTop: '1rem', padding: '0.5rem', background: 'white', borderRadius: '4px' }}>
-           <h5>🧪 Test Functions:</h5>
-           <button 
-             type="button" 
-             onClick={() => {
-               if (subAssignments.length > 0) {
-                 const updated = [...subAssignments];
-                 updated[0].isDynamic = false;
-                 updated[0].answerPatientName = "John Doe";
-                 updated[0].answerAgeOrDob = "35";
-                 updated[0].answerIcdCodes = "K35.90, K35.91";
-                 updated[0].answerCptCodes = "44950, 44960";
-                 updated[0].answerDrgValue = "470";
-                 updated[0].answerModifiers = "26, 59";
-                 updated[0].answerNotes = "Sample patient data for testing";
-                 setSubAssignments(updated);
-                 console.log("✅ Test data populated");
-               }
-             }}
-             style={{ 
-               background: '#007bff', 
-               color: 'white', 
-               border: 'none', 
-               padding: '0.5rem 1rem', 
-               borderRadius: '4px',
-               marginRight: '0.5rem'
-             }}
-           >
-             🧪 Populate Test Data
-           </button>
-           <button 
-             type="button" 
-             onClick={() => {
-               if (subAssignments.length > 0) {
-                 const updated = [...subAssignments];
-                 updated[0].isDynamic = true;
-                 updated[0].dynamicQuestions = [
-                   { questionText: "What is the primary diagnosis?", options: "Appendicitis, Cholecystitis, Diverticulitis", answer: "Appendicitis" },
-                   { questionText: "What is the recommended treatment?", options: "Surgery, Antibiotics, Observation", answer: "Surgery" }
-                 ];
-                 setSubAssignments(updated);
-                 console.log("✅ Test dynamic questions populated");
-               }
-             }}
-             style={{ 
-               background: '#28a745', 
-               color: 'white', 
-               border: 'none', 
-               padding: '0.5rem 1rem', 
-               borderRadius: '4px' 
-             }}
-                        >
-             🧪 Test Dynamic Questions
-           </button>
-           <button 
-             type="button" 
-             onClick={() => {
-               console.log("🔍 Current assignment data:", {
-                 moduleName,
-                 category,
-                 subAssignments,
-                 assignedStudents
-               });
-               console.log("🔍 Raw assignment from state:", assignmentFromState);
-             }}
-             style={{ 
-               background: '#ffc107', 
-               color: 'black', 
-               border: 'none', 
-               padding: '0.5rem 1rem', 
-               borderRadius: '4px',
-               marginLeft: '0.5rem'
-             }}
-           >
-             🔍 Log Current State
-           </button>
-         </div>
-       </div>
-      
       <form onSubmit={handleSubmit} className="assignment-form">
         <div className="form-group">
           <label>Category*</label>
@@ -598,21 +298,6 @@ export default function EditAssignment() {
             onChange={(e) => setModuleName(e.target.value)}
             required
           />
-        </div>
-
-        <div className="form-group">
-          <label>Assigned Students</label>
-          <div className="assigned-students-display">
-            {assignedStudents.length > 0 ? (
-              assignedStudents.map((student, idx) => (
-                <div key={student._id || idx} className="student-tag">
-                  {student.name || student.email || `Student ${idx + 1}`}
-                </div>
-              ))
-            ) : (
-              <span className="no-students">No students assigned</span>
-            )}
-          </div>
         </div>
 
         <h3>Sub-Assignments</h3>
@@ -643,36 +328,26 @@ export default function EditAssignment() {
               />
             </div>
 
-                         <div className="question-type-toggle">
-               <div style={{ marginBottom: '0.5rem' }}>
-                 <small style={{ color: '#666' }}>
-                   Current type: <strong>{sub.isDynamic ? 'Dynamic Questions' : 'Predefined Questions'}</strong>
-                 </small>
-               </div>
-               <label>
-                 <input
-                   type="radio"
-                   name={`type-${idx}`}
-                   checked={!sub.isDynamic}
-                   onChange={() => handleSubChange(idx, "isDynamic", false)}
-                 />
-                 Predefined Questions
-               </label>
-               <label>
-                 <input
-                   type="radio"
-                   name={`type-${idx}`}
-                   checked={sub.isDynamic}
-                   onChange={() => handleSubChange(idx, "isDynamic", true)}
-                 />
-                 Dynamic Questions
-               </label>
-               <div style={{ marginTop: '0.5rem' }}>
-                 <small style={{ color: '#666' }}>
-                   💡 Tip: Choose "Predefined Questions" to edit existing answers, "Dynamic Questions" to edit questions
-                 </small>
-               </div>
-             </div>
+            <div className="question-type-toggle">
+              <label>
+                <input
+                  type="radio"
+                  name={`type-${idx}`}
+                  checked={!sub.isDynamic}
+                  onChange={() => handleSubChange(idx, "isDynamic", false)}
+                />
+                Predefined Questions
+              </label>
+              <label>
+                <input
+                  type="radio"
+                  name={`type-${idx}`}
+                  checked={sub.isDynamic}
+                  onChange={() => handleSubChange(idx, "isDynamic", true)}
+                />
+                Dynamic Questions
+              </label>
+            </div>
 
             {/* Predefined Answer Fields */}
             {!sub.isDynamic && (
@@ -785,6 +460,19 @@ export default function EditAssignment() {
                 <h4>Dynamic Questions</h4>
                 {sub.dynamicQuestions.map((q, qIdx) => (
                   <div key={qIdx} className="question-card">
+                    <div className="question-header">
+                      <h5>Question #{qIdx + 1}</h5>
+                      {sub.dynamicQuestions.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => removeDynamicQuestion(idx, qIdx)}
+                          className="remove-question-btn"
+                        >
+                          Remove
+                        </button>
+                      )}
+                    </div>
+                    
                     <div className="form-group">
                       <label htmlFor={`questionText-${idx}-${qIdx}`}>Question Text*</label>
                       <input
@@ -827,16 +515,6 @@ export default function EditAssignment() {
                         required
                       />
                     </div>
-
-                    {sub.dynamicQuestions.length > 1 && (
-                      <button
-                        type="button"
-                        onClick={() => removeDynamicQuestion(idx, qIdx)}
-                        className="remove-btn"
-                      >
-                        Remove Question
-                      </button>
-                    )}
                   </div>
                 ))}
 
@@ -852,14 +530,6 @@ export default function EditAssignment() {
 
             <div className="form-group">
               <label>Assignment PDF</label>
-              {sub.assignmentPdf && typeof sub.assignmentPdf === 'string' && (
-                <div className="current-pdf">
-                  <strong>Current PDF:</strong> 
-                  <a href={sub.assignmentPdf} target="_blank" rel="noopener noreferrer" className="pdf-link">
-                    View Current PDF
-                  </a>
-                </div>
-              )}
               <input
                 type="file"
                 accept="application/pdf"
@@ -883,8 +553,8 @@ export default function EditAssignment() {
             >
               Cancel
             </button>
-            <button type="submit" className="submit-btn" disabled={loading}>
-              {loading ? "Updating..." : "Update Assignment"}
+            <button type="submit" className="submit-btn">
+              Update Assignment
             </button>
           </div>
         </div>

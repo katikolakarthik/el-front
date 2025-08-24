@@ -99,6 +99,50 @@
   cursor: pointer;
 }
 
+.question-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.question-header h5 {
+  margin: 0;
+  color: #2c3e50;
+  font-size: 1rem;
+}
+
+.remove-question-btn {
+  background: #e74c3c;
+  color: white;
+  border: none;
+  padding: 0.25rem 0.75rem;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.8rem;
+}
+
+.remove-question-btn:hover {
+  background: #c0392b;
+}
+
+.loading-text {
+  text-align: center;
+  padding: 2rem;
+  color: #7f8c8d;
+  font-size: 1.1rem;
+}
+
+.error-text {
+  text-align: center;
+  padding: 2rem;
+  color: #e74c3c;
+  font-size: 1.1rem;
+  background: #fdf2f2;
+  border: 1px solid #fecaca;
+  border-radius: 4px;
+}
+
 .predefined-fields,
 .dynamic-questions {
   margin-top: 1rem;
@@ -231,50 +275,4 @@
   display: flex;
   align-items: center;
   gap: 8px;
-}
-
-/* Student tags for edit assignment */
-.assigned-students-display {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-  padding: 0.5rem;
-  border: 1px solid #ddd;
-  border-radius: 4px;
-  background: #f8f9fa;
-  min-height: 2.5rem;
-}
-
-.student-tag {
-  background: #3498db;
-  color: white;
-  padding: 0.25rem 0.75rem;
-  border-radius: 1rem;
-  font-size: 0.875rem;
-  display: inline-flex;
-  align-items: center;
-}
-
-.no-students {
-  color: #6c757d;
-  font-style: italic;
-}
-
-/* Current PDF display */
-.current-pdf {
-  margin-bottom: 0.5rem;
-  padding: 0.5rem;
-  background: #e8f4fd;
-  border: 1px solid #bee5eb;
-  border-radius: 4px;
-}
-
-.pdf-link {
-  color: #007bff;
-  text-decoration: none;
-  margin-left: 0.5rem;
-}
-
-.pdf-link:hover {
-  text-decoration: underline;
 }
