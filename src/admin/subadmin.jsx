@@ -12,7 +12,7 @@ const SubAdminManagement = () => {
   const [isEditing, setIsEditing] = useState(false);
   const [message, setMessage] = useState({ text: '', type: '' });
 
-  const API_BASE_URL = 'http://localhost:5000/admin';
+  const API_BASE_URL = 'https://el-backend-ashen.vercel.app/admin';
 
   useEffect(() => {
     fetchSubadmins();

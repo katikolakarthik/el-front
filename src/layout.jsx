@@ -31,7 +31,7 @@ const Layout = ({ children }) => {
       const sessionId = localStorage.getItem("sessionId");
       if (sessionId) {
         // Call logout endpoint to invalidate session
-        await axios.post("http://localhost:5000/logout", {}, {
+        await axios.post("https://el-backend-ashen.vercel.app/logout", {}, {
           headers: {
             'x-session-id': sessionId
           }

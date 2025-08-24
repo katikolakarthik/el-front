@@ -3,7 +3,7 @@ import { FaChevronDown, FaTrash, FaTimes, FaEllipsisV, FaPlus, FaEdit } from "re
 import axios from "axios";
 import "./student.css";
 
-const API_URL = "http://localhost:5000/admin";
+  const API_URL = "https://el-backend-ashen.vercel.app/admin";
 
 export default function Students() {
   const [students, setStudents] = useState([]);

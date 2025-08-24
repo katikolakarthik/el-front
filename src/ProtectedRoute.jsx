@@ -23,7 +23,7 @@ const ProtectedRoute = ({ children, allowed = [] }) => {
           return;
         }
 
-        const response = await axios.get('http://localhost:5000/validate-session', {
+        const response = await axios.get('https://el-backend-ashen.vercel.app/validate-session', {
           headers: {
             'x-session-id': sessionId
           }
