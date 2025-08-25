@@ -307,3 +307,65 @@
   align-items: center;
   gap: 8px;
 }
+
+
+/* Overlay while saving */
+.add-assignment-container {
+  position: relative;
+}
+
+/* Prevent layout jump when overlay shows */
+.add-assignment-container.is-loading {
+  pointer-events: none; /* block clicks under overlay */
+}
+
+.loading-overlay {
+  position: fixed; /* full screen */
+  inset: 0;
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(2px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  text-align: center;
+}
+
+.loading-text {
+  font-size: 1.25rem;
+  font-weight: 600;
+  margin-top: 12px;
+}
+
+.loading-sub {
+  font-size: 0.95rem;
+  opacity: 0.8;
+  margin-top: 4px;
+}
+
+/* Simple spinner */
+.loader {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  border: 6px solid #e5e7eb;           /* light ring */
+  border-top-color: #111827;            /* animated segment */
+  animation: spin 0.9s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Disabled submit visual (optional) */
+.submit-btn[disabled],
+.add-sub-btn[disabled],
+.remove-btn[disabled],
+.cancel-btn[disabled],
+input[disabled],
+textarea[disabled],
+select[disabled] {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
