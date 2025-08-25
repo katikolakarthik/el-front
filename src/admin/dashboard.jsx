@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   FaUsers,
   FaClipboardList,
@@ -8,7 +8,7 @@ import {
   FaStar,
   FaTimes,
 } from "react-icons/fa";
-import { MdAssignment } from "react-icons/md";
+import { MdAssignment, MdPictureAsPdf } from "react-icons/md";
 import axios from "axios";
 import "./dashboard.css";
 
@@ -29,6 +29,68 @@ function Modal({ open, onClose, children }) {
   );
 }
 
+/** ---------- small helpers to hide empties & format cleanly ---------- */
+
+const isNonEmptyArray = (v) => Array.isArray(v) && v.length > 0;
+const isNonEmptyString = (v) => typeof v === "string" && v.trim().length > 0;
+const isNonEmptyObj = (v) => v && typeof v === "object" && Object.values(v).some((x) => {
+  if (Array.isArray(x)) return x.length > 0;
+  if (typeof x === "object" && x !== null) return Object.values(x).length > 0;
+  return x !== null && String(x).trim?.() !== "";
+});
+
+/** Removes keys whose values are empty strings, empty arrays, null, or {} */
+function pruneEmpty(obj) {
+  if (!obj || typeof obj !== "object") return obj;
+  const out = {};
+  for (const [k, v] of Object.entries(obj)) {
+    if (Array.isArray(v)) {
+      if (v.length) out[k] = v;
+    } else if (v && typeof v === "object") {
+      const cleaned = pruneEmpty(v);
+      if (cleaned && Object.keys(cleaned).length) out[k] = cleaned;
+    } else if (v !== null && v !== "" && v !== undefined) {
+      out[k] = v;
+    }
+  }
+  return out;
+}
+
+function KeyValue({ label, value, mono }) {
+  if (value === undefined || value === null || value === "") return null;
+  return (
+    <div className="kv">
+      <span>{label}</span>
+      {mono ? <code>{value}</code> : <b>{value}</b>}
+    </div>
+  );
+}
+
+function TagList({ label, items }) {
+  if (!isNonEmptyArray(items)) return null;
+  return (
+    <div className="kv">
+      <span>{label}</span>
+      <div className="tag-row">
+        {items.map((it, i) => (
+          <span className="tag" key={`${label}-${i}`}>{it}</span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function Section({ title, children, tight }) {
+  return (
+    <div className={`section ${tight ? "section-tight" : ""}`}>
+      <h5>{title}</h5>
+      {children}
+    </div>
+  );
+}
+
+/** ----------------------------- main ----------------------------- */
+
 export default function Dashboard() {
   const [stats, setStats] = useState(null);
   const [recentStudents, setRecentStudents] = useState([]);
@@ -44,37 +106,62 @@ export default function Dashboard() {
   const [catSection, setCatSection] = useState(null); // null | 'assignments' | 'students'
   const [detailView, setDetailView] = useState(null); // {type: 'assignment'|'student', data: {...}}
 
+  /** DASHBOARD DATA */
   useEffect(() => {
+    let alive = true;
     const fetchData = async () => {
       try {
         const [statsRes, studentsRes, assignmentsRes] = await Promise.all([
-          axios.get("https://el-backend-ashen.vercel.app/admin/dashboard"),
-          axios.get("https://el-backend-ashen.vercel.app/admin/studentslist"),
-          axios.get("https://el-backend-ashen.vercel.app/admin/recentassignments"),
+          axios.get("https://el-backend-ashen.vercel.app/admin/dashboard", { timeout: 15000 }),
+          axios.get("https://el-backend-ashen.vercel.app/admin/studentslist", { timeout: 15000 }),
+          axios.get("https://el-backend-ashen.vercel.app/admin/recentassignments", { timeout: 15000 }),
         ]);
-        setStats(statsRes.data);
-        setRecentStudents(studentsRes.data);
-        setRecentAssignments(assignmentsRes.data);
+        if (!alive) return;
+        setStats(statsRes.data || {});
+        setRecentStudents(Array.isArray(studentsRes.data) ? studentsRes.data : []);
+        setRecentAssignments(Array.isArray(assignmentsRes.data) ? assignmentsRes.data : []);
       } catch (err) {
         console.error(err);
       } finally {
-        setLoading(false);
+        if (alive) setLoading(false);
       }
     };
     fetchData();
+    return () => {
+      alive = false;
+    };
   }, []);
 
+  /** CATEGORY SUMMARY FETCH — robust & typed */
   const openCategory = async (category) => {
     setSelectedCategory(category);
     setCatOpen(true);
-    setCatSection(null);     // step-1: show options
+    setCatSection(null);
     setDetailView(null);
     setCatData(null);
     setCatError("");
     setCatLoading(true);
+
     try {
-      const { data } = await axios.post(CATEGORY_SUMMARY_URL, { category });
-      setCatData(data);
+      const { data } = await axios.post(
+        CATEGORY_SUMMARY_URL,
+        { category },
+        { timeout: 15000, headers: { "Content-Type": "application/json" } }
+      );
+
+      // Basic shape guarding so UI doesn't break:
+      const safe = {
+        success: !!data?.success,
+        category: data?.category ?? category,
+        totals: {
+          assignments: Number(data?.totals?.assignments ?? (data?.assignments?.length || 0)),
+          students: Number(data?.totals?.students ?? (data?.students?.length || 0)),
+        },
+        assignments: Array.isArray(data?.assignments) ? data.assignments : [],
+        students: Array.isArray(data?.students) ? data.students : [],
+      };
+
+      setCatData(safe);
     } catch (e) {
       console.error(e);
       setCatError(e?.response?.data?.message || "Failed to load category data");
@@ -96,6 +183,19 @@ export default function Dashboard() {
   const showStudent = (s) => setDetailView({ type: "student", data: s });
   const backToOptions = () => { setDetailView(null); setCatSection(null); };
   const backToList = () => setDetailView(null);
+
+  /** Formatters */
+  const fmtDate = (iso, withTime = false) => {
+    if (!iso) return "-";
+    const d = new Date(iso);
+    return withTime ? d.toLocaleString() : d.toLocaleDateString();
+  };
+
+  // derived for detail view (cleaned answer key)
+  const cleanedAnswerKey = useMemo(() => {
+    if (detailView?.type !== "assignment") return null;
+    return pruneEmpty(detailView.data?.answerKey || {});
+  }, [detailView]);
 
   if (loading) {
     return (
@@ -130,7 +230,7 @@ export default function Dashboard() {
           <FaUsers className="stat-icon" />
           <div>
             <p>Total Students</p>
-            <h3>{stats.totalStudents}</h3>
+            <h3>{stats?.totalStudents ?? 0}</h3>
           </div>
         </div>
 
@@ -138,7 +238,7 @@ export default function Dashboard() {
           <FaClipboardList className="stat-icon pink" />
           <div>
             <p>Total Assignments</p>
-            <h3>{stats.totalAssignments}</h3>
+            <h3>{stats?.totalAssignments ?? 0}</h3>
           </div>
         </div>
 
@@ -147,7 +247,7 @@ export default function Dashboard() {
           <div>
             <p>Students Submitted</p>
             <h3>
-              {stats.studentsSubmittedCount}/{stats.totalStudents}
+              {(stats?.studentsSubmittedCount ?? 0)}/{stats?.totalStudents ?? 0}
             </h3>
           </div>
         </div>
@@ -156,7 +256,7 @@ export default function Dashboard() {
           <FaChartLine className="stat-icon blue" />
           <div>
             <p>Avg Progress</p>
-            <h3>{stats.averageProgress}%</h3>
+            <h3>{stats?.averageProgress ?? 0}%</h3>
           </div>
         </div>
 
@@ -164,7 +264,7 @@ export default function Dashboard() {
           <FaStar className="stat-icon orange" />
           <div>
             <p>Avg Score</p>
-            <h3>{stats.averageScore}%</h3>
+            <h3>{stats?.averageScore ?? 0}%</h3>
           </div>
         </div>
       </div>
@@ -176,12 +276,12 @@ export default function Dashboard() {
           {recentStudents.length === 0 ? (
             <p>No recent students</p>
           ) : (
-            recentStudents.map((student, idx) => (
-              <div key={idx} className="recent-item">
+            recentStudents.map((student) => (
+              <div key={student._id} className="recent-item">
                 <FaUserCircle className="avatar" />
                 <div>
                   <p className="name">{student.name}</p>
-                  <small>{student.courseName || "No Course"}</small>
+                  <small>{student.courseName || "—"}</small>
                 </div>
               </div>
             ))
@@ -193,12 +293,12 @@ export default function Dashboard() {
           {recentAssignments.length === 0 ? (
             <p>No recent assignments</p>
           ) : (
-            recentAssignments.map((assignment, idx) => (
-              <div key={idx} className="recent-item">
+            recentAssignments.map((assignment) => (
+              <div key={assignment._id} className="recent-item">
                 <MdAssignment className="avatar blue" />
                 <div>
                   <p className="name">{assignment.moduleName}</p>
-                  <small>{new Date(assignment.assignedDate).toLocaleDateString()}</small>
+                  <small>{fmtDate(assignment.assignedDate)}</small>
                 </div>
               </div>
             ))
@@ -227,7 +327,7 @@ export default function Dashboard() {
 
         {!catLoading && !catError && catData && (
           <>
-            {/* STEP 1: Only options (Assignments / Students) */}
+            {/* STEP 1: Options */}
             {!catSection && !detailView && (
               <div className="cat-options">
                 <button className="option-card" onClick={() => setCatSection("assignments")}>
@@ -255,7 +355,7 @@ export default function Dashboard() {
                   <button className="back-btn" onClick={backToOptions}>← Back</button>
                   <h4>Assignments</h4>
                 </div>
-                {catData.assignments?.length ? (
+                {isNonEmptyArray(catData.assignments) ? (
                   <ul className="click-list">
                     {catData.assignments.map((a) => (
                       <li key={a._id} onClick={() => showAssignment(a)}>
@@ -263,15 +363,9 @@ export default function Dashboard() {
                           <div className="left">
                             <MdAssignment /> <span className="title">{a.moduleName}</span>
                           </div>
-                          <div className="right">
-                            <small>
-                              {(a.subAssignmentsCount ?? (a.subAssignments?.length || 0))} subs
-                            </small>
-                          </div>
+                          {/* REMOVED the “subs” count per your request */}
                         </div>
-                        <small className="muted">
-                          {new Date(a.assignedDate).toLocaleDateString()}
-                        </small>
+                        <small className="muted">{fmtDate(a.assignedDate)}</small>
                       </li>
                     ))}
                   </ul>
@@ -288,7 +382,7 @@ export default function Dashboard() {
                   <button className="back-btn" onClick={backToOptions}>← Back</button>
                   <h4>Students</h4>
                 </div>
-                {catData.students?.length ? (
+                {isNonEmptyArray(catData.students) ? (
                   <ul className="click-list">
                     {catData.students.map((s) => (
                       <li key={s._id} onClick={() => showStudent(s)}>
@@ -297,12 +391,10 @@ export default function Dashboard() {
                             <FaUserCircle /> <span className="title">{s.name}</span>
                           </div>
                           <div className="right">
-                            <small>{s.courseName}</small>
+                            <small>{s.courseName || "—"}</small>
                           </div>
                         </div>
-                        <small className="muted">
-                          Enrolled: {s.enrolledDate ? new Date(s.enrolledDate).toLocaleDateString() : "-"}
-                        </small>
+                        <small className="muted">Enrolled: {fmtDate(s.enrolledDate)}</small>
                       </li>
                     ))}
                   </ul>
@@ -319,30 +411,112 @@ export default function Dashboard() {
                   <button className="back-btn" onClick={backToList}>← Back</button>
                   <h4>Assignment</h4>
                 </div>
-                <div className="kv"><span>Module</span><b>{detailView.data.moduleName}</b></div>
-                <div className="kv"><span>Category</span><b>{detailView.data.category}</b></div>
-                {detailView.data.assignmentPdf && (
+
+                <KeyValue label="Module" value={detailView.data.moduleName} />
+                <KeyValue label="Category" value={detailView.data.category} />
+                <KeyValue label="Assigned" value={fmtDate(detailView.data.assignedDate, true)} />
+
+                {isNonEmptyString(detailView.data.assignmentPdf) && (
                   <div className="kv">
                     <span>PDF</span>
-                    <a href={detailView.data.assignmentPdf} target="_blank" rel="noreferrer">Open PDF</a>
+                    <a className="link" href={detailView.data.assignmentPdf} target="_blank" rel="noreferrer">
+                      <MdPictureAsPdf /> Open PDF
+                    </a>
                   </div>
                 )}
-                <div className="kv">
-                  <span>Assigned</span>
-                  <b>{new Date(detailView.data.assignedDate).toLocaleString()}</b>
-                </div>
-                <div className="section">
-                  <h5>Answer Key (parent)</h5>
-                  {detailView.data.answerKey ? (
-                    <pre className="pre">{JSON.stringify(detailView.data.answerKey, null, 2)}</pre>
-                  ) : (<p className="muted">—</p>)}
-                </div>
-                <div className="section">
-                  <h5>Sub-assignments</h5>
-                  {detailView.data.subAssignments?.length ? (
-                    <pre className="pre">{JSON.stringify(detailView.data.subAssignments, null, 2)}</pre>
-                  ) : (<p className="muted">None</p>)}
-                </div>
+
+                {/* Parent Answer Key (hide empties) */}
+                <Section title="Answer Key (parent)">
+                  {isNonEmptyObj(cleanedAnswerKey) ? (
+                    <>
+                      <KeyValue label="Patient Name" value={cleanedAnswerKey.patientName} />
+                      <KeyValue label="Age / DoB" value={cleanedAnswerKey.ageOrDob} />
+                      <KeyValue label="DRG Value" value={cleanedAnswerKey.drgValue} mono />
+                      <KeyValue label="Notes" value={cleanedAnswerKey.notes} />
+                      <TagList label="ICD Codes" items={cleanedAnswerKey.icdCodes} />
+                      <TagList label="CPT Codes" items={cleanedAnswerKey.cptCodes} />
+                      <TagList label="PCS Codes" items={cleanedAnswerKey.pcsCodes} />
+                      <TagList label="HCPCS Codes" items={cleanedAnswerKey.hcpcsCodes} />
+                      <TagList label="Modifiers" items={cleanedAnswerKey.modifiers} />
+                    </>
+                  ) : (
+                    <p className="muted">—</p>
+                  )}
+                </Section>
+
+                {/* Sub-assignments (readable, no empty blocks) */}
+                <Section title="Sub-assignments">
+                  {isNonEmptyArray(detailView.data.subAssignments) ? (
+                    <div className="sub-grid">
+                      {detailView.data.subAssignments.map((sub) => {
+                        const cleanSubKey = pruneEmpty(sub.answerKey || {});
+                        const hasDQ = isNonEmptyArray(sub.dynamicQuestions);
+                        const hasAnyKey =
+                          isNonEmptyObj(cleanSubKey) ||
+                          isNonEmptyArray(sub.icdCodes) ||
+                          isNonEmptyArray(sub.cptCodes) ||
+                          isNonEmptyArray(sub.pcsCodes) ||
+                          isNonEmptyArray(sub.hcpcsCodes) ||
+                          isNonEmptyArray(sub.modifiers);
+
+                        return (
+                          <div className="sub-card" key={sub._id}>
+                            <div className="sub-head">
+                              <b>{sub.subModuleName}</b>
+                              {isNonEmptyString(sub.assignmentPdf) && (
+                                <a className="link" href={sub.assignmentPdf} target="_blank" rel="noreferrer">
+                                  <MdPictureAsPdf /> PDF
+                                </a>
+                              )}
+                            </div>
+
+                            {hasAnyKey && (
+                              <Section title="Answer Key" tight>
+                                <KeyValue label="Patient Name" value={cleanSubKey.patientName} />
+                                <KeyValue label="Age / DoB" value={cleanSubKey.ageOrDob} />
+                                <KeyValue label="DRG Value" value={cleanSubKey.drgValue} mono />
+                                <KeyValue label="Notes" value={cleanSubKey.notes} />
+                                <TagList label="ICD Codes" items={cleanSubKey.icdCodes || sub.icdCodes} />
+                                <TagList label="CPT Codes" items={cleanSubKey.cptCodes || sub.cptCodes} />
+                                <TagList label="PCS Codes" items={cleanSubKey.pcsCodes || sub.pcsCodes} />
+                                <TagList label="HCPCS Codes" items={cleanSubKey.hcpcsCodes || sub.hcpcsCodes} />
+                                <TagList label="Modifiers" items={cleanSubKey.modifiers || sub.modifiers} />
+                              </Section>
+                            )}
+
+                            {hasDQ && (
+                              <Section title="Dynamic Questions" tight>
+                                <ul className="dq-list">
+                                  {sub.dynamicQuestions.map((q) => (
+                                    <li key={q._id}>
+                                      <div className="dq-q">{q.questionText}</div>
+                                      {isNonEmptyArray(q.options) && (
+                                        <div className="dq-opts">
+                                          {q.options.map((opt, i) => (
+                                            <span key={i} className="tag">{opt}</span>
+                                          ))}
+                                        </div>
+                                      )}
+                                      {isNonEmptyString(q.answer) && (
+                                        <div className="dq-ans">
+                                          <span>Answer:</span> <b>{q.answer}</b>
+                                        </div>
+                                      )}
+                                    </li>
+                                  ))}
+                                </ul>
+                              </Section>
+                            )}
+
+                            {!hasAnyKey && !hasDQ && <p className="muted">No details</p>}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <p className="muted">None</p>
+                  )}
+                </Section>
               </div>
             )}
 
@@ -353,14 +527,11 @@ export default function Dashboard() {
                   <button className="back-btn" onClick={backToList}>← Back</button>
                   <h4>Student</h4>
                 </div>
-                <div className="kv"><span>Name</span><b>{detailView.data.name}</b></div>
-                <div className="kv"><span>Course</span><b>{detailView.data.courseName}</b></div>
-                <div className="kv">
-                  <span>Enrolled</span>
-                  <b>{detailView.data.enrolledDate ? new Date(detailView.data.enrolledDate).toLocaleString() : "-"}</b>
-                </div>
+                <KeyValue label="Name" value={detailView.data.name} />
+                <KeyValue label="Course" value={detailView.data.courseName} />
+                <KeyValue label="Enrolled" value={fmtDate(detailView.data.enrolledDate, true)} />
                 {detailView.data.expiryDate && (
-                  <div className="kv"><span>Expiry</span><b>{new Date(detailView.data.expiryDate).toLocaleString()}</b></div>
+                  <KeyValue label="Expiry" value={fmtDate(detailView.data.expiryDate, true)} />
                 )}
               </div>
             )}
