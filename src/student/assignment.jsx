@@ -1,7 +1,7 @@
 // NewAssignments.jsx
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import axios from 'axios';
-import { FiBook, FiClock } from 'react-icons/fi';
+import { FiBook, FiClock, FiCalendar } from 'react-icons/fi';
 import { Worker, Viewer, SpecialZoomLevel } from '@react-pdf-viewer/core';
 import '@react-pdf-viewer/core/lib/styles/index.css';
 import './AssignmentFlow.css';
@@ -19,7 +19,6 @@ const PdfReader = ({ url, height = '60vh', watermark = '' }) => {
       try {
         setErr('');
         setFileData(null);
-        // Fetch as ArrayBuffer so the browser doesn't open its native PDF viewer
         const res = await fetch(url, { signal: ctrl.signal });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const buf = await res.arrayBuffer();
@@ -99,6 +98,18 @@ const sortByAssignedDesc = (arr) =>
     (a, b) => new Date(b?.assignedDate || 0).getTime() - new Date(a?.assignedDate || 0).getTime()
   );
 
+const sortByAssignedAsc = (arr) =>
+  [...arr].sort(
+    (a, b) => new Date(a?.assignedDate || 0).getTime() - new Date(b?.assignedDate || 0).getTime()
+  );
+
+const sameDay = (dStr, ymd) => {
+  if (!dStr || !ymd) return false;
+  const d = new Date(dStr);
+  const [y, m, day] = ymd.split('-').map(Number);
+  return d.getFullYear() === y && (d.getMonth() + 1) === m && d.getDate() === day;
+};
+
 const NewAssignments = () => {
   const [assignments, setAssignments] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -106,6 +117,7 @@ const NewAssignments = () => {
   const [activeAssignment, setActiveAssignment] = useState(null);
   const [activeSubAssignment, setActiveSubAssignment] = useState(null);
   const [answers, setAnswers] = useState({});
+  const [selectedDate, setSelectedDate] = useState(''); // yyyy-mm-dd
 
   const areAllSubAssignmentsCompleted = (assignment) => {
     if (!assignment.subAssignments || assignment.subAssignments.length === 0) {
@@ -161,12 +173,54 @@ const NewAssignments = () => {
       ? new Date(dateString).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })
       : '—';
 
+  // ---- DATE FILTERED LISTS ----
+  const assignmentsForSelectedDate = useMemo(() => {
+    if (!selectedDate) return [];
+    return assignments.filter((a) => sameDay(a.assignedDate, selectedDate));
+  }, [assignments, selectedDate]);
+
+  const assignmentsForSelectedDateAsc = useMemo(
+    () => sortByAssignedAsc(assignmentsForSelectedDate),
+    [assignmentsForSelectedDate]
+  );
+
+  // Can start this assignment? (all previous on this date must be completed)
+  const canStartAssignment = (assignment) => {
+    if (!selectedDate) return false;
+    const idx = assignmentsForSelectedDateAsc.findIndex((a) => String(a._id) === String(assignment._id));
+    if (idx <= 0) return true; // first one of the day
+    // all before idx must be completed
+    for (let i = 0; i < idx; i++) {
+      if (!areAllSubAssignmentsCompleted(assignmentsForSelectedDateAsc[i])) return false;
+    }
+    // if this one has sub-assignments and the parent is already completed, block starting again
+    return !areAllSubAssignmentsCompleted(assignment);
+  };
+
+  // Can start this sub? (all previous subs in this assignment must be completed)
+  const canStartSub = (assignment, subIdx) => {
+    if (subIdx === 0) return !(assignment.subAssignments?.[0]?.isCompleted);
+    for (let i = 0; i < subIdx; i++) {
+      if (!assignment.subAssignments[i].isCompleted) return false;
+    }
+    return !assignment.subAssignments[subIdx].isCompleted;
+  };
+
   const handleStart = async (assignmentId, subAssignmentId = null) => {
     try {
       setLoading(true);
       setError(null);
       const fromList = assignments.find((a) => String(a._id) === String(assignmentId));
       if (!fromList) throw new Error('Assignment not found in list');
+
+      // gate at assignment level (respect selected date)
+      if (selectedDate && !sameDay(fromList.assignedDate, selectedDate)) {
+        throw new Error('This assignment is not part of the selected date');
+      }
+      if (!canStartAssignment(fromList)) {
+        throw new Error('Please complete previous assignments to unlock this one');
+      }
+
       const assignmentData = normalizeAssignment(fromList);
       assignmentData.isCompleted = fromList.isCompleted || false;
       if (fromList && Array.isArray(fromList.subAssignments)) {
@@ -176,10 +230,16 @@ const NewAssignments = () => {
         });
       }
       setActiveAssignment(assignmentData);
+
       if (subAssignmentId) {
-        const sub = (assignmentData.subAssignments || []).find((s) => String(s._id) === String(subAssignmentId));
+        const idx = assignmentData.subAssignments.findIndex((s) => String(s._id) === String(subAssignmentId));
+        if (!canStartSub(assignmentData, idx)) {
+          throw new Error('Complete previous section to unlock this one');
+        }
+        const sub = assignmentData.subAssignments[idx];
         setActiveSubAssignment(sub || null);
       } else setActiveSubAssignment(null);
+
       setAnswers({});
     } catch (err) {
       setError(err.message);
@@ -230,13 +290,15 @@ const NewAssignments = () => {
       const res = await axios.post(`${API_BASE}/student/submit-assignment`, payload);
       if (!res.data?.success) return alert('Failed to submit assignment');
 
+      // mark completed locally
       if (activeSubAssignment) {
         setActiveAssignment((prev) => {
           if (!prev) return prev;
           const updatedSubs = (prev.subAssignments || []).map((s) =>
             String(s._id) === String(activeSubAssignment._id) ? { ...s, isCompleted: true } : s
           );
-          return { ...prev, subAssignments: updatedSubs };
+          const parentCompleted = updatedSubs.every((s) => s.isCompleted);
+          return { ...prev, subAssignments: updatedSubs, isCompleted: parentCompleted || prev.isCompleted };
         });
         setActiveSubAssignment((prev) => (prev ? { ...prev, isCompleted: true } : prev));
       } else {
@@ -261,20 +323,23 @@ const NewAssignments = () => {
         }
       } catch {}
 
+      // auto-advance logic: next sub → else back to list so next unlocks
       if (activeSubAssignment && (activeAssignment.subAssignments || []).length > 0) {
         const idx = activeAssignment.subAssignments.findIndex(
           (sub) => String(sub._id) === String(activeSubAssignment._id)
         );
         if (idx < activeAssignment.subAssignments.length - 1) {
-          alert('Assignment submitted successfully..wait for next');
-          setActiveSubAssignment(activeAssignment.subAssignments[idx + 1]);
+          alert('Submitted. Next section unlocked.');
+          // set next only if it is exactly the next in order
+          setActiveSubAssignment({ ...activeAssignment.subAssignments[idx + 1], isCompleted: false });
         } else {
           alert('Assignment completed successfully!');
           setActiveSubAssignment(null);
+          setActiveAssignment(null); // return to list so next assignment unlocks
         }
       } else {
         alert('Assignment submitted successfully!');
-        setActiveAssignment(null);
+        setActiveAssignment(null); // return to list so next assignment unlocks
       }
       setAnswers({});
     } catch (err) {
@@ -439,6 +504,7 @@ const NewAssignments = () => {
     return <p className="muted">No questions available for this assignment.</p>;
   };
 
+  // ---------------- UI STATES ----------------
   if (loading) {
     return (
       <div className="container">
@@ -477,21 +543,28 @@ const NewAssignments = () => {
           </div>
 
           <div className="grid">
-            {activeAssignment.subAssignments.map((sub, idx) => (
-              <div key={idx} className="card sub-card">
-                <div className="card-head">
-                  <h4 className="card-title">{sub.subModuleName}</h4>
-                  <span className={`badge ${sub.isCompleted ? 'badge-success' : 'badge-neutral'}`}>
-                    {sub.isCompleted ? 'Completed' : 'Pending'}
-                  </span>
+            {activeAssignment.subAssignments.map((sub, idx) => {
+              const disabled = !canStartSub(activeAssignment, idx);
+              return (
+                <div key={idx} className="card sub-card">
+                  <div className="card-head">
+                    <h4 className="card-title">{sub.subModuleName}</h4>
+                    <span className={`badge ${sub.isCompleted ? 'badge-success' : 'badge-neutral'}`}>
+                      {sub.isCompleted ? 'Completed' : disabled ? 'Locked' : 'Pending'}
+                    </span>
+                  </div>
+                  <div className="card-actions">
+                    <button
+                      className="btn"
+                      onClick={() => handleStart(activeAssignment._id, sub._id)}
+                      disabled={disabled}
+                    >
+                      {sub.isCompleted ? 'Completed' : disabled ? 'Locked' : 'Start'}
+                    </button>
+                  </div>
                 </div>
-                <div className="card-actions">
-                  <button className="btn" onClick={() => handleStart(activeAssignment._id, sub._id)} disabled={sub.isCompleted}>
-                    {sub.isCompleted ? 'Completed' : 'Start'}
-                  </button>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       );
@@ -516,9 +589,9 @@ const NewAssignments = () => {
         {/* PDF VIEWER (no download UI) */}
         {pdfUrl && (
           <PdfReader
-            url={pdfUrl}           // works with Cloudinary
+            url={pdfUrl}
             height="60vh"
-            watermark=""           // add a message if you want
+            watermark=""
           />
         )}
 
@@ -538,25 +611,61 @@ const NewAssignments = () => {
     );
   }
 
-  // CARDS VIEW
+  // --------------- CARDS VIEW (date-gated) ---------------
   return (
     <div className="container">
       <div className="page-header">
         <h2 className="title"><FiBook className="icon" /> New Assignments</h2>
       </div>
 
-      {assignments.length > 0 ? (
+      {/* Date Picker */}
+      <div className="panel" style={{ marginBottom: 16 }}>
+        <div className="panel-head" style={{ gap: 12, alignItems: 'center' }}>
+          <h4 style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <FiCalendar /> Select Date
+          </h4>
+        </div>
+        <div className="panel-body" style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+          <input
+            type="date"
+            className="input"
+            value={selectedDate}
+            onChange={(e) => {
+              setSelectedDate(e.target.value);
+              setActiveAssignment(null);
+              setActiveSubAssignment(null);
+            }}
+            style={{ maxWidth: 220 }}
+          />
+          {selectedDate && (
+            <button className="btn btn-ghost" onClick={() => setSelectedDate('')}>Clear</button>
+          )}
+          <span className="muted">
+            Date select chesinaka assignments kanipistāyi. (You can only open them in order.)
+          </span>
+        </div>
+      </div>
+
+      {!selectedDate ? (
+        <div className="empty-state">
+          <div className="empty-icon"><FiCalendar /></div>
+          <div>
+            <h3>Please select a date</h3>
+            <p className="muted">Choose a date to view its assignments.</p>
+          </div>
+        </div>
+      ) : assignmentsForSelectedDate.length > 0 ? (
         <div className="grid">
-          {assignments.map((assignment, index) => {
+          {assignmentsForSelectedDateAsc.map((assignment, index) => {
             const allSubsCompleted = areAllSubAssignmentsCompleted(assignment);
-            const isParentDisabled = assignment.subAssignments?.length > 0 ? allSubsCompleted : assignment.isCompleted;
+            const locked = !canStartAssignment(assignment);
 
             return (
-              <div key={index} className="card">
+              <div key={assignment._id || index} className="card">
                 <div className="card-head">
                   <h3 className="card-title">{assignment.moduleName}</h3>
-                  <span className={`badge ${isParentDisabled ? 'badge-success' : 'badge-neutral'}`}>
-                    {isParentDisabled ? 'Completed' : 'Assigned'}
+                  <span className={`badge ${allSubsCompleted ? 'badge-success' : locked ? 'badge-neutral' : 'badge-pending'}`}>
+                    {allSubsCompleted ? 'Completed' : locked ? 'Locked' : 'Assigned'}
                   </span>
                 </div>
 
@@ -575,8 +684,12 @@ const NewAssignments = () => {
                 )}
 
                 <div className="card-actions">
-                  <button className="btn" onClick={() => handleStart(assignment._id)} disabled={isParentDisabled}>
-                    {isParentDisabled ? 'Completed' : assignment.subAssignments?.length > 0 ? 'View Sections' : 'Start'}
+                  <button
+                    className="btn"
+                    onClick={() => handleStart(assignment._id)}
+                    disabled={locked}
+                  >
+                    {allSubsCompleted ? 'Completed' : locked ? 'Locked' : (assignment.subAssignments?.length > 0 ? 'View Sections' : 'Start')}
                   </button>
                 </div>
               </div>
@@ -587,8 +700,8 @@ const NewAssignments = () => {
         <div className="empty-state">
           <div className="empty-icon"><FiClock /></div>
           <div>
-            <h3>No assignments are available</h3>
-            <p className="muted">Please check back later for new assignments.</p>
+            <h3>No assignments for this date</h3>
+            <p className="muted">Try selecting another date.</p>
           </div>
         </div>
       )}
