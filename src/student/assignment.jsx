@@ -93,15 +93,23 @@ const normalizeAssignment = (raw) => {
   return norm;
 };
 
-const sortByAssignedDesc = (arr) =>
-  [...arr].sort(
-    (a, b) => new Date(b?.assignedDate || 0).getTime() - new Date(a?.assignedDate || 0).getTime()
-  );
+const ms = (d) => (d ? new Date(d).getTime() : 0);
 
-const sortByAssignedAsc = (arr) =>
-  [...arr].sort(
-    (a, b) => new Date(a?.assignedDate || 0).getTime() - new Date(b?.assignedDate || 0).getTime()
-  );
+// GLOBAL stable ascending (for lock order across all assignments)
+const stableAsc = (arr) =>
+  [...arr].sort((a, b) => {
+    const da = ms(a.assignedDate), db = ms(b.assignedDate);
+    if (da !== db) return da - db;
+    const ca = ms(a.createdAt), cb = ms(b.createdAt);
+    if (ca !== cb) return ca - cb;
+    const na = (a.moduleName || '').localeCompare(b.moduleName || '');
+    if (na !== 0) return na;
+    return String(a._id || '').localeCompare(String(b._id || ''));
+  });
+
+// for display “latest first”
+const sortByAssignedDesc = (arr) =>
+  [...arr].sort((a, b) => ms(b.assignedDate) - ms(a.assignedDate));
 
 const sameDay = (dStr, ymd) => {
   if (!dStr || !ymd) return false;
@@ -117,11 +125,12 @@ const NewAssignments = () => {
   const [activeAssignment, setActiveAssignment] = useState(null);
   const [activeSubAssignment, setActiveSubAssignment] = useState(null);
   const [answers, setAnswers] = useState({});
-  const [selectedDate, setSelectedDate] = useState(''); // yyyy-mm-dd
+  const [selectedDate, setSelectedDate] = useState(''); // yyyy-mm-dd (FILTER ONLY)
+  const [submitting, setSubmitting] = useState(false);
 
   const areAllSubAssignmentsCompleted = (assignment) => {
     if (!assignment.subAssignments || assignment.subAssignments.length === 0) {
-      return assignment.isCompleted || false;
+      return Boolean(assignment.isCompleted);
     }
     return assignment.subAssignments.every((sub) => sub.isCompleted);
   };
@@ -173,32 +182,31 @@ const NewAssignments = () => {
       ? new Date(dateString).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })
       : '—';
 
-  // ---- DATE FILTERED LISTS ----
-  const assignmentsForSelectedDate = useMemo(() => {
-    if (!selectedDate) return [];
+  // ------- FILTER (view only) -------
+  const filtered = useMemo(() => {
+    if (!selectedDate) return assignments;
     return assignments.filter((a) => sameDay(a.assignedDate, selectedDate));
   }, [assignments, selectedDate]);
 
-  const assignmentsForSelectedDateAsc = useMemo(
-    () => sortByAssignedAsc(assignmentsForSelectedDate),
-    [assignmentsForSelectedDate]
-  );
+  // ------- GLOBAL LOCK LOGIC -------
+  const globalAscList = useMemo(() => stableAsc(assignments), [assignments]);
 
-  // Can start this assignment? (enforce sequence ONLY when a date is selected)
   const canStartAssignment = (assignment) => {
-    if (!selectedDate) {
-      // no date filter ⇒ allow unless already completed
-      return !areAllSubAssignmentsCompleted(assignment);
-    }
-    const idx = assignmentsForSelectedDateAsc.findIndex((a) => String(a._id) === String(assignment._id));
-    if (idx <= 0) return !areAllSubAssignmentsCompleted(assignment);
+    // already fully done => cannot start again
+    if (areAllSubAssignmentsCompleted(assignment)) return false;
+
+    // find position in GLOBAL ordered list
+    const idx = globalAscList.findIndex((a) => String(a._id) === String(assignment._id));
+    if (idx <= 0) return true; // first item globally
+
+    // all previous (globally) must be completed
     for (let i = 0; i < idx; i++) {
-      if (!areAllSubAssignmentsCompleted(assignmentsForSelectedDateAsc[i])) return false;
+      if (!areAllSubAssignmentsCompleted(globalAscList[i])) return false;
     }
-    return !areAllSubAssignmentsCompleted(assignment);
+    return true;
   };
 
-  // Can start this sub? (always sequential inside an assignment)
+  // sub-sections always sequential
   const canStartSub = (assignment, subIdx) => {
     if (subIdx === 0) return !(assignment.subAssignments?.[0]?.isCompleted);
     for (let i = 0; i < subIdx; i++) {
@@ -211,19 +219,17 @@ const NewAssignments = () => {
     try {
       setLoading(true);
       setError(null);
+
       const fromList = assignments.find((a) => String(a._id) === String(assignmentId));
       if (!fromList) throw new Error('Assignment not found in list');
 
-      // if a date is selected, only allow items from that day
-      if (selectedDate && !sameDay(fromList.assignedDate, selectedDate)) {
-        throw new Error('This assignment is not part of the selected date');
-      }
+      // NOTE: No date gating — date is only a filter for view
       if (!canStartAssignment(fromList)) {
         throw new Error('Please complete previous assignments to unlock this one');
       }
 
       const assignmentData = normalizeAssignment(fromList);
-      assignmentData.isCompleted = fromList.isCompleted || false;
+      assignmentData.isCompleted = Boolean(fromList.isCompleted);
       if (fromList && Array.isArray(fromList.subAssignments)) {
         assignmentData.subAssignments = (assignmentData.subAssignments || []).map((sub) => {
           const originalSub = fromList.subAssignments.find((s) => String(s._id) === String(sub._id));
@@ -253,6 +259,7 @@ const NewAssignments = () => {
 
   const handleSubmit = async () => {
     try {
+      setSubmitting(true);
       const userId = localStorage.getItem('userId');
       if (!userId) throw new Error('User ID not found');
 
@@ -289,8 +296,12 @@ const NewAssignments = () => {
       }
 
       const res = await axios.post(`${API_BASE}/student/submit-assignment`, payload);
-      if (!res.data?.success) return alert('Failed to submit assignment');
+      if (!res.data?.success) {
+        alert('Failed to submit assignment');
+        return;
+      }
 
+      // mark completed locally
       if (activeSubAssignment) {
         setActiveAssignment((prev) => {
           if (!prev) return prev;
@@ -323,7 +334,7 @@ const NewAssignments = () => {
         }
       } catch {}
 
-      // auto-advance
+      // Auto-advance inside assignment; if done, go back to list (next parent unlocks globally)
       if (activeSubAssignment && (activeAssignment.subAssignments || []).length > 0) {
         const idx = activeAssignment.subAssignments.findIndex(
           (sub) => String(sub._id) === String(activeSubAssignment._id)
@@ -343,6 +354,8 @@ const NewAssignments = () => {
       setAnswers({});
     } catch (err) {
       alert('Error: ' + err.message);
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -369,7 +382,7 @@ const NewAssignments = () => {
                       value={opt}
                       checked={answers[key] === opt}
                       onChange={(e) => handleAnswerChange(key, e.target.value)}
-                      disabled={target.isCompleted}
+                      disabled={target.isCompleted || submitting}
                     />
                     <span>{opt}</span>
                   </label>
@@ -382,7 +395,7 @@ const NewAssignments = () => {
                 placeholder="Type your answer"
                 value={answers[key] || ''}
                 onChange={(e) => handleAnswerChange(key, e.target.value)}
-                disabled={target.isCompleted}
+                disabled={target.isCompleted || submitting}
               />
             )}
           </div>
@@ -394,42 +407,41 @@ const NewAssignments = () => {
     if (predefined && predefined.answerKey) {
       return (
         <div className="form-grid">
-          {/* ... same form fields as before ... */}
           <div className="form-item">
             <label className="label">Patient Name</label>
-            <input className="input" type="text" value={answers.patientName || ''} onChange={(e) => handleAnswerChange('patientName', e.target.value)} disabled={target.isCompleted}/>
+            <input className="input" type="text" value={answers.patientName || ''} onChange={(e) => handleAnswerChange('patientName', e.target.value)} disabled={target.isCompleted || submitting}/>
           </div>
           <div className="form-item">
             <label className="label">Age / DOB</label>
-            <input className="input" type="text" value={answers.ageOrDob || ''} onChange={(e) => handleAnswerChange('ageOrDob', e.target.value)} disabled={target.isCompleted}/>
+            <input className="input" type="text" value={answers.ageOrDob || ''} onChange={(e) => handleAnswerChange('ageOrDob', e.target.value)} disabled={target.isCompleted || submitting}/>
           </div>
           <div className="form-item">
             <label className="label">ICD Codes</label>
-            <input className="input" type="text" value={answers.icdCodes || ''} onChange={(e) => handleAnswerChange('icdCodes', e.target.value)} placeholder="Comma separated" disabled={target.isCompleted}/>
+            <input className="input" type="text" value={answers.icdCodes || ''} onChange={(e) => handleAnswerChange('icdCodes', e.target.value)} placeholder="Comma separated" disabled={target.isCompleted || submitting}/>
           </div>
           <div className="form-item">
             <label className="label">CPT Codes</label>
-            <input className="input" type="text" value={answers.cptCodes || ''} onChange={(e) => handleAnswerChange('cptCodes', e.target.value)} placeholder="Comma separated" disabled={target.isCompleted}/>
+            <input className="input" type="text" value={answers.cptCodes || ''} onChange={(e) => handleAnswerChange('cptCodes', e.target.value)} placeholder="Comma separated" disabled={target.isCompleted || submitting}/>
           </div>
           <div className="form-item">
             <label className="label">PCS Codes</label>
-            <input className="input" type="text" value={answers.pcsCodes || ''} onChange={(e) => handleAnswerChange('pcsCodes', e.target.value)} placeholder="Comma separated" disabled={target.isCompleted}/>
+            <input className="input" type="text" value={answers.pcsCodes || ''} onChange={(e) => handleAnswerChange('pcsCodes', e.target.value)} placeholder="Comma separated" disabled={target.isCompleted || submitting}/>
           </div>
           <div className="form-item">
             <label className="label">HCPCS Codes</label>
-            <input className="input" type="text" value={answers.hcpcsCodes || ''} onChange={(e) => handleAnswerChange('hcpcsCodes', e.target.value)} placeholder="Comma separated" disabled={target.isCompleted}/>
+            <input className="input" type="text" value={answers.hcpcsCodes || ''} onChange={(e) => handleAnswerChange('hcpcsCodes', e.target.value)} placeholder="Comma separated" disabled={target.isCompleted || submitting}/>
           </div>
           <div className="form-item">
             <label className="label">DRG Value</label>
-            <input className="input" type="text" value={answers.drgValue || ''} onChange={(e) => handleAnswerChange('drgValue', e.target.value)} placeholder="e.g. 470 or 470-xx" disabled={target.isCompleted}/>
+            <input className="input" type="text" value={answers.drgValue || ''} onChange={(e) => handleAnswerChange('drgValue', e.target.value)} placeholder="e.g. 470 or 470-xx" disabled={target.isCompleted || submitting}/>
           </div>
           <div className="form-item">
             <label className="label">Modifiers</label>
-            <input className="input" type="text" value={answers.modifiers || ''} onChange={(e) => handleAnswerChange('modifiers', e.target.value)} placeholder="Comma separated (e.g. 26, 59, LT)" disabled={target.isCompleted}/>
+            <input className="input" type="text" value={answers.modifiers || ''} onChange={(e) => handleAnswerChange('modifiers', e.target.value)} placeholder="Comma separated (e.g. 26, 59, LT)" disabled={target.isCompleted || submitting}/>
           </div>
           <div className="form-item form-item--full">
             <label className="label">Notes</label>
-            <textarea className="textarea" value={answers.notes || ''} onChange={(e) => handleAnswerChange('notes', e.target.value)} rows={4} disabled={target.isCompleted}/>
+            <textarea className="textarea" value={answers.notes || ''} onChange={(e) => handleAnswerChange('notes', e.target.value)} rows={4} disabled={target.isCompleted || submitting}/>
           </div>
         </div>
       );
@@ -472,13 +484,13 @@ const NewAssignments = () => {
       return (
         <div className="container">
           <div className="page-header">
-            <button className="btn btn-ghost" onClick={() => setActiveAssignment(null)}>Back</button>
+            <button className="btn btn-ghost" onClick={() => setActiveAssignment(null)} disabled={submitting}>Back</button>
             <h3 className="title-sm">{activeAssignment.moduleName}</h3>
           </div>
 
           <div className="grid">
             {activeAssignment.subAssignments.map((sub, idx) => {
-              const disabled = !canStartSub(activeAssignment, idx);
+              const disabled = !canStartSub(activeAssignment, idx) || submitting;
               return (
                 <div key={idx} className="card sub-card">
                   <div className="card-head">
@@ -488,7 +500,11 @@ const NewAssignments = () => {
                     </span>
                   </div>
                   <div className="card-actions">
-                    <button className="btn" onClick={() => handleStart(activeAssignment._id, sub._id)} disabled={disabled}>
+                    <button
+                      className="btn"
+                      onClick={() => handleStart(activeAssignment._id, sub._id)}
+                      disabled={disabled}
+                    >
                       {sub.isCompleted ? 'Completed' : disabled ? 'Locked' : 'Start'}
                     </button>
                   </div>
@@ -496,6 +512,8 @@ const NewAssignments = () => {
               );
             })}
           </div>
+
+          {submitting && <LoadingOverlay />}
         </div>
       );
     }
@@ -507,7 +525,11 @@ const NewAssignments = () => {
     return (
       <div className="container">
         <div className="page-header">
-          <button className="btn btn-ghost" onClick={() => (activeSubAssignment ? setActiveSubAssignment(null) : setActiveAssignment(null))}>
+          <button
+            className="btn btn-ghost"
+            onClick={() => (activeSubAssignment ? setActiveSubAssignment(null) : setActiveAssignment(null))}
+            disabled={submitting}
+          >
             Back
           </button>
           <h3 className="title-sm">{activeSubAssignment?.subModuleName || activeAssignment.moduleName}</h3>
@@ -522,11 +544,13 @@ const NewAssignments = () => {
           </div>
           <div className="panel-body">{renderQuestions(questionSource)}</div>
           <div className="panel-actions">
-            <button className="btn btn-primary" onClick={handleSubmit} disabled={isCompleted}>
-              {isCompleted ? 'Already Submitted' : 'Submit Assignment'}
+            <button className="btn btn-primary" onClick={handleSubmit} disabled={isCompleted || submitting}>
+              {isCompleted ? 'Already Submitted' : (submitting ? 'Submitting…' : 'Submit Assignment')}
             </button>
           </div>
         </div>
+
+        {submitting && <LoadingOverlay />}
       </div>
     );
   }
@@ -538,7 +562,7 @@ const NewAssignments = () => {
         <h2 className="title"><FiBook className="icon" /> New Assignments</h2>
       </div>
 
-      {/* Date Picker */}
+      {/* Date Picker (filter only) */}
       <div className="panel" style={{ marginBottom: 16 }}>
         <div className="panel-head" style={{ gap: 12, alignItems: 'center' }}>
           <h4 style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -556,116 +580,86 @@ const NewAssignments = () => {
               setActiveSubAssignment(null);
             }}
             style={{ maxWidth: 220 }}
+            disabled={submitting}
           />
           {selectedDate && (
-            <button className="btn btn-ghost" onClick={() => setSelectedDate('')}>Clear</button>
+            <button className="btn btn-ghost" onClick={() => setSelectedDate('')} disabled={submitting}>Clear</button>
           )}
-          <span className="muted">
-            
-          </span>
+          <span className="muted">Date is for search/filter only. Locking is global.</span>
         </div>
       </div>
 
-      {/* If a date is selected → filtered + day-wise lock; else → show all */}
-      {selectedDate ? (
-        assignmentsForSelectedDateAsc.length > 0 ? (
-          <div className="grid">
-            {assignmentsForSelectedDateAsc.map((assignment) => {
-              const allSubsCompleted = areAllSubAssignmentsCompleted(assignment);
-              const locked = !canStartAssignment(assignment);
-              return (
-                <div key={assignment._id} className="card">
-                  <div className="card-head">
-                    <h3 className="card-title">{assignment.moduleName}</h3>
-                    <span className={`badge ${allSubsCompleted ? 'badge-success' : locked ? 'badge-neutral' : 'badge-pending'}`}>
-                      {allSubsCompleted ? 'Completed' : locked ? 'Locked' : 'Assigned'}
+      {filtered.length > 0 ? (
+        <div className="grid">
+          {filtered.map((assignment, index) => {
+            const allSubsCompleted = areAllSubAssignmentsCompleted(assignment);
+            const locked = !canStartAssignment(assignment) || submitting;
+
+            return (
+              <div key={assignment._id || index} className="card">
+                <div className="card-head">
+                  <h3 className="card-title">{assignment.moduleName}</h3>
+                  <span className={`badge ${allSubsCompleted ? 'badge-success' : locked ? 'badge-neutral' : 'badge-pending'}`}>
+                    {allSubsCompleted ? 'Completed' : locked ? 'Locked' : 'Assigned'}
+                  </span>
+                </div>
+
+                <div className="meta">
+                  <span className="meta-key">Assigned</span>
+                  <span className="meta-val">{formatDate(assignment.assignedDate)}</span>
+                </div>
+
+                {assignment.subAssignments?.length > 0 && (
+                  <div className="meta">
+                    <span className="meta-key">Progress</span>
+                    <span className="meta-val">
+                      {assignment.subAssignments.filter((sub) => sub.isCompleted).length} / {assignment.subAssignments.length} completed
                     </span>
                   </div>
+                )}
 
-                  <div className="meta">
-                    <span className="meta-key">Assigned</span>
-                    <span className="meta-val">{formatDate(assignment.assignedDate)}</span>
-                  </div>
-
-                  {assignment.subAssignments?.length > 0 && (
-                    <div className="meta">
-                      <span className="meta-key">Progress</span>
-                      <span className="meta-val">
-                        {assignment.subAssignments.filter((sub) => sub.isCompleted).length} / {assignment.subAssignments.length} completed
-                      </span>
-                    </div>
-                  )}
-
-                  <div className="card-actions">
-                    <button className="btn" onClick={() => handleStart(assignment._id)} disabled={locked}>
-                      {allSubsCompleted ? 'Completed' : locked ? 'Locked' : (assignment.subAssignments?.length > 0 ? 'View Sections' : 'Start')}
-                    </button>
-                  </div>
+                <div className="card-actions">
+                  <button className="btn" onClick={() => handleStart(assignment._id)} disabled={locked}>
+                    {allSubsCompleted ? 'Completed' : locked ? 'Locked' : (assignment.subAssignments?.length > 0 ? 'View Sections' : 'Start')}
+                  </button>
                 </div>
-              );
-            })}
-          </div>
-        ) : (
-          <div className="empty-state">
-            <div className="empty-icon"><FiClock /></div>
-            <div>
-              <h3>No assignments for this date</h3>
-              <p className="muted">Try selecting another date.</p>
-            </div>
-          </div>
-        )
+              </div>
+            );
+          })}
+        </div>
       ) : (
-        // No date selected → show ALL (no day-wise locking)
-        assignments.length > 0 ? (
-          <div className="grid">
-            {assignments.map((assignment, index) => {
-              const allSubsCompleted = areAllSubAssignmentsCompleted(assignment);
-              const isParentDisabled = assignment.subAssignments?.length > 0 ? allSubsCompleted : assignment.isCompleted;
-
-              return (
-                <div key={assignment._id || index} className="card">
-                  <div className="card-head">
-                    <h3 className="card-title">{assignment.moduleName}</h3>
-                    <span className={`badge ${isParentDisabled ? 'badge-success' : 'badge-neutral'}`}>
-                      {isParentDisabled ? 'Completed' : 'Assigned'}
-                    </span>
-                  </div>
-
-                  <div className="meta">
-                    <span className="meta-key">Assigned</span>
-                    <span className="meta-val">{formatDate(assignment.assignedDate)}</span>
-                  </div>
-
-                  {assignment.subAssignments?.length > 0 && (
-                    <div className="meta">
-                      <span className="meta-key">Progress</span>
-                      <span className="meta-val">
-                        {assignment.subAssignments.filter((sub) => sub.isCompleted).length} / {assignment.subAssignments.length} completed
-                      </span>
-                    </div>
-                  )}
-
-                  <div className="card-actions">
-                    <button className="btn" onClick={() => handleStart(assignment._id)} disabled={isParentDisabled}>
-                      {isParentDisabled ? 'Completed' : assignment.subAssignments?.length > 0 ? 'View Sections' : 'Start'}
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
+        <div className="empty-state">
+          <div className="empty-icon"><FiClock /></div>
+          <div>
+            <h3>No assignments{selectedDate ? ' for this date' : ''}</h3>
+            <p className="muted">{selectedDate ? 'Try another date or clear the filter.' : 'Please check back later.'}</p>
           </div>
-        ) : (
-          <div className="empty-state">
-            <div className="empty-icon"><FiClock /></div>
-            <div>
-              <h3>No assignments are available</h3>
-              <p className="muted">Please check back later for new assignments.</p>
-            </div>
-          </div>
-        )
+        </div>
       )}
     </div>
   );
 };
+
+// Full-screen loading overlay
+const LoadingOverlay = () => (
+  <div
+    style={{
+      position: 'fixed',
+      inset: 0,
+      background: 'rgba(255,255,255,0.7)',
+      backdropFilter: 'blur(2px)',
+      display: 'grid',
+      placeItems: 'center',
+      zIndex: 9999,
+    }}
+  >
+    <div style={{ padding: 16, borderRadius: 12, border: '1px solid #ddd', background: '#fff', minWidth: 220, textAlign: 'center' }}>
+      <div className="spinner" style={{ width: 28, height: 28, margin: '0 auto 10px', border: '3px solid #ddd', borderTopColor: '#333', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+      <div style={{ fontWeight: 600 }}>Submitting…</div>
+      <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>Please wait</div>
+      <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+    </div>
+  </div>
+);
 
 export default NewAssignments;
