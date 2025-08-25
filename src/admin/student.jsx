@@ -3,7 +3,7 @@ import { FaChevronDown, FaTrash, FaTimes, FaEllipsisV, FaPlus, FaEdit } from "re
 import axios from "axios";
 import "./student.css";
 
-  const API_URL = "https://el-backend-ashen.vercel.app/admin";
+const API_URL = "https://el-backend-ashen.vercel.app/admin";
 
 export default function Students() {
   const [students, setStudents] = useState([]);
@@ -24,7 +24,12 @@ export default function Students() {
   const [isEditMode, setIsEditMode] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // delete + global processing overlay
   const [isDeleting, setIsDeleting] = useState(false);
+
+  // stats loader for submitted/not-submitted section
+  const [isStatsLoading, setIsStatsLoading] = useState(false);
 
   const CATEGORY_OPTIONS = ["CPC", "CCS", "IP-DRG", "SURGERY", "Denials", "ED", "E and M"];
 
@@ -44,17 +49,93 @@ export default function Students() {
     }
   };
 
+  // DELETE with full-screen processing overlay
   const handleDelete = async (id) => {
-    if (window.confirm("Are you sure you want to delete this student?")) {
-      setIsDeleting(true);
-      try {
-        await axios.delete(`${API_URL}/student/${id}`);
-        fetchStudents(); // Refresh the list
-      } catch (err) {
-        console.error("Error deleting student:", err);
-      } finally {
-        setIsDeleting(false);
-      }
+    if (!window.confirm("Are you sure you want to delete this student?")) return;
+    setIsDeleting(true);
+    try {
+      await axios.delete(`${API_URL}/student/${id}`);
+      // refresh list
+      await fetchStudents();
+      // close any open modal so overlay isn't stuck
+      closeModal();
+    } catch (err) {
+      console.error("Error deleting student:", err);
+      alert("Error deleting student: " + (err?.response?.data?.message || err.message));
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  // fetch stats for a single student and inject into selectedStudent
+  const fetchAndInjectStudentStats = async (student) => {
+    try {
+      setIsStatsLoading(true);
+
+      const url = `https://el-backend-ashen.vercel.app/student/stats/${student.id}`;
+      const { data } = await axios.get(url);
+
+      if (!data?.success) return;
+
+      const stats = data.stats || {};
+      const submittedAssignmentsRaw = stats.submittedAssignments || [];
+      const pendingAssignmentsRaw = stats.pendingAssignments || [];
+
+      // Submitted (flatten to sub-level for existing UI)
+      const submittedFlattened = submittedAssignmentsRaw.flatMap(a => {
+        const subs = a.subAssignments || [];
+        if (!subs.length) {
+          return [{
+            _id: a.assignmentId,
+            moduleName: a.moduleName,
+            subModuleName: a.moduleName,
+            progressPercent: a.overallProgress ?? 0,
+            correctCount: a.totalCorrect ?? 0,
+            wrongCount: a.totalWrong ?? 0
+          }];
+        }
+        return subs.map(sub => ({
+          _id: sub.subAssignmentId,
+          moduleName: a.moduleName,
+          subModuleName: sub.subModuleName || "",
+          progressPercent: sub.progressPercent ?? 0,
+          correctCount: sub.correctCount ?? 0,
+          wrongCount: sub.wrongCount ?? 0
+        }));
+      });
+
+      // Not submitted: one row per assignment (grouped by module in UI)
+      const notSubmittedMapped = pendingAssignmentsRaw.map(p => ({
+        _id: p._id,
+        moduleName: p.moduleName,
+        subModuleName: p.moduleName
+      }));
+
+      // Optional aggregates for header block
+      const overallProgressAvg = Math.round(
+        submittedAssignmentsRaw.length
+          ? submittedAssignmentsRaw.reduce((acc, a) => acc + (a.overallProgress ?? 0), 0) / submittedAssignmentsRaw.length
+          : 0
+      );
+      const totalCorrectSum = submittedAssignmentsRaw.reduce((acc, a) => acc + (a.totalCorrect ?? 0), 0);
+      const totalWrongSum = submittedAssignmentsRaw.reduce((acc, a) => acc + (a.totalWrong ?? 0), 0);
+
+      setSelectedStudent(prev => ({
+        ...prev,
+        submittedCount: stats.submittedCount ?? submittedAssignmentsRaw.length ?? 0,
+        notSubmittedCount: stats.pendingCount ?? pendingAssignmentsRaw.length ?? 0,
+        submittedAssignments: submittedFlattened,
+        notSubmittedAssignments: notSubmittedMapped,
+        progress: {
+          overallProgress: overallProgressAvg,
+          totalCorrect: totalCorrectSum,
+          totalWrong: totalWrongSum
+        }
+      }));
+    } catch (err) {
+      console.error("Error fetching student stats:", err);
+    } finally {
+      setIsStatsLoading(false);
     }
   };
 
@@ -62,6 +143,9 @@ export default function Students() {
     setSelectedStudent(student);
     setIsDetailsModalOpen(true);
     document.addEventListener('keydown', handleKeyDown);
+
+    // fetch stats for submitted/not-submitted sections
+    fetchAndInjectStudentStats(student);
   };
 
   const openFormModal = (student = null) => {
@@ -129,57 +213,53 @@ export default function Students() {
     setSelectedFile(e.target.files[0]);
   };
 
-  
-const handleSubmit = async (e) => {
-  e.preventDefault();
-  setIsSubmitting(true);
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setIsSubmitting(true);
 
-  // Build form data
-  const formDataToSend = new FormData();
-  formDataToSend.append('name', formData.name);
+    // Build form data
+    const formDataToSend = new FormData();
+    formDataToSend.append('name', formData.name);
 
-  // Only send password when adding OR when user typed a new one in edit mode
-  if (!isEditMode || (formData.password && formData.password.trim() !== '')) {
-    formDataToSend.append('password', formData.password.trim());
-  }
-
-  formDataToSend.append('courseName', formData.courseName);
-  formDataToSend.append('paidAmount', formData.paidAmount);
-  formDataToSend.append('remainingAmount', formData.remainingAmount);
-  formDataToSend.append('enrolledDate', formData.enrolledDate);
-  formDataToSend.append('expiryDate', formData.expiryDate);
-
-  if (selectedFile) {
-    formDataToSend.append('profileImage', selectedFile);
-  }
-
-  try {
-    if (isEditMode && formData.id) {
-      // Edit existing student
-      await axios.put(`${API_URL}/student/${formData.id}`, formDataToSend, {
-        headers: { 'Content-Type': 'multipart/form-data' }
-      });
-    } else {
-      // Add new student
-      await axios.post(`${API_URL}/add-student`, formDataToSend, {
-        headers: { 'Content-Type': 'multipart/form-data' }
-      });
+    // Only send password when adding OR when user typed a new one in edit mode
+    if (!isEditMode || (formData.password && formData.password.trim() !== '')) {
+      formDataToSend.append('password', formData.password.trim());
     }
-    fetchStudents();
-    closeModal();
-  } catch (err) {
-    console.error("Error saving student:", err);
-    alert("Error saving student: " + err.message);
-  } finally {
-    setIsSubmitting(false);
-  }
-};
 
+    formDataToSend.append('courseName', formData.courseName);
+    formDataToSend.append('paidAmount', formData.paidAmount);
+    formDataToSend.append('remainingAmount', formData.remainingAmount);
+    formDataToSend.append('enrolledDate', formData.enrolledDate);
+    formDataToSend.append('expiryDate', formData.expiryDate);
 
+    if (selectedFile) {
+      formDataToSend.append('profileImage', selectedFile);
+    }
 
+    try {
+      if (isEditMode && formData.id) {
+        // Edit existing student
+        await axios.put(`${API_URL}/student/${formData.id}`, formDataToSend, {
+          headers: { 'Content-Type': 'multipart/form-data' }
+        });
+      } else {
+        // Add new student
+        await axios.post(`${API_URL}/add-student`, formDataToSend, {
+          headers: { 'Content-Type': 'multipart/form-data' }
+        });
+      }
+      fetchStudents();
+      closeModal();
+    } catch (err) {
+      console.error("Error saving student:", err);
+      alert("Error saving student: " + err.message);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   const groupByModule = (assignments) =>
-    assignments.reduce((acc, curr) => {
+    (assignments || []).reduce((acc, curr) => {
       acc[curr.moduleName] = acc[curr.moduleName] || [];
       acc[curr.moduleName].push(curr);
       return acc;
@@ -188,11 +268,11 @@ const handleSubmit = async (e) => {
   // Function to format date and add expiry status
   const formatDateWithStatus = (dateString) => {
     if (!dateString) return "—";
-    
+
     const date = new Date(dateString);
     const now = new Date();
     const isExpired = date < now;
-    
+
     return (
       <span className={isExpired ? "expired-date" : "active-date"}>
         {date.toLocaleDateString()} {isExpired && "(Expired)"}
@@ -202,11 +282,22 @@ const handleSubmit = async (e) => {
 
   return (
     <div className="students-container">
+      {/* GLOBAL PROCESSING OVERLAY (Delete) */}
+      {isDeleting && (
+        <div className="processing-overlay" aria-live="assertive" aria-busy="true">
+          <div className="processing-dialog" role="dialog" aria-modal="true">
+            <div className="processing-spinner" />
+            <p>Processing…</p>
+          </div>
+        </div>
+      )}
+
       <div className="students-header">
         <h2>Students</h2>
         <button 
           onClick={() => openFormModal()} 
           className="add-student-btn"
+          disabled={isDeleting}
         >
           <FaPlus /> Add Student
         </button>
@@ -218,7 +309,7 @@ const handleSubmit = async (e) => {
           <p>Loading students...</p>
         </div>
       ) : (
-        <table className="students-table">
+        <table className="students-table" aria-disabled={isDeleting}>
           <thead>
             <tr>
               <th>Profile</th>
@@ -237,7 +328,7 @@ const handleSubmit = async (e) => {
                   : "—";
 
                 return (  
-                  <tr key={s.id} className="student-row">  
+                  <tr key={s.id} className={`student-row ${isDeleting ? "disabled-row" : ""}`}>  
                     <td>  
                       {s.profileImage ? (  
                         <img  
@@ -263,6 +354,7 @@ const handleSubmit = async (e) => {
                           onClick={() => openDetailsModal(s)}  
                           className="details-btn"  
                           title="View details"  
+                          disabled={isDeleting}
                         >  
                           <FaEllipsisV />  
                         </button>
@@ -270,6 +362,7 @@ const handleSubmit = async (e) => {
                           onClick={() => openFormModal(s)}
                           className="edit-btn"
                           title="Edit student"
+                          disabled={isDeleting}
                         >
                           <FaEdit />
                         </button>
@@ -295,7 +388,7 @@ const handleSubmit = async (e) => {
           <div className="modal">  
             <div className="modal-header">  
               <h3>{selectedStudent.name}'s Details</h3>  
-              <button onClick={closeModal} className="close-btn">  
+              <button onClick={closeModal} className="close-btn" disabled={isDeleting}>  
                 <FaTimes />  
               </button>  
             </div>  
@@ -323,6 +416,14 @@ const handleSubmit = async (e) => {
                   <p><strong>Total Wrong:</strong> {selectedStudent.progress?.totalWrong ?? 0}</p>  
                 </div>  
               </div>  
+
+              {/* stats loader */}
+              {isStatsLoading && (
+                <div className="loading-container" style={{ marginTop: 8 }}>
+                  <div className="loading-spinner" />
+                  <p>Loading assignment stats…</p>
+                </div>
+              )}
 
               <div className="assignments-sections">  
                 <div className="assignments-section">  
@@ -395,6 +496,7 @@ const handleSubmit = async (e) => {
                     openFormModal(selectedStudent);
                   }}
                   className="edit-btn"
+                  disabled={isDeleting}
                 >
                   <FaEdit /> Edit Student
                 </button>
@@ -410,7 +512,7 @@ const handleSubmit = async (e) => {
           <div className="modal form-modal">
             <div className="modal-header">
               <h3>{isEditMode ? 'Edit Student' : 'Add New Student'}</h3>
-              <button onClick={closeModal} className="close-btn">
+              <button onClick={closeModal} className="close-btn" disabled={isDeleting}>
                 <FaTimes />
               </button>
             </div>
@@ -424,6 +526,7 @@ const handleSubmit = async (e) => {
                     value={formData.name}
                     onChange={handleInputChange}
                     required
+                    disabled={isDeleting}
                   />
                 </div>
 
@@ -436,6 +539,7 @@ const handleSubmit = async (e) => {
                     onChange={handleInputChange}
                     required={!isEditMode}
                     placeholder={isEditMode ? "Leave blank to keep current password" : ""}
+                    disabled={isDeleting}
                   />
                 </div>
 
@@ -446,6 +550,7 @@ const handleSubmit = async (e) => {
                     value={formData.courseName}
                     onChange={handleInputChange}
                     required
+                    disabled={isDeleting}
                   >
                     <option value="">-- Select a Category --</option>
                     {CATEGORY_OPTIONS.map((option) => (
@@ -464,6 +569,7 @@ const handleSubmit = async (e) => {
                       name="paidAmount"
                       value={formData.paidAmount}
                       onChange={handleInputChange}
+                      disabled={isDeleting}
                     />
                   </div>
 
@@ -474,6 +580,7 @@ const handleSubmit = async (e) => {
                       name="remainingAmount"
                       value={formData.remainingAmount}
                       onChange={handleInputChange}
+                      disabled={isDeleting}
                     />
                   </div>
                 </div>
@@ -486,6 +593,7 @@ const handleSubmit = async (e) => {
                       name="enrolledDate"
                       value={formData.enrolledDate}
                       onChange={handleInputChange}
+                      disabled={isDeleting}
                     />
                   </div>
 
@@ -497,6 +605,7 @@ const handleSubmit = async (e) => {
                       value={formData.expiryDate}
                       onChange={handleInputChange}
                       required
+                      disabled={isDeleting}
                     />
                   </div>
                 </div>
@@ -507,6 +616,7 @@ const handleSubmit = async (e) => {
                     type="file"
                     accept="image/*"
                     onChange={handleFileChange}
+                    disabled={isDeleting}
                   />
                   {formData.profileImage && !selectedFile && (
                     <div className="current-image-preview">
@@ -521,10 +631,10 @@ const handleSubmit = async (e) => {
                 </div>
 
                 <div className="form-actions">
-                  <button type="button" onClick={closeModal} className="cancel-btn">
+                  <button type="button" onClick={closeModal} className="cancel-btn" disabled={isDeleting}>
                     Cancel
                   </button>
-                  <button type="submit" className="submit-btn" disabled={isSubmitting}>
+                  <button type="submit" className="submit-btn" disabled={isSubmitting || isDeleting}>
                     {isSubmitting ? (
                       <>
                         <div className="button-spinner"></div> 
