@@ -641,7 +641,7 @@ const NewAssignments = () => {
             <button className="btn btn-ghost" onClick={() => setSelectedDate('')}>Clear</button>
           )}
           <span className="muted">
-            Date select chesinaka assignments kanipistāyi. (You can only open them in order.)
+           You can only open them in order.
           </span>
         </div>
       </div>
