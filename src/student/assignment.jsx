@@ -561,7 +561,7 @@ const NewAssignments = () => {
             <button className="btn btn-ghost" onClick={() => setSelectedDate('')}>Clear</button>
           )}
           <span className="muted">
-            Date select cheste aa date assignments mātreme kanipistāyi. Otherwise anni kanipistāyi.
+            
           </span>
         </div>
       </div>
