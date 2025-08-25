@@ -129,52 +129,54 @@ export default function Students() {
     setSelectedFile(e.target.files[0]);
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setIsSubmitting(true);
+  
+const handleSubmit = async (e) => {
+  e.preventDefault();
+  setIsSubmitting(true);
 
-    // handleSubmit
-const formDataToSend = new FormData();
-formDataToSend.append('name', formData.name);
-- formDataToSend.append('password', formData.password);
-+ if (!isEditMode || (formData.password && formData.password.trim() !== '')) {
-+   formDataToSend.append('password', formData.password.trim());
-+ }
-formDataToSend.append('courseName', formData.courseName);
-formDataToSend.append('paidAmount', formData.paidAmount);
-formDataToSend.append('remainingAmount', formData.remainingAmount);
-formDataToSend.append('enrolledDate', formData.enrolledDate);
-formDataToSend.append('expiryDate', formData.expiryDate);
+  // Build form data
+  const formDataToSend = new FormData();
+  formDataToSend.append('name', formData.name);
 
-    if (selectedFile) {
-      formDataToSend.append('profileImage', selectedFile);
+  // Only send password when adding OR when user typed a new one in edit mode
+  if (!isEditMode || (formData.password && formData.password.trim() !== '')) {
+    formDataToSend.append('password', formData.password.trim());
+  }
+
+  formDataToSend.append('courseName', formData.courseName);
+  formDataToSend.append('paidAmount', formData.paidAmount);
+  formDataToSend.append('remainingAmount', formData.remainingAmount);
+  formDataToSend.append('enrolledDate', formData.enrolledDate);
+  formDataToSend.append('expiryDate', formData.expiryDate);
+
+  if (selectedFile) {
+    formDataToSend.append('profileImage', selectedFile);
+  }
+
+  try {
+    if (isEditMode && formData.id) {
+      // Edit existing student
+      await axios.put(`${API_URL}/student/${formData.id}`, formDataToSend, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+    } else {
+      // Add new student
+      await axios.post(`${API_URL}/add-student`, formDataToSend, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
     }
+    fetchStudents();
+    closeModal();
+  } catch (err) {
+    console.error("Error saving student:", err);
+    alert("Error saving student: " + err.message);
+  } finally {
+    setIsSubmitting(false);
+  }
+};
 
-    try {
-      if (isEditMode && formData.id) {
-        // Edit existing student
-        await axios.put(`${API_URL}/student/${formData.id}`, formDataToSend, {
-          headers: {
-            'Content-Type': 'multipart/form-data'
-          }
-        });
-      } else {
-        // Add new student
-        await axios.post(`${API_URL}/add-student`, formDataToSend, {
-          headers: {
-            'Content-Type': 'multipart/form-data'
-          }
-        });
-      }
-      fetchStudents();
-      closeModal();
-    } catch (err) {
-      console.error("Error saving student:", err);
-      alert("Error saving student: " + err.message);
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
+
+
 
   const groupByModule = (assignments) =>
     assignments.reduce((acc, curr) => {
