@@ -271,39 +271,41 @@ export default function Dashboard() {
 
       {/* Recent */}
       <div className="recent-container">
-        <div className="recent-box">
-          <h3>Recent Students</h3>
-          {recentStudents.length === 0 ? (
-            <p>No recent students</p>
-          ) : (
-            recentStudents.map((student) => (
-              <div key={student._id} className="recent-item">
-                <FaUserCircle className="avatar" />
-                <div>
-                  <p className="name">{student.name}</p>
-                  <small>{student.courseName || "—"}</small>
-                </div>
-              </div>
-            ))
-          )}
+       {/* Recent Students */}
+<div className="recent-box">
+  <h3>Recent Students</h3>
+  {recentStudents.length === 0 ? (
+    <p>No recent students</p>
+  ) : (
+    recentStudents.slice(0, 5).map((student) => (   // 👈 limit to 5
+      <div key={student._id} className="recent-item">
+        <FaUserCircle className="avatar" />
+        <div>
+          <p className="name">{student.name}</p>
+          <small>{student.courseName || "—"}</small>
         </div>
+      </div>
+    ))
+  )}
+</div>
 
-        <div className="recent-box">
-          <h3>Recent Assignments</h3>
-          {recentAssignments.length === 0 ? (
-            <p>No recent assignments</p>
-          ) : (
-            recentAssignments.map((assignment) => (
-              <div key={assignment._id} className="recent-item">
-                <MdAssignment className="avatar blue" />
-                <div>
-                  <p className="name">{assignment.moduleName}</p>
-                  <small>{fmtDate(assignment.assignedDate)}</small>
-                </div>
-              </div>
-            ))
-          )}
+{/* Recent Assignments */}
+<div className="recent-box">
+  <h3>Recent Assignments</h3>
+  {recentAssignments.length === 0 ? (
+    <p>No recent assignments</p>
+  ) : (
+    recentAssignments.slice(0, 5).map((assignment) => (   // 👈 limit to 5
+      <div key={assignment._id} className="recent-item">
+        <MdAssignment className="avatar blue" />
+        <div>
+          <p className="name">{assignment.moduleName}</p>
+          <small>{fmtDate(assignment.assignedDate)}</small>
         </div>
+      </div>
+    ))
+  )}
+</div>
       </div>
 
       {/* Category Modal */}
