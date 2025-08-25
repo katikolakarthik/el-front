@@ -133,14 +133,19 @@ export default function Students() {
     e.preventDefault();
     setIsSubmitting(true);
 
-    const formDataToSend = new FormData();
-    formDataToSend.append('name', formData.name);
-    formDataToSend.append('password', formData.password);
-    formDataToSend.append('courseName', formData.courseName);
-    formDataToSend.append('paidAmount', formData.paidAmount);
-    formDataToSend.append('remainingAmount', formData.remainingAmount);
-    formDataToSend.append('enrolledDate', formData.enrolledDate);
-    formDataToSend.append('expiryDate', formData.expiryDate);
+    // handleSubmit
+const formDataToSend = new FormData();
+formDataToSend.append('name', formData.name);
+- formDataToSend.append('password', formData.password);
++ if (!isEditMode || (formData.password && formData.password.trim() !== '')) {
++   formDataToSend.append('password', formData.password.trim());
++ }
+formDataToSend.append('courseName', formData.courseName);
+formDataToSend.append('paidAmount', formData.paidAmount);
+formDataToSend.append('remainingAmount', formData.remainingAmount);
+formDataToSend.append('enrolledDate', formData.enrolledDate);
+formDataToSend.append('expiryDate', formData.expiryDate);
+
     if (selectedFile) {
       formDataToSend.append('profileImage', selectedFile);
     }
