@@ -15,6 +15,16 @@ import './StudentDashboard.css';
 /** Direct API base URL */
 const BASE_URL = 'https://el-backend-ashen.vercel.app';
 
+/** Safe getter for localStorage user */
+const getStoredUser = () => {
+  try {
+    const raw = localStorage.getItem('userData');
+    return raw ? JSON.parse(raw) : null; // { id, name, courseName, enrolledDate, ... }
+  } catch {
+    return null;
+  }
+};
+
 const StudentDashboard = () => {
   const [studentData, setStudentData] = useState(null);
   const [assignments, setAssignments] = useState([]);
@@ -74,12 +84,12 @@ const StudentDashboard = () => {
 
   const refreshDashboard = useCallback(async () => {
     try {
-      const userId = localStorage.getItem('userId');
-      if (!userId) throw new Error('User ID not found');
+      // 🔑 userId & courseName from localStorage.userData (login response shape)
+      const user = getStoredUser();
+      if (!user?.id) throw new Error('User not logged in');
 
-      const userDataStr = localStorage.getItem('userData');
-      const userData = userDataStr ? JSON.parse(userDataStr) : {};
-      const courseName = userData.courseName || 'CCS'; // fallback
+      const userId = user.id;
+      const courseName = user.courseName || 'CCS';
 
       const [stats, payment, assigns] = await Promise.all([
         fetchStats(userId, courseName),
@@ -92,15 +102,20 @@ const StudentDashboard = () => {
       setAssignments(assigns);
 
       setStudentData({
-        ...userData,
-        totalAssignments: stats?.totalAssigned ?? 0,
-        completedCount: stats?.completed ?? 0,
-        averageScore: stats?.averageScore ? String(stats.averageScore).replace('%', '') : '0',
-        pendingCount: stats?.pending ?? 0,
-        courseName: payment?.courseName || courseName,
-        enrolledDate: payment?.enrolledDate,
+        // prefer API data where present, else fallback to login payload
+        name: user.name,
+        profileImage: user.profileImage,
+        courseName: payment?.courseName || user.courseName || courseName,
+        enrolledDate: payment?.enrolledDate || user.enrolledDate,
         paidAmount: payment?.paidAmount ?? 0,
         remainingAmount: payment?.remainingAmount ?? 0,
+
+        totalAssignments: stats?.totalAssigned ?? 0,
+        completedCount: stats?.completed ?? 0,
+        averageScore: stats?.averageScore
+          ? String(stats.averageScore).replace('%', '')
+          : '0',
+        pendingCount: stats?.pending ?? 0,
         courseProgress:
           Math.round(((stats?.completed ?? 0) / (stats?.totalAssigned || 1)) * 100) || 0,
         assignmentCompletion: `${stats?.completed ?? 0}/${stats?.totalAssigned ?? 0}`,
@@ -114,8 +129,8 @@ const StudentDashboard = () => {
   useEffect(() => {
     (async () => {
       try {
-        const userId = localStorage.getItem('userId');
-        if (!userId) throw new Error('User ID not found');
+        const user = getStoredUser();
+        if (!user?.id) throw new Error('User not logged in');
         await refreshDashboard();
       } catch (err) {
         setError(err.message || 'Failed to fetch data');
@@ -168,7 +183,8 @@ const StudentDashboard = () => {
   // --- Handlers ---
   const handleSubmissionClick = (submission) => {
     if (!submission || submission.isCompleted !== true) return; // only if parent completed
-    const studentId = localStorage.getItem('userId');
+    const user = getStoredUser();
+    const studentId = user?.id;
     const assignmentId = submission.assignmentId;
     if (!studentId || !assignmentId) {
       console.warn('Missing studentId or assignmentId for result fetch.');
@@ -263,7 +279,6 @@ const StudentDashboard = () => {
             cq?.q ||
             (typeof cq === 'string' ? cq : 'Question');
 
-        // Try to infer submitted and correct answers safely
           const submittedAns =
             sq?.answerText ??
             sq?.selected ??
@@ -309,7 +324,6 @@ const StudentDashboard = () => {
   };
 
   const renderModule = (module, index) => {
-    // include new fields in the "has correct answers" gate
     const hasCorrectAnswers =
       module?.correctAnswerKey &&
       (module.correctAnswerKey.patientName ||
@@ -342,7 +356,6 @@ const StudentDashboard = () => {
               <FiCheckCircle className="mr-6" /> Keyed Answers
             </h4>
             {renderStaticAnswers(module)}
-            {/* Compare with correct key if present */}
             {module?.correctAnswerKey ? (
               <div className="correct-key">
                 <details>
@@ -378,7 +391,9 @@ const StudentDashboard = () => {
   const renderResultPopup = () => {
     if (!resultData) return null;
 
-    const modules = Array.isArray(resultData?.data) ? resultData.data : [resultData?.data].filter(Boolean);
+    const modules = Array.isArray(resultData?.data)
+      ? resultData.data
+      : [resultData?.data].filter(Boolean);
 
     return (
       <div className="result-popup-overlay" onClick={closeResultPopup}>
@@ -395,7 +410,6 @@ const StudentDashboard = () => {
             {resultLoading ? <p className="muted">Loading detailed results…</p> : null}
           </div>
 
-          {/* High-level scores if API provides */}
           {resultData?.summary ? (
             <div className="result-summary">
               <div className="summary-item">
@@ -464,6 +478,7 @@ const StudentDashboard = () => {
           <FiBook className="mr-8" />
           Student Dashboard
         </h1>
+        {studentData?.name ? <p className="muted">Welcome, {studentData.name} 👋</p> : null}
       </header>
 
       {/* Stats Section */}
@@ -581,9 +596,4 @@ const StudentDashboard = () => {
             submissions.map((s, idx) => (
               <div
                 key={`${s.assignmentId || idx}`}
-                className={`submission-card ${s.isCompleted ? 'clickable' : 'disabled'}`}
-                onClick={() => handleSubmissionClick(s)}
-                role={s.isCompleted ? 'button' : 'article'}
-                tabIndex={s.isCompleted ? 0 : -1}
-                onKeyDown={(e) => {
-                  i
+                className={`submission-card ${s.is
