@@ -9,10 +9,10 @@ import './AssignmentFlow.css';
 const API_BASE = 'https://el-backend-ashen.vercel.app';
 
 /* --------- Lightweight PDF viewer (no toolbar, no download) ---------- */
-const PdfReader = ({ url, height = '60vh', watermark = '' }) => {
+const PdfReader = ({ url, height = '60dvh', watermark = '' }) => {
   const [fileData, setFileData] = useState(null);
   const [err, setErr] = useState('');
-  // key to force re-mount on URL change (prevents blank on some mobile browsers)
+  // force re-mount on URL change to avoid stale canvas in some webviews
   const [viewKey, setViewKey] = useState(0);
 
   useEffect(() => {
@@ -35,35 +35,15 @@ const PdfReader = ({ url, height = '60vh', watermark = '' }) => {
 
   return (
     <div
+      className="pdf-safe-wrap"
       style={{
-        position: 'relative',
+        // Prefer dvh; fallback to CSS var; final fallback to vh
         height,
-        border: '1px solid #eee',
-        borderRadius: 8,
-        overflow: 'hidden',
-        userSelect: 'none',
-        WebkitTouchCallout: 'none',
-        background: '#fff',
+        minHeight: 'calc(var(--app-vh, 1vh) * 60)',
       }}
       onContextMenu={(e) => e.preventDefault()}
     >
-      {watermark && (
-        <div
-          style={{
-            pointerEvents: 'none',
-            position: 'absolute',
-            inset: 0,
-            display: 'grid',
-            placeItems: 'center',
-            opacity: 0.08,
-            fontSize: 28,
-            fontWeight: 700,
-            textAlign: 'center',
-          }}
-        >
-          {watermark}
-        </div>
-      )}
+      {watermark && <div className="pdf-watermark">{watermark}</div>}
 
       <Worker workerUrl="https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.worker.min.js">
         {err && (
@@ -78,7 +58,11 @@ const PdfReader = ({ url, height = '60vh', watermark = '' }) => {
         )}
         {!fileData && !err && <div style={{ padding: 16 }}>Loading PDF…</div>}
         {fileData && (
-          <Viewer key={viewKey} fileUrl={fileData} defaultScale={SpecialZoomLevel.PageWidth} />
+          <Viewer
+            key={viewKey}
+            fileUrl={fileData}
+            defaultScale={SpecialZoomLevel.PageWidth}
+          />
         )}
       </Worker>
     </div>
@@ -151,6 +135,21 @@ const NewAssignments = () => {
 
   const [startingId, setStartingId] = useState(null);   // button-level spinner
   const questionsRef = useRef(null);
+
+  // ---- set --app-vh fallback for older webviews (for dvh stability) ----
+  useEffect(() => {
+    const setVH = () => {
+      const vh = window.innerHeight * 0.01;
+      document.documentElement.style.setProperty('--app-vh', `${vh}px`);
+    };
+    setVH();
+    window.addEventListener('resize', setVH);
+    window.addEventListener('orientationchange', setVH);
+    return () => {
+      window.removeEventListener('resize', setVH);
+      window.removeEventListener('orientationchange', setVH);
+    };
+  }, []);
 
   const areAllSubAssignmentsCompleted = (assignment) => {
     if (!assignment?.subAssignments?.length) {
@@ -276,15 +275,13 @@ const NewAssignments = () => {
       }
 
       setAnswers({});
-
-      // smooth scroll to Questions area
       setTimeout(() => {
         questionsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
       }, 100);
     } catch (err) {
       setError(err.message);
     } finally {
-      setStartingId(null); // DO NOT toggle global loading here
+      setStartingId(null); // important: don't trigger global loading here
     }
   };
 
@@ -650,7 +647,7 @@ const NewAssignments = () => {
           <h3 className="title-sm">{activeSubAssignment?.subModuleName || activeAssignment.moduleName}</h3>
         </div>
 
-        {pdfUrl && <PdfReader url={pdfUrl} height="60vh" watermark="" />}
+        {pdfUrl && <PdfReader url={pdfUrl} height="60dvh" watermark="" />}
 
         <div ref={questionsRef} className="panel">
           <div className="panel-head">
@@ -670,7 +667,7 @@ const NewAssignments = () => {
     );
   }
 
-  // --------------- CARDS VIEW ---------------
+// --------------- CARDS VIEW ---------------
   return (
     <div className="container">
       <div className="page-header">
