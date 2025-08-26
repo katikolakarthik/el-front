@@ -15,11 +15,23 @@ import './StudentDashboard.css';
 /** Direct API base URL */
 const BASE_URL = 'https://el-backend-ashen.vercel.app';
 
-/** Safe getter for localStorage user */
+/** Safe getter for localStorage user (tolerant of different keys) */
 const getStoredUser = () => {
   try {
-    const raw = localStorage.getItem('userData');
-    return raw ? JSON.parse(raw) : null; // { id, name, courseName, enrolledDate, ... }
+    // Prefer `userData`, fallback to `user`
+    const raw =
+      localStorage.getItem('userData') ||
+      localStorage.getItem('user');
+
+    if (raw) return JSON.parse(raw);
+
+    // Last resort: if only userId is stored (older flows)
+    const id = localStorage.getItem('userId');
+    if (id) {
+      return { id, courseName: 'CCS' }; // minimal shape with sensible default
+    }
+
+    return null;
   } catch {
     return null;
   }
@@ -84,11 +96,12 @@ const StudentDashboard = () => {
 
   const refreshDashboard = useCallback(async () => {
     try {
-      // 🔑 userId & courseName from localStorage.userData (login response shape)
+      // 🔑 tolerant user fetch
       const user = getStoredUser();
       if (!user?.id) throw new Error('User not logged in');
 
       const userId = user.id;
+      // Prefer stored courseName, else default
       const courseName = user.courseName || 'CCS';
 
       const [stats, payment, assigns] = await Promise.all([
@@ -102,7 +115,7 @@ const StudentDashboard = () => {
       setAssignments(assigns);
 
       setStudentData({
-        // prefer API data where present, else fallback to login payload
+        // prefer API payment/course info, else login payload
         name: user.name,
         profileImage: user.profileImage,
         courseName: payment?.courseName || user.courseName || courseName,
@@ -219,7 +232,6 @@ const StudentDashboard = () => {
   const renderStaticAnswers = (module) => {
     const submitted = module?.submitted || {};
 
-    // Includes PCS/HCPCS/DRG/Modifiers
     const fields = [
       { key: 'patientName', label: 'Patient Name' },
       { key: 'ageOrDob', label: 'Age/DOB' },
@@ -349,7 +361,6 @@ const StudentDashboard = () => {
           <h3>{module?.moduleName || module?.subModuleName || `Module ${index + 1}`}</h3>
         </div>
 
-        {/* Static (keyed) answers */}
         {hasCorrectAnswers ? (
           <div className="module-block">
             <h4 className="block-heading">
@@ -369,7 +380,6 @@ const StudentDashboard = () => {
           </div>
         ) : null}
 
-        {/* Dynamic Q&A */}
         {hasDynamic ? (
           <div className="module-block">
             <h4 className="block-heading">
@@ -592,54 +602,4 @@ const StudentDashboard = () => {
             <div className="submission-card empty">
               <FiAlertCircle /> No submissions yet.
             </div>
-          ) : (
-            submissions.map((s, idx) => (
-              <div
-                key={`${s.assignmentId || idx}`}
-                className={`submission-card ${s.isCompleted ? 'clickable' : 'disabled'}`}
-                onClick={() => handleSubmissionClick(s)}
-                role={s.isCompleted ? 'button' : 'article'}
-                tabIndex={s.isCompleted ? 0 : -1}
-                onKeyDown={(e) => {
-                  if (s.isCompleted && (e.key === 'Enter' || e.key === ' ')) {
-                    handleSubmissionClick(s);
-                  }
-                }}
-                title={
-                  s.isCompleted
-                    ? 'View result'
-                    : 'Complete the assignment to view result'
-                }
-              >
-                <div className="submission-header">
-                  <h3>{s.moduleName}</h3>
-                  <span className={`badge ${s.isCompleted ? 'success' : 'pending'}`}>
-                    {s.isCompleted ? 'Completed' : 'Pending'}
-                  </span>
-                </div>
-                <div className="submission-body">
-                  <div className="submission-row">
-                    <span className="label">Progress</span>
-                    <span className="value">{s.overallProgress}%</span>
-                  </div>
-                  <div className="submission-row">
-                    <span className="label">Submitted</span>
-                    <span className="value">{formatDate(s.submissionDate)}</span>
-                  </div>
-                </div>
-                <div className="submission-footer">
-                  {s.isCompleted ? 'Click to view result' : 'Finish to unlock result'}
-                </div>
-              </div>
-            ))
-          )}
-        </div>
-      </div>
-
-      {/* Result Popup */}
-      {showResultPopup && renderResultPopup()}
-    </div>
-  );
-};
-
-export default StudentDashboard;
+    
