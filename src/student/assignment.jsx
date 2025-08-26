@@ -8,67 +8,111 @@ import './AssignmentFlow.css';
 
 const API_BASE = 'https://el-backend-ashen.vercel.app';
 
-/* --------- Lightweight PDF viewer (no toolbar, no download) ---------- */
-const PdfReader = ({ url, height = '60dvh', watermark = '' }) => {
-  const [fileData, setFileData] = useState(null);
+/* ================== Robust PDF viewer (handles large PDFs) ================== */
+const PdfReader = ({ url, height = '60vh', watermark = '' }) => {
+  const [blobUrl, setBlobUrl] = useState('');
   const [err, setErr] = useState('');
-  // force re-mount on URL change to avoid stale canvas in some webviews
-  const [viewKey, setViewKey] = useState(0);
+  const [viewKey, setViewKey] = useState(0); // force remount on url change
+  const currentBlob = useRef('');
 
   useEffect(() => {
+    let abort = false;
     const ctrl = new AbortController();
+
     (async () => {
       try {
         setErr('');
-        setFileData(null);
+        setBlobUrl('');
         setViewKey((k) => k + 1);
+
+        // Fetch fully and create a Blob URL — stable for big files & CORS
         const res = await fetch(url, { signal: ctrl.signal, cache: 'no-store' });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const buf = await res.arrayBuffer();
-        setFileData(new Uint8Array(buf));
+
+        // Yield once to avoid main-thread stall on huge files
+        await new Promise((r) => setTimeout(r, 0));
+        if (abort) return;
+
+        const blob = new Blob([buf], { type: 'application/pdf' });
+        const bUrl = URL.createObjectURL(blob);
+        currentBlob.current = bUrl;
+        setBlobUrl(bUrl);
       } catch (e) {
-        if (e.name !== 'AbortError') setErr('Unable to load PDF');
+        if (e.name !== 'AbortError') {
+          setErr('Unable to load PDF');
+        }
       }
     })();
-    return () => ctrl.abort();
+
+    return () => {
+      abort = true;
+      ctrl.abort();
+      if (currentBlob.current) {
+        URL.revokeObjectURL(currentBlob.current);
+        currentBlob.current = '';
+      }
+    };
   }, [url]);
 
   return (
     <div
-      className="pdf-safe-wrap"
       style={{
-        // Prefer dvh; fallback to CSS var; final fallback to vh
+        position: 'relative',
         height,
-        minHeight: 'calc(var(--app-vh, 1vh) * 60)',
+        border: '1px solid #eee',
+        borderRadius: 8,
+        overflow: 'hidden',
+        userSelect: 'none',
+        WebkitTouchCallout: 'none',
+        background: '#fff',
       }}
       onContextMenu={(e) => e.preventDefault()}
     >
-      {watermark && <div className="pdf-watermark">{watermark}</div>}
+      {watermark && (
+        <div
+          style={{
+            pointerEvents: 'none',
+            position: 'absolute',
+            inset: 0,
+            display: 'grid',
+            placeItems: 'center',
+            opacity: 0.08,
+            fontSize: 28,
+            fontWeight: 700,
+            textAlign: 'center',
+          }}
+        >
+          {watermark}
+        </div>
+      )}
 
-      <Worker workerUrl="https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.worker.min.js">
+      {/* Keep worker compatible with @react-pdf-viewer/core v3.x */}
+      <Worker workerUrl="https://unpkg.com/pdfjs-dist@3.4.120/build/pdf.worker.min.js">
         {err && (
           <div style={{ padding: 16, color: '#b00020' }}>
             {err}{' '}
             {url && (
-              <a href={url} target="_blank" rel="noreferrer">
+              <a href={url} target="_blank" rel="noreferrer" style={{ textDecoration: 'underline' }}>
                 Open PDF in new tab
               </a>
             )}
           </div>
         )}
-        {!fileData && !err && <div style={{ padding: 16 }}>Loading PDF…</div>}
-        {fileData && (
+        {!err && !blobUrl && <div style={{ padding: 16 }}>Loading PDF…</div>}
+        {!err && blobUrl && (
           <Viewer
             key={viewKey}
-            fileUrl={fileData}
+            fileUrl={blobUrl}
             defaultScale={SpecialZoomLevel.PageWidth}
+            onDocumentLoadFail={() => setErr('Failed to render PDF')}
           />
         )}
       </Worker>
     </div>
   );
 };
-/* --------------------------------------------------------------------- */
+/* ========================================================================== */
 
 const normalizeAssignment = (raw) => {
   const norm = { ...raw };
@@ -135,21 +179,6 @@ const NewAssignments = () => {
 
   const [startingId, setStartingId] = useState(null);   // button-level spinner
   const questionsRef = useRef(null);
-
-  // ---- set --app-vh fallback for older webviews (for dvh stability) ----
-  useEffect(() => {
-    const setVH = () => {
-      const vh = window.innerHeight * 0.01;
-      document.documentElement.style.setProperty('--app-vh', `${vh}px`);
-    };
-    setVH();
-    window.addEventListener('resize', setVH);
-    window.addEventListener('orientationchange', setVH);
-    return () => {
-      window.removeEventListener('resize', setVH);
-      window.removeEventListener('orientationchange', setVH);
-    };
-  }, []);
 
   const areAllSubAssignmentsCompleted = (assignment) => {
     if (!assignment?.subAssignments?.length) {
@@ -275,13 +304,15 @@ const NewAssignments = () => {
       }
 
       setAnswers({});
+
+      // smooth scroll to Questions area
       setTimeout(() => {
         questionsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
       }, 100);
     } catch (err) {
       setError(err.message);
     } finally {
-      setStartingId(null); // important: don't trigger global loading here
+      setStartingId(null); // DO NOT toggle global loading here
     }
   };
 
@@ -644,10 +675,10 @@ const NewAssignments = () => {
           >
             Back
           </button>
-          <h3 className="title-sm">{activeSubAssignment?.subModuleName || activeAssignment.moduleName}</h3>
+  <h3 className="title-sm">{activeSubAssignment?.subModuleName || activeAssignment.moduleName}</h3>
         </div>
 
-        {pdfUrl && <PdfReader url={pdfUrl} height="60dvh" watermark="" />}
+        {pdfUrl && <PdfReader url={pdfUrl} height="60vh" watermark="" />}
 
         <div ref={questionsRef} className="panel">
           <div className="panel-head">
@@ -667,7 +698,7 @@ const NewAssignments = () => {
     );
   }
 
-// --------------- CARDS VIEW ---------------
+  // --------------- CARDS VIEW ---------------
   return (
     <div className="container">
       <div className="page-header">
