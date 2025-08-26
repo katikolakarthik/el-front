@@ -602,4 +602,54 @@ const StudentDashboard = () => {
             <div className="submission-card empty">
               <FiAlertCircle /> No submissions yet.
             </div>
-    
+          ) : (
+            submissions.map((s, idx) => (
+              <div
+                key={`${s.assignmentId || idx}`}
+                className={`submission-card ${s.isCompleted ? 'clickable' : 'disabled'}`}
+                onClick={() => handleSubmissionClick(s)}
+                role={s.isCompleted ? 'button' : 'article'}
+                tabIndex={s.isCompleted ? 0 : -1}
+                onKeyDown={(e) => {
+                  if (s.isCompleted && (e.key === 'Enter' || e.key === ' ')) {
+                    handleSubmissionClick(s);
+                  }
+                }}
+                title={
+                  s.isCompleted
+                    ? 'View result'
+                    : 'Complete the assignment to view result'
+                }
+              >
+                <div className="submission-header">
+                  <h3>{s.moduleName}</h3>
+                  <span className={`badge ${s.isCompleted ? 'success' : 'pending'}`}>
+                    {s.isCompleted ? 'Completed' : 'Pending'}
+                  </span>
+                </div>
+                <div className="submission-body">
+                  <div className="submission-row">
+                    <span className="label">Progress</span>
+                    <span className="value">{s.overallProgress}%</span>
+                  </div>
+                  <div className="submission-row">
+                    <span className="label">Submitted</span>
+                    <span className="value">{formatDate(s.submissionDate)}</span>
+                  </div>
+                </div>
+                <div className="submission-footer">
+                  {s.isCompleted ? 'Click to view result' : 'Finish to unlock result'}
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+
+      {/* Result Popup */}
+      {showResultPopup && renderResultPopup()}
+    </div>
+  );
+};
+
+export default StudentDashboard;
