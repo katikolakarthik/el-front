@@ -15,32 +15,17 @@ import './StudentDashboard.css';
 /** Direct API base URL */
 const BASE_URL = 'https://el-backend-ashen.vercel.app';
 
-/** Safe getter for localStorage user (tolerant) */
+/** Safe getter for localStorage user (tolerant of different keys) */
 const getStoredUser = () => {
   try {
-    // Prefer 'userData' (recommended), fallback to 'user'
-    const raw =
-      localStorage.getItem('userData') ||
-      localStorage.getItem('user');
+    const raw = localStorage.getItem('userData') || localStorage.getItem('user');
     if (raw) return JSON.parse(raw);
-
-    // Last resort: only userId stored (older flow)
     const id = localStorage.getItem('userId');
     if (id) return { id, courseName: 'CCS' };
     return null;
   } catch {
     return null;
   }
-};
-
-/** Tiny helper around fetch with error text */
-const fetchJSON = async (url, options) => {
-  const res = await fetch(url, options);
-  if (!res.ok) {
-    const txt = await res.text().catch(() => '');
-    throw new Error(`HTTP ${res.status}: ${txt || res.statusText}`);
-  }
-  return res.json();
 };
 
 const StudentDashboard = () => {
@@ -73,7 +58,16 @@ const StudentDashboard = () => {
     });
   };
 
-  // --- Fetchers (Direct API calls) ---
+  // --- Fetchers (direct API calls) ---
+  const fetchJSON = async (url, options) => {
+    const res = await fetch(url, options);
+    if (!res.ok) {
+      const txt = await res.text().catch(() => '');
+      throw new Error(`HTTP ${res.status}: ${txt || res.statusText}`);
+    }
+    return res.json();
+  };
+
   const fetchStats = useCallback(async (userId, courseName) => {
     return fetchJSON(
       `${BASE_URL}/stats/${encodeURIComponent(courseName)}/${encodeURIComponent(userId)}`
@@ -93,11 +87,10 @@ const StudentDashboard = () => {
 
   const refreshDashboard = useCallback(async () => {
     try {
-      // 🔑 userId & courseName from localStorage (tolerant)
       const user = getStoredUser();
       if (!user?.id) throw new Error('User not logged in');
 
-      const userId = user.id; // from userData/user or fallback 'userId'
+      const userId = user.id;
       const courseName = user.courseName || 'CCS';
 
       const [stats, payment, assigns] = await Promise.all([
@@ -110,9 +103,7 @@ const StudentDashboard = () => {
       setPaymentData(payment);
       setAssignments(assigns);
 
-      // Combine data for studentData
       setStudentData({
-        // prefer API values, fallback to stored login payload
         name: user.name,
         profileImage: user.profileImage,
         courseName: payment?.courseName || user.courseName || courseName,
@@ -152,18 +143,21 @@ const StudentDashboard = () => {
 
   // --- Results fetching ---
   const fetchResultData = async (studentId, assignmentId) => {
+    setResultLoading(true);
+    setShowResultPopup(true); // 👉 open popup immediately; show loader while fetching
+    setResultData(null);
     try {
-      setResultLoading(true);
       const data = await fetchJSON(`${BASE_URL}/result`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ studentId, assignmentId }),
       });
       setResultData(data);
-      setShowResultPopup(true);
     } catch (err) {
       console.error('Error fetching result:', err);
-      alert('Failed to fetch result details');
+      setResultData({
+        error: err.message || 'Failed to fetch result details',
+      });
     } finally {
       setResultLoading(false);
     }
@@ -179,10 +173,11 @@ const StudentDashboard = () => {
         totalSub > 0 ? Math.round((doneSub / totalSub) * 100) : a?.isCompleted ? 100 : 0;
 
       return {
-        assignmentId: a?.assignmentId, // parent assignment id to send to /result
+        assignmentId: a?.assignmentId,
         moduleName: a?.assignmentName || 'Assignment',
-        isCompleted: a?.isCompleted === true, // gate by parent assignment completion
-        submissionDate: new Date().toISOString(), // Default since API may not provide date
+        // 🔓 make all clickable now (no completion gate)
+        isCompleted: a?.isCompleted === true,
+        submissionDate: new Date().toISOString(),
         totalCorrect: 0,
         totalWrong: 0,
         overallProgress: fallbackProgress,
@@ -192,23 +187,22 @@ const StudentDashboard = () => {
 
   // --- Handlers ---
   const handleSubmissionClick = (submission) => {
-    // Only allow results when parent assignment is completed
-    if (!submission || submission.isCompleted !== true) return;
-
+    if (!submission) return;
     const user = getStoredUser();
-    const studentId = user?.id || localStorage.getItem('userId');
+    const studentId = user?.id;
     const assignmentId = submission.assignmentId;
     if (!studentId || !assignmentId) {
       console.warn('Missing studentId or assignmentId for result fetch.');
       return;
     }
+    // 👉 always open the result popup (even if not completed)
     fetchResultData(studentId, assignmentId);
   };
 
   const closeResultPopup = async () => {
     setShowResultPopup(false);
     setResultData(null);
-    await refreshDashboard(); // optional refresh after closing
+    await refreshDashboard();
   };
 
   // --- Popup UX: close on overlay click & Escape; lock scroll while open ---
@@ -230,8 +224,6 @@ const StudentDashboard = () => {
   // --- Render helpers for popup content ---
   const renderStaticAnswers = (module) => {
     const submitted = module?.submitted || {};
-
-    // Includes PCS/HCPCS/DRG/Modifiers
     const fields = [
       { key: 'patientName', label: 'Patient Name' },
       { key: 'ageOrDob', label: 'Age/DOB' },
@@ -269,7 +261,7 @@ const StudentDashboard = () => {
             return null;
           }
           return (
-            <div key={field.key}>
+            <div key={field.key} className="answer-chip">
               <strong>{field.label}:</strong> {displayValue(value)}
             </div>
           );
@@ -279,16 +271,17 @@ const StudentDashboard = () => {
   };
 
   const renderDynamicQuestions = (submittedQuestions, correctQuestions) => {
-    if (!correctQuestions || correctQuestions.length === 0) return null;
+    if (!Array.isArray(correctQuestions) || correctQuestions.length === 0) return null;
 
     return (
       <div className="dynamic-questions-container">
         {correctQuestions.map((cq, i) => {
-          const sq = submittedQuestions?.[i];
-          if (!cq?.questionText && !cq?.text && !cq?.q && typeof cq !== 'string') return null;
-
+          const sq = Array.isArray(submittedQuestions) ? submittedQuestions[i] : undefined;
           const qText =
-            cq?.questionText || cq?.text || cq?.q || (typeof cq === 'string' ? cq : 'Question');
+            cq?.questionText ||
+            cq?.text ||
+            cq?.q ||
+            (typeof cq === 'string' ? cq : 'Question');
 
           const submittedAns =
             sq?.answerText ??
@@ -335,17 +328,21 @@ const StudentDashboard = () => {
   };
 
   const renderModule = (module, index) => {
-    // include new fields in the "has correct answers" gate
     const hasCorrectAnswers =
       module?.correctAnswerKey &&
       (module.correctAnswerKey.patientName ||
         module.correctAnswerKey.ageOrDob ||
-        (module.correctAnswerKey.icdCodes && module.correctAnswerKey.icdCodes.length > 0) ||
-        (module.correctAnswerKey.cptCodes && module.correctAnswerKey.cptCodes.length > 0) ||
-        (module.correctAnswerKey.pcsCodes && module.correctAnswerKey.pcsCodes.length > 0) ||
-        (module.correctAnswerKey.hcpcsCodes && module.correctAnswerKey.hcpcsCodes.length > 0) ||
+        (Array.isArray(module.correctAnswerKey.icdCodes) &&
+          module.correctAnswerKey.icdCodes.length > 0) ||
+        (Array.isArray(module.correctAnswerKey.cptCodes) &&
+          module.correctAnswerKey.cptCodes.length > 0) ||
+        (Array.isArray(module.correctAnswerKey.pcsCodes) &&
+          module.correctAnswerKey.pcsCodes.length > 0) ||
+        (Array.isArray(module.correctAnswerKey.hcpcsCodes) &&
+          module.correctAnswerKey.hcpcsCodes.length > 0) ||
         module.correctAnswerKey.drgValue ||
-        (module.correctAnswerKey.modifiers && module.correctAnswerKey.modifiers.length > 0) ||
+        (Array.isArray(module.correctAnswerKey.modifiers) &&
+          module.correctAnswerKey.modifiers.length > 0) ||
         module.correctAnswerKey.notes);
 
     const hasDynamic =
@@ -357,7 +354,6 @@ const StudentDashboard = () => {
           <h3>{module?.moduleName || module?.subModuleName || `Module ${index + 1}`}</h3>
         </div>
 
-        {/* Static (keyed) answers */}
         {hasCorrectAnswers ? (
           <div className="module-block">
             <h4 className="block-heading">
@@ -368,14 +364,15 @@ const StudentDashboard = () => {
               <div className="correct-key">
                 <details>
                   <summary>View Correct Key</summary>
-                  <pre className="code-block">{JSON.stringify(module.correctAnswerKey, null, 2)}</pre>
+                  <pre className="code-block">
+                    {JSON.stringify(module.correctAnswerKey, null, 2)}
+                  </pre>
                 </details>
               </div>
             ) : null}
           </div>
         ) : null}
 
-        {/* Dynamic Q&A */}
         {hasDynamic ? (
           <div className="module-block">
             <h4 className="block-heading">
@@ -395,7 +392,7 @@ const StudentDashboard = () => {
   };
 
   const renderResultPopup = () => {
-    if (!resultData) return null;
+    if (!showResultPopup) return null;
 
     const modules = Array.isArray(resultData?.data)
       ? resultData.data
@@ -414,17 +411,22 @@ const StudentDashboard = () => {
               Assignment Result
             </h2>
             {resultLoading ? <p className="muted">Loading detailed results…</p> : null}
+            {resultData?.error ? (
+              <p className="error-message">{resultData.error}</p>
+            ) : null}
           </div>
 
-          <div className="modules-wrapper">
-            {modules.length === 0 ? (
-              <div className="module-block empty">
-                <FiAlertCircle /> No module data returned.
-              </div>
-            ) : (
-              modules.map((m, idx) => renderModule(m, idx))
-            )}
-          </div>
+          {!resultLoading && !resultData?.error ? (
+            <div className="modules-wrapper">
+              {modules.length === 0 ? (
+                <div className="module-block empty">
+                  <FiAlertCircle /> No module data returned.
+                </div>
+              ) : (
+                modules.map((m, idx) => renderModule(m, idx))
+              )}
+            </div>
+          ) : null}
         </div>
       </div>
     );
@@ -458,7 +460,13 @@ const StudentDashboard = () => {
 
   return (
     <div className="student-dashboard">
-      <header className="dashboard-header"></header>
+      <header className="dashboard-header">
+        <h1>
+          <FiBook className="mr-8" />
+          Student Dashboard
+        </h1>
+        {studentData?.name ? <p className="muted">Welcome, {studentData.name} 👋</p> : null}
+      </header>
 
       {/* Stats Section */}
       <div className="stats-grid">
@@ -470,6 +478,41 @@ const StudentDashboard = () => {
             <h3>Total Assignments</h3>
             <p className="stat-value">{studentData.totalAssignments || 0}</p>
             <p className="stat-label">Assigned to you</p>
+          </div>
+        </div>
+
+        <div className="stat-card">
+          <div className="stat-icon">
+            <FiCheckCircle size={24} />
+          </div>
+          <div className="stat-content">
+            <h3>Completed</h3>
+            <p className="stat-value">{studentData.completedCount || 0}</p>
+            <p className="stat-label">So far</p>
+          </div>
+        </div>
+
+        <div className="stat-card">
+          <div className="stat-icon">
+            <FiTrendingUp size={24} />
+          </div>
+          <div className="stat-content">
+            <h3>Average Score</h3>
+            <p className="stat-value">
+              {studentData.averageScore ? `${studentData.averageScore}%` : '0%'}
+            </p>
+            <p className="stat-label">Across completed</p>
+          </div>
+        </div>
+
+        <div className="stat-card">
+          <div className="stat-icon">
+            <FiClock size={24} />
+          </div>
+          <div className="stat-content">
+            <h3>Pending</h3>
+            <p className="stat-value">{studentData.pendingCount || 0}</p>
+            <p className="stat-label">Assignments</p>
           </div>
         </div>
       </div>
@@ -525,8 +568,59 @@ const StudentDashboard = () => {
         </div>
       </div>
 
+      {/* Submissions / Assignments List */}
+      <div className="submissions-section">
+        <h2>
+          <FiAward className="mr-8" />
+          Your Assignments
+        </h2>
+        <div className="submissions-grid">
+          {submissions.length === 0 ? (
+            <div className="submission-card empty">
+              <FiAlertCircle /> No submissions yet.
+            </div>
+          ) : (
+            submissions.map((s, idx) => (
+              <div
+                key={`${s.assignmentId || idx}`}
+                className="submission-card clickable" // always clickable now
+                onClick={() => handleSubmissionClick(s)}
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    handleSubmissionClick(s);
+                  }
+                }}
+                title="View result"
+              >
+                <div className="submission-header">
+                  <h3>{s.moduleName}</h3>
+                  <span className={`badge ${s.isCompleted ? 'success' : 'pending'}`}>
+                    {s.isCompleted ? 'Completed' : 'Pending'}
+                  </span>
+                </div>
+                <div className="submission-body">
+                  <div className="submission-row">
+                    <span className="label">Progress</span>
+                    <span className="value">{s.overallProgress}%</span>
+                  </div>
+                  <div className="submission-row">
+                    <span className="label">Submitted</span>
+                    <span className="value">{formatDate(s.submissionDate)}</span>
+                  </div>
+                </div>
+                <div className="submission-footer">
+                  View result
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+
       {/* Result Popup */}
-      {showResultPopup && renderResultPopup()}
+      {renderResultPopup()}
     </div>
   );
 };
