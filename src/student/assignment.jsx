@@ -1,5 +1,5 @@
 // NewAssignments.jsx
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import axios from 'axios';
 import { FiBook, FiClock, FiCalendar } from 'react-icons/fi';
 import { Worker, Viewer, SpecialZoomLevel } from '@react-pdf-viewer/core';
@@ -8,38 +8,12 @@ import './AssignmentFlow.css';
 
 const API_BASE = 'https://el-backend-ashen.vercel.app';
 
-/* --------- Lightweight PDF viewer ---------- */
-/* --------- Lightweight PDF viewer (mobile-safe) ---------- */
-const PdfReader = ({ url, height = '60svh', watermark = '' }) => {
-  // NOTE: default height uses 'svh' (mobile-safe). Fallback handled below.
+/* --------- Lightweight PDF viewer (no toolbar, no download) ---------- */
+const PdfReader = ({ url, height = '60vh', watermark = '' }) => {
   const [fileData, setFileData] = useState(null);
   const [err, setErr] = useState('');
-
-  // Fallback to 'vh' if the browser doesn't support 'svh'
-  const computedHeight = useMemo(() => {
-    // crude feature check
-    if (typeof window !== 'undefined') {
-      const test = document.createElement('div');
-      test.style.height = '1svh';
-      if (test.style.height.includes('svh')) return height; // svh supported
-    }
-    return typeof height === 'string' && height.endsWith('svh')
-      ? height.replace('svh', 'vh')
-      : height;
-  }, [height]);
-
-  // (Optional) ultra-safe dynamic vh fallback for very old browsers
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    if (String(computedHeight).includes('vh')) return; // using vh, fine
-    // Using svh; still set --vh for any CSS that wants it
-    const setVh = () => {
-      document.documentElement.style.setProperty('--vh', `${window.innerHeight * 0.01}px`);
-    };
-    setVh();
-    window.addEventListener('resize', setVh);
-    return () => window.removeEventListener('resize', setVh);
-  }, [computedHeight]);
+  // key to force re-mount on URL change (prevents blank on some mobile browsers)
+  const [viewKey, setViewKey] = useState(0);
 
   useEffect(() => {
     const ctrl = new AbortController();
@@ -47,6 +21,7 @@ const PdfReader = ({ url, height = '60svh', watermark = '' }) => {
       try {
         setErr('');
         setFileData(null);
+        setViewKey((k) => k + 1);
         const res = await fetch(url, { signal: ctrl.signal, cache: 'no-store' });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const buf = await res.arrayBuffer();
@@ -60,54 +35,56 @@ const PdfReader = ({ url, height = '60svh', watermark = '' }) => {
 
   return (
     <div
-      className="pdf-shell"
       style={{
         position: 'relative',
-        height: computedHeight,           // <— svh (mobile-safe)
-        minHeight: 240,
+        height,
         border: '1px solid #eee',
         borderRadius: 8,
-        overflow: 'auto',                 // give it its own scroller
-        WebkitOverflowScrolling: 'touch', // smooth iOS scrolling
-        background: '#fff',
-        // Stabilize on mobile GPUs:
-        transform: 'translateZ(0)',       // promote to its own layer
-        backfaceVisibility: 'hidden',
-        contain: 'layout paint size',     // isolate layout/paint
-        willChange: 'scroll-position',
+        overflow: 'hidden',
         userSelect: 'none',
         WebkitTouchCallout: 'none',
+        background: '#fff',
       }}
       onContextMenu={(e) => e.preventDefault()}
     >
       {watermark && (
-        <div className="pdf-watermark">{watermark}</div>
+        <div
+          style={{
+            pointerEvents: 'none',
+            position: 'absolute',
+            inset: 0,
+            display: 'grid',
+            placeItems: 'center',
+            opacity: 0.08,
+            fontSize: 28,
+            fontWeight: 700,
+            textAlign: 'center',
+          }}
+        >
+          {watermark}
+        </div>
       )}
 
       <Worker workerUrl="https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.worker.min.js">
-        {err && <div style={{ padding: 16, color: '#b00020' }}>{err}</div>}
+        {err && (
+          <div style={{ padding: 16, color: '#b00020' }}>
+            {err}{' '}
+            {url && (
+              <a href={url} target="_blank" rel="noreferrer">
+                Open PDF in new tab
+              </a>
+            )}
+          </div>
+        )}
         {!fileData && !err && <div style={{ padding: 16 }}>Loading PDF…</div>}
         {fileData && (
-          <Viewer
-            key={url} // force fresh mount on url change
-            fileUrl={fileData}
-            defaultScale={SpecialZoomLevel.PageWidth}
-          />
+          <Viewer key={viewKey} fileUrl={fileData} defaultScale={SpecialZoomLevel.PageWidth} />
         )}
       </Worker>
     </div>
   );
 };
-/* --------------------------------------------------------- */
-
-
-
-
-
-
-
-
-/* ------------------------------------------- */
+/* --------------------------------------------------------------------- */
 
 const normalizeAssignment = (raw) => {
   const norm = { ...raw };
@@ -154,19 +131,30 @@ const sameDay = (dStr, ymd) => {
   return d.getFullYear() === y && (d.getMonth() + 1) === m && d.getDate() === day;
 };
 
+// priority: unlocked (0) < locked (1) < completed (2)
+const statusPriority = (assignment, canStartFn, isAllSubsDoneFn) => {
+  if (isAllSubsDoneFn(assignment)) return 2;
+  return canStartFn(assignment) ? 0 : 1;
+};
+
 const NewAssignments = () => {
   const [assignments, setAssignments] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(true); // ONLY for initial fetch
   const [error, setError] = useState(null);
+
   const [activeAssignment, setActiveAssignment] = useState(null);
   const [activeSubAssignment, setActiveSubAssignment] = useState(null);
+
   const [answers, setAnswers] = useState({});
-  const [selectedDate, setSelectedDate] = useState(''); // yyyy-mm-dd (FILTER ONLY)
-  const [submitting, setSubmitting] = useState(false);
+  const [selectedDate, setSelectedDate] = useState(''); // filter only
+  const [submitting, setSubmitting] = useState(false);  // submit overlay
+
+  const [startingId, setStartingId] = useState(null);   // button-level spinner
+  const questionsRef = useRef(null);
 
   const areAllSubAssignmentsCompleted = (assignment) => {
-    if (!assignment.subAssignments || assignment.subAssignments.length === 0) {
-      return Boolean(assignment.isCompleted);
+    if (!assignment?.subAssignments?.length) {
+      return Boolean(assignment?.isCompleted);
     }
     return assignment.subAssignments.every((sub) => sub.isCompleted);
   };
@@ -218,7 +206,7 @@ const NewAssignments = () => {
       ? new Date(dateString).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })
       : '—';
 
-  // ------- FILTER (view only) -------
+  // ------- VIEW FILTER (date search only) -------
   const filtered = useMemo(() => {
     if (!selectedDate) return assignments;
     return assignments.filter((a) => sameDay(a.assignedDate, selectedDate));
@@ -228,19 +216,28 @@ const NewAssignments = () => {
   const globalAscList = useMemo(() => stableAsc(assignments), [assignments]);
 
   const canStartAssignment = (assignment) => {
-    // already fully done => cannot start again
     if (areAllSubAssignmentsCompleted(assignment)) return false;
-
-    // find position in GLOBAL ordered list
     const idx = globalAscList.findIndex((a) => String(a._id) === String(assignment._id));
-    if (idx <= 0) return true; // first item globally
-
-    // all previous (globally) must be completed
+    if (idx <= 0) return true;
     for (let i = 0; i < idx; i++) {
       if (!areAllSubAssignmentsCompleted(globalAscList[i])) return false;
     }
     return true;
   };
+
+  // ------- DISPLAY ORDER: Unlocked → Locked → Completed; then latest first -------
+  const displayList = useMemo(() => {
+    const list = [...filtered];
+    return list
+      .map((a) => ({ a, p: statusPriority(a, canStartAssignment, areAllSubAssignmentsCompleted) }))
+      .sort((x, y) => {
+        if (x.p !== y.p) return x.p - y.p;
+        const dx = ms(x.a.assignedDate), dy = ms(y.a.assignedDate);
+        if (dx !== dy) return dy - dx;
+        return String(y.a._id || '').localeCompare(String(x.a._id || ''));
+      })
+      .map((x) => x.a);
+  }, [filtered, canStartAssignment]);
 
   // sub-sections always sequential
   const canStartSub = (assignment, subIdx) => {
@@ -253,20 +250,16 @@ const NewAssignments = () => {
 
   const handleStart = async (assignmentId, subAssignmentId = null) => {
     try {
-      setLoading(true);
+      setStartingId(`${assignmentId}:${subAssignmentId || 'parent'}`);
       setError(null);
 
       const fromList = assignments.find((a) => String(a._id) === String(assignmentId));
       if (!fromList) throw new Error('Assignment not found in list');
-
-      // NOTE: No date gating — date is only a filter for view
-      if (!canStartAssignment(fromList)) {
-        throw new Error('Please complete previous assignments to unlock this one');
-      }
+      if (!canStartAssignment(fromList)) throw new Error('Please complete previous assignments to unlock this one');
 
       const assignmentData = normalizeAssignment(fromList);
       assignmentData.isCompleted = Boolean(fromList.isCompleted);
-      if (fromList && Array.isArray(fromList.subAssignments)) {
+      if (fromList?.subAssignments?.length) {
         assignmentData.subAssignments = (assignmentData.subAssignments || []).map((sub) => {
           const originalSub = fromList.subAssignments.find((s) => String(s._id) === String(sub._id));
           return { ...sub, isCompleted: originalSub ? originalSub.isCompleted : false };
@@ -276,18 +269,22 @@ const NewAssignments = () => {
 
       if (subAssignmentId) {
         const idx = assignmentData.subAssignments.findIndex((s) => String(s._id) === String(subAssignmentId));
-        if (!canStartSub(assignmentData, idx)) {
-          throw new Error('Complete previous section to unlock this one');
-        }
-        const sub = assignmentData.subAssignments[idx];
-        setActiveSubAssignment(sub || null);
-      } else setActiveSubAssignment(null);
+        if (!canStartSub(assignmentData, idx)) throw new Error('Complete previous section to unlock this one');
+        setActiveSubAssignment(assignmentData.subAssignments[idx] || null);
+      } else {
+        setActiveSubAssignment(null);
+      }
 
       setAnswers({});
+
+      // smooth scroll to Questions area
+      setTimeout(() => {
+        questionsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 100);
     } catch (err) {
       setError(err.message);
     } finally {
-      setLoading(false);
+      setStartingId(null); // DO NOT toggle global loading here
     }
   };
 
@@ -370,7 +367,7 @@ const NewAssignments = () => {
         }
       } catch {}
 
-      // Auto-advance inside assignment; if done, go back to list (next parent unlocks globally)
+      // Auto-advance inside assignment; if done, go back to list
       if (activeSubAssignment && (activeAssignment.subAssignments || []).length > 0) {
         const idx = activeAssignment.subAssignments.findIndex(
           (sub) => String(sub._id) === String(activeSubAssignment._id)
@@ -378,6 +375,9 @@ const NewAssignments = () => {
         if (idx < activeAssignment.subAssignments.length - 1) {
           alert('Submitted. Next section unlocked.');
           setActiveSubAssignment({ ...activeAssignment.subAssignments[idx + 1], isCompleted: false });
+          setTimeout(() => {
+            questionsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          }, 150);
         } else {
           alert('Assignment completed successfully!');
           setActiveSubAssignment(null);
@@ -445,39 +445,105 @@ const NewAssignments = () => {
         <div className="form-grid">
           <div className="form-item">
             <label className="label">Patient Name</label>
-            <input className="input" type="text" value={answers.patientName || ''} onChange={(e) => handleAnswerChange('patientName', e.target.value)} disabled={target.isCompleted || submitting}/>
+            <input
+              className="input"
+              type="text"
+              value={answers.patientName || ''}
+              onChange={(e) => handleAnswerChange('patientName', e.target.value)}
+              disabled={target.isCompleted || submitting}
+            />
           </div>
           <div className="form-item">
             <label className="label">Age / DOB</label>
-            <input className="input" type="text" value={answers.ageOrDob || ''} onChange={(e) => handleAnswerChange('ageOrDob', e.target.value)} disabled={target.isCompleted || submitting}/>
+            <input
+              className="input"
+              type="text"
+              value={answers.ageOrDob || ''}
+              onChange={(e) => handleAnswerChange('ageOrDob', e.target.value)}
+              disabled={target.isCompleted || submitting}
+            />
           </div>
+
           <div className="form-item">
             <label className="label">ICD Codes</label>
-            <input className="input" type="text" value={answers.icdCodes || ''} onChange={(e) => handleAnswerChange('icdCodes', e.target.value)} placeholder="Comma separated" disabled={target.isCompleted || submitting}/>
+            <input
+              className="input"
+              type="text"
+              value={answers.icdCodes || ''}
+              onChange={(e) => handleAnswerChange('icdCodes', e.target.value)}
+              placeholder="Comma separated"
+              disabled={target.isCompleted || submitting}
+            />
           </div>
           <div className="form-item">
             <label className="label">CPT Codes</label>
-            <input className="input" type="text" value={answers.cptCodes || ''} onChange={(e) => handleAnswerChange('cptCodes', e.target.value)} placeholder="Comma separated" disabled={target.isCompleted || submitting}/>
+            <input
+              className="input"
+              type="text"
+              value={answers.cptCodes || ''}
+              onChange={(e) => handleAnswerChange('cptCodes', e.target.value)}
+              placeholder="Comma separated"
+              disabled={target.isCompleted || submitting}
+            />
           </div>
+
           <div className="form-item">
             <label className="label">PCS Codes</label>
-            <input className="input" type="text" value={answers.pcsCodes || ''} onChange={(e) => handleAnswerChange('pcsCodes', e.target.value)} placeholder="Comma separated" disabled={target.isCompleted || submitting}/>
+            <input
+              className="input"
+              type="text"
+              value={answers.pcsCodes || ''}
+              onChange={(e) => handleAnswerChange('pcsCodes', e.target.value)}
+              placeholder="Comma separated"
+              disabled={target.isCompleted || submitting}
+            />
           </div>
+
           <div className="form-item">
             <label className="label">HCPCS Codes</label>
-            <input className="input" type="text" value={answers.hcpcsCodes || ''} onChange={(e) => handleAnswerChange('hcpcsCodes', e.target.value)} placeholder="Comma separated" disabled={target.isCompleted || submitting}/>
+            <input
+              className="input"
+              type="text"
+              value={answers.hcpcsCodes || ''}
+              onChange={(e) => handleAnswerChange('hcpcsCodes', e.target.value)}
+              placeholder="Comma separated"
+              disabled={target.isCompleted || submitting}
+            />
           </div>
+
           <div className="form-item">
             <label className="label">DRG Value</label>
-            <input className="input" type="text" value={answers.drgValue || ''} onChange={(e) => handleAnswerChange('drgValue', e.target.value)} placeholder="e.g. 470 or 470-xx" disabled={target.isCompleted || submitting}/>
+            <input
+              className="input"
+              type="text"
+              value={answers.drgValue || ''}
+              onChange={(e) => handleAnswerChange('drgValue', e.target.value)}
+              placeholder="e.g. 470 or 470-xx"
+              disabled={target.isCompleted || submitting}
+            />
           </div>
+
           <div className="form-item">
             <label className="label">Modifiers</label>
-            <input className="input" type="text" value={answers.modifiers || ''} onChange={(e) => handleAnswerChange('modifiers', e.target.value)} placeholder="Comma separated (e.g. 26, 59, LT)" disabled={target.isCompleted || submitting}/>
+            <input
+              className="input"
+              type="text"
+              value={answers.modifiers || ''}
+              onChange={(e) => handleAnswerChange('modifiers', e.target.value)}
+              placeholder="Comma separated (e.g. 26, 59, LT)"
+              disabled={target.isCompleted || submitting}
+            />
           </div>
+
           <div className="form-item form-item--full">
             <label className="label">Notes</label>
-            <textarea className="textarea" value={answers.notes || ''} onChange={(e) => handleAnswerChange('notes', e.target.value)} rows={4} disabled={target.isCompleted || submitting}/>
+            <textarea
+              className="textarea"
+              value={answers.notes || ''}
+              onChange={(e) => handleAnswerChange('notes', e.target.value)}
+              rows={4}
+              disabled={target.isCompleted || submitting}
+            />
           </div>
         </div>
       );
@@ -500,7 +566,7 @@ const NewAssignments = () => {
     );
   }
 
-  if (error) {
+  if (error && !activeAssignment) {
     return (
       <div className="container">
         <div className="empty-state error">
@@ -513,7 +579,8 @@ const NewAssignments = () => {
       </div>
     );
   }
-// DETAIL VIEW
+
+  // DETAIL VIEW
   if (activeAssignment) {
     if (!activeSubAssignment && activeAssignment.subAssignments?.length > 0) {
       return (
@@ -524,28 +591,40 @@ const NewAssignments = () => {
           </div>
 
           <div className="grid">
-            {activeAssignment.subAssignments.map((sub, idx) => {
-              const disabled = !canStartSub(activeAssignment, idx) || submitting;
-              return (
-                <div key={idx} className="card sub-card">
-                  <div className="card-head">
-                    <h4 className="card-title">{sub.subModuleName}</h4>
-                    <span className={`badge ${sub.isCompleted ? 'badge-success' : 'badge-neutral'}`}>
-                      {sub.isCompleted ? 'Completed' : disabled ? 'Locked' : 'Pending'}
-                    </span>
+            {(() => {
+              const withIdx = (activeAssignment.subAssignments || []).map((s, i) => ({ s, i }));
+              const subsSorted = withIdx
+                .map(({ s, i }) => ({
+                  s,
+                  i,
+                  p: s.isCompleted ? 2 : (canStartSub(activeAssignment, i) ? 0 : 1),
+                }))
+                .sort((x, y) => x.p - y.p || x.i - y.i);
+
+              return subsSorted.map(({ s, i }) => {
+                const disabled = !canStartSub(activeAssignment, i) || submitting;
+                const isStarting = startingId === `${activeAssignment._id}:${s._id}`;
+                return (
+                  <div key={i} className="card sub-card">
+                    <div className="card-head">
+                      <h4 className="card-title">{s.subModuleName}</h4>
+                      <span className={`badge ${s.isCompleted ? 'badge-success' : disabled ? 'badge-neutral' : 'badge-pending'}`}>
+                        {s.isCompleted ? 'Completed' : disabled ? 'Locked' : 'Pending'}
+                      </span>
+                    </div>
+                    <div className="card-actions">
+                      <button
+                        className="btn"
+                        onClick={() => handleStart(activeAssignment._id, s._id)}
+                        disabled={disabled || isStarting}
+                      >
+                        {isStarting ? 'Opening…' : s.isCompleted ? 'Completed' : disabled ? 'Locked' : 'Start'}
+                      </button>
+                    </div>
                   </div>
-                  <div className="card-actions">
-                    <button
-                      className="btn"
-                      onClick={() => handleStart(activeAssignment._id, sub._id)}
-                      disabled={disabled}
-                    >
-                      {sub.isCompleted ? 'Completed' : disabled ? 'Locked' : 'Start'}
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
+                );
+              });
+            })()}
           </div>
 
           {submitting && <LoadingOverlay />}
@@ -556,6 +635,7 @@ const NewAssignments = () => {
     const pdfUrl = activeSubAssignment?.assignmentPdf || activeAssignment.assignmentPdf;
     const questionSource = activeSubAssignment || activeAssignment;
     const isCompleted = questionSource.isCompleted;
+    const isStartingParent = startingId === `${activeAssignment._id}:parent`;
 
     return (
       <div className="container">
@@ -572,14 +652,14 @@ const NewAssignments = () => {
 
         {pdfUrl && <PdfReader url={pdfUrl} height="60vh" watermark="" />}
 
-        <div className="panel">
+        <div ref={questionsRef} className="panel">
           <div className="panel-head">
             <h4>Questions</h4>
             {isCompleted && <span className="badge badge-success">Completed</span>}
           </div>
           <div className="panel-body">{renderQuestions(questionSource)}</div>
           <div className="panel-actions">
-            <button className="btn btn-primary" onClick={handleSubmit} disabled={isCompleted || submitting}>
+            <button className="btn btn-primary" onClick={handleSubmit} disabled={isCompleted || submitting || isStartingParent}>
               {isCompleted ? 'Already Submitted' : (submitting ? 'Submitting…' : 'Submit Assignment')}
             </button>
           </div>
@@ -624,17 +704,20 @@ const NewAssignments = () => {
         </div>
       </div>
 
-      {filtered.length > 0 ? (
+      {displayList.length > 0 ? (
         <div className="grid">
-          {filtered.map((assignment, index) => {
+          {displayList.map((assignment) => {
             const allSubsCompleted = areAllSubAssignmentsCompleted(assignment);
             const locked = !canStartAssignment(assignment) || submitting;
+            const isStarting = startingId === `${assignment._id}:parent`;
 
             return (
-              <div key={assignment._id || index} className="card">
+              <div key={assignment._id} className="card">
                 <div className="card-head">
                   <h3 className="card-title">{assignment.moduleName}</h3>
-                  <span className={`badge ${allSubsCompleted ? 'badge-success' : locked ? 'badge-neutral' : 'badge-pending'}`}>
+                  <span className={`badge ${
+                    allSubsCompleted ? 'badge-success' : locked ? 'badge-neutral' : 'badge-pending'
+                  }`}>
                     {allSubsCompleted ? 'Completed' : locked ? 'Locked' : 'Assigned'}
                   </span>
                 </div>
@@ -654,8 +737,12 @@ const NewAssignments = () => {
                 )}
 
                 <div className="card-actions">
-                  <button className="btn" onClick={() => handleStart(assignment._id)} disabled={locked}>
-                    {allSubsCompleted ? 'Completed' : locked ? 'Locked' : (assignment.subAssignments?.length > 0 ? 'View Sections' : 'Start')}
+                  <button
+                    className="btn"
+                    onClick={() => handleStart(assignment._id)}
+                    disabled={locked || isStarting}
+                  >
+                    {isStarting ? 'Opening…' : allSubsCompleted ? 'Completed' : locked ? 'Locked' : (assignment.subAssignments?.length > 0 ? 'View Sections' : 'Start')}
                   </button>
                 </div>
               </div>
@@ -671,6 +758,8 @@ const NewAssignments = () => {
           </div>
         </div>
       )}
+
+      {submitting && <LoadingOverlay />}
     </div>
   );
 };
@@ -698,5 +787,3 @@ const LoadingOverlay = () => (
 );
 
 export default NewAssignments;
-
-  
