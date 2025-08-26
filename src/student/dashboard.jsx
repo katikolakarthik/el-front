@@ -50,7 +50,7 @@ const StudentDashboard = () => {
       )}/${encodeURIComponent(userId)}`
     );
     if (!res.data) throw new Error('No stats data received');
-    return res.data; // shape: { success, category, totalAssigned, completed, averageScore, pending, stats:{assigned,completed,averageScore,pending}}
+    return res.data; // { success, category, totalAssigned, completed, averageScore("100%"), pending, stats:{assigned,completed,averageScore(100),pending} }
   }, []);
 
   const fetchCourseInfo = useCallback(async (userId) => {
@@ -60,7 +60,7 @@ const StudentDashboard = () => {
       )}`
     );
     if (!res.data) throw new Error('No course info received');
-    return res.data; // shape: { studentId, name, courseName, enrolledDate, paidAmount, remainingAmount }
+    return res.data; // { studentId, name, courseName, enrolledDate, paidAmount, remainingAmount }
   }, []);
 
   const fetchSubmissions = useCallback(async (userId) => {
@@ -69,13 +69,13 @@ const StudentDashboard = () => {
         userId
       )}`
     );
-    // shape: { assignments: [ { assignmentId, isCompleted, subAssignments: [{subAssignmentId, isCompleted}], moduleName? } ] }
+    // { assignments: [{ assignmentId, isCompleted, subAssignments:[{subAssignmentId,isCompleted}], moduleName? }] }
     return res.data?.assignments || [];
   }, []);
 
   const refreshDashboard = useCallback(async () => {
     const userId = localStorage.getItem('userId');
-    const courseName = localStorage.getItem('courseName'); // e.g., "CCS" (you asked to take from local storage)
+    const courseName = localStorage.getItem('courseName'); // e.g., "CCS" (you said to read from localStorage)
     if (!userId) throw new Error('User ID not found in localStorage');
     if (!courseName) throw new Error('Course name not found in localStorage');
 
@@ -85,18 +85,24 @@ const StudentDashboard = () => {
       fetchSubmissions(userId),
     ]);
 
-    // Normalize studentData object used by the UI
+    // Normalize average score safely (no ||/?? mixing)
+    const avgScoreRaw =
+      (stats && stats.stats && stats.stats.averageScore) ??
+      stats?.averageScore;
+    let avgScoreNumber = 0;
+    if (typeof avgScoreRaw === 'number') {
+      avgScoreNumber = avgScoreRaw;
+    } else if (typeof avgScoreRaw === 'string') {
+      const parsed = parseFloat(avgScoreRaw.replace('%', ''));
+      avgScoreNumber = isNaN(parsed) ? 0 : parsed;
+    }
+
     const totalAssigned = Number(stats?.totalAssigned ?? 0);
     const completed = Number(stats?.completed ?? 0);
-    // Safely compute averageScore as a number (fallback to 0)
-const _avgRaw =
-  typeof stats?.averageScore === 'number'
-    ? stats.averageScore
-    : Number.parseFloat(
-        String((stats?.averageScore ?? '0')).replace('%', '')
-      );
-
-const averageScore = Number.isFinite(_avgRaw) ? _avgRaw : 0;
+    const pendingCalculated =
+      stats?.pending !== undefined && stats?.pending !== null
+        ? Number(stats.pending)
+        : Math.max(totalAssigned - completed, 0);
 
     setStudentData({
       // from payment-details:
@@ -110,8 +116,8 @@ const averageScore = Number.isFinite(_avgRaw) ? _avgRaw : 0;
       // from stats:
       totalAssignments: totalAssigned,
       completedCount: completed,
-      averageScore: avgScoreNumber, // UI will add %
-      pendingCount: Number(stats?.pending ?? Math.max(totalAssigned - completed, 0)),
+      averageScore: avgScoreNumber, // UI will append %
+      pendingCount: pendingCalculated,
       courseProgress: Math.round((completed / (totalAssigned || 1)) * 100),
       assignmentCompletion: `${completed}/${totalAssigned}`,
     });
@@ -167,10 +173,10 @@ const averageScore = Number.isFinite(_avgRaw) ? _avgRaw : 0;
 
       return {
         assignmentId: a.assignmentId, // NOTE: new API field
-        moduleName: (a.moduleName || '').trim(), // if available, we show; we WON'T create "Assignment 1..." fallbacks
+        moduleName: (a.moduleName || '').trim(), // show if provided; NO "Assignment 1..." fallback
         isCompleted: a.isCompleted === true, // enable only when true
-        submissionDate: a.assignedDate, // if backend sends it; will show 'N/A' otherwise
-        totalCorrect: a.totalCorrect ?? 0, // optional, if backend supports
+        submissionDate: a.assignedDate, // shown if backend provides
+        totalCorrect: a.totalCorrect ?? 0, // optional if backend supports
         totalWrong: a.totalWrong ?? 0,
         overallProgress: a.progressPercent ?? fallbackProgress,
       };
@@ -182,8 +188,8 @@ const averageScore = Number.isFinite(_avgRaw) ? _avgRaw : 0;
     // Only allow results when assignment is completed
     if (!submission || submission.isCompleted !== true) return;
 
-    const studentId = studentData?.studentId; // from payment-details
-    const assignmentId = submission.assignmentId; // parent assignment id
+    const studentId = studentData?.studentId; // from payment-details API
+    const assignmentId = submission.assignmentId;
     if (!studentId || !assignmentId) {
       console.warn('Missing studentId or assignmentId for result fetch.');
       return;
@@ -215,7 +221,7 @@ const averageScore = Number.isFinite(_avgRaw) ? _avgRaw : 0;
     };
   }, [showResultPopup]);
 
-  // --- Render helpers for popup content (unchanged structure) ---
+  // --- Render helpers for popup content (kept from your structure) ---
   const renderStaticAnswers = (module) => {
     const submitted = module.submitted || {};
     const fields = [
@@ -269,28 +275,28 @@ const averageScore = Number.isFinite(_avgRaw) ? _avgRaw : 0;
           const sq = submittedQuestions?.[i];
           if (!cq.questionText) return null;
 
-          return (
-            <div key={i} className="dynamic-question">
-              <div className="question-text">
-                <strong>Q{i + 1}:</strong> {cq.questionText}
-              </div>
-              <div className="question-answers">
-                <div className="submitted-answer">
-                  <span>Your Answer:</span>{' '}
-                  <strong>{displayValue(sq?.submittedAnswer)}</strong>
-                </div>
-                <div className="correct-answer">
-                  <span>Correct Answer:</span>{' '}
-                  <strong>{displayValue(cq.answer || cq.correctAnswer)}</strong>
-                </div>
-              </div>
-              {cq.options?.length > 0 && (
-                <div className="question-options">
-                  <span>Options:</span> {displayValue(cq.options)}
-                </div>
-              )}
+        return (
+          <div key={i} className="dynamic-question">
+            <div className="question-text">
+              <strong>Q{i + 1}:</strong> {cq.questionText}
             </div>
-          );
+            <div className="question-answers">
+              <div className="submitted-answer">
+                <span>Your Answer:</span>{' '}
+                <strong>{displayValue(sq?.submittedAnswer)}</strong>
+              </div>
+              <div className="correct-answer">
+                <span>Correct Answer:</span>{' '}
+                <strong>{displayValue(cq.answer || cq.correctAnswer)}</strong>
+              </div>
+            </div>
+            {cq.options?.length > 0 && (
+              <div className="question-options">
+                <span>Options:</span> {displayValue(cq.options)}
+              </div>
+            )}
+          </div>
+        );
         })}
       </div>
     );
@@ -539,7 +545,8 @@ const averageScore = Number.isFinite(_avgRaw) ? _avgRaw : 0;
           </div>
         </div>
       </div>
-{/* Info Section */}
+
+      {/* Info Section */}
       <div className="info-grid">
         <div className="info-card">
           <h2>Course Information</h2>
@@ -662,6 +669,3 @@ const averageScore = Number.isFinite(_avgRaw) ? _avgRaw : 0;
 };
 
 export default StudentDashboard;
-
-
-      
