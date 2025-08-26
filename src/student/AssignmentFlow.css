@@ -662,3 +662,47 @@ h1, h2, h3, h4, h5, h6 {
   color: #6b7280;
   font-size: 0.95rem;
 }
+
+
+/* PDF container: prevent canvas blank on Chrome/WebView scroll */
+.pdf-safe-wrap {
+  position: relative;
+  border: 1px solid #eee;
+  border-radius: 8px;
+  background: #fff;
+
+  /* DO NOT clip during URL-bar resize */
+  overflow: auto;
+
+  /* Own painting layer avoids canvas being culled on scroll */
+  contain: paint;
+  backface-visibility: hidden;
+  transform: translateZ(0);
+  will-change: transform;
+
+  -webkit-touch-callout: none;
+  user-select: none;
+}
+
+.pdf-watermark {
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  opacity: 0.08;
+  font-size: 28px;
+  font-weight: 700;
+  text-align: center;
+}
+
+@media (max-width: 480px) {
+  .pdf-safe-wrap {
+    min-height: calc(var(--app-vh, 1vh) * 50);
+  }
+}
+
+/* Optional: prevent bounce effects from messing with layout */
+html, body {
+  overscroll-behavior-y: contain;
+}
