@@ -104,7 +104,7 @@ const Layout = ({ children }) => {
       <aside className="sidebar-desktop">
         <div className="sidebar-header">
           <FaGraduationCap className="sidebar-icon" />
-          <span>Medical Coding</span>
+          <span>Wellmed</span>
         </div>
         <nav className="sidebar-nav">
           {renderLinks()}
