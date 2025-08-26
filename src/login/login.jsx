@@ -8,41 +8,54 @@ const Login = () => {
   const [error, setError] = useState("");
   const navigate = useNavigate();
 
-  
+  const handleLogin = async (e) => {
+    e.preventDefault();
+    setError("");
 
-const handleLogin = async (e) => {
-  e.preventDefault();
+    try {
+      const res = await axios.post("https://el-backend-ashen.vercel.app/login", {
+        name,
+        password,
+      });
 
-  try {
-          const res = await axios.post("https://el-backend-ashen.vercel.app/login", {
-      name,
-      password,
-    });
+      if (res.data?.success) {
+        const user = res.data.user || {};
+        const role = user.role || "user";
+        const sessionId = res.data.sessionId || "";
 
-    if (res.data.success) {
-      // Store user data and session
-      localStorage.setItem("user", JSON.stringify(res.data.user));
-      localStorage.setItem("sessionId", res.data.sessionId);
-      const userId = res.data.user.id || res.data.user._id;
-      localStorage.setItem("userId", userId);
+        // Robust IDs and fields
+        const userId = user.id || user._id || "";
+        const courseName = user.courseName || ""; // <-- dashboard expects this in localStorage
+        const enrolledDate = user.enrolledDate || "";
+        const profileImage = Array.isArray(user.profileImage)
+          ? (user.profileImage[0] || "")
+          : (user.profileImage || "");
 
-      // Redirect based on role
-      const role = res.data.user.role;
-      if (role === "admin" || role === "subadmin") {
-        navigate("/admin/dashboard");
-      } else if (role === "user") {
-        navigate("/student/dashboard");
+        // Persist everything we need for the dashboard
+        localStorage.setItem("user", JSON.stringify(user));
+        localStorage.setItem("sessionId", sessionId);
+        localStorage.setItem("userId", userId);
+        localStorage.setItem("courseName", courseName); // IMPORTANT
+        localStorage.setItem("name", user.name || "");
+        localStorage.setItem("role", role);
+        localStorage.setItem("enrolledDate", enrolledDate);
+        localStorage.setItem("profileImage", profileImage);
+
+        // Route by role
+        if (role === "admin" || role === "subadmin") {
+          navigate("/admin/dashboard");
+        } else if (role === "user") {
+          navigate("/student/dashboard");
+        } else {
+          setError("Invalid role assigned");
+        }
       } else {
-        setError("Invalid role assigned");
+        setError(res.data?.message || "Login failed");
       }
-    } else {
-      setError(res.data.message || "Login failed");
+    } catch (err) {
+      setError(err.response?.data?.message || "Server error");
     }
-  } catch (err) {
-    setError(err.response?.data?.message || "Server error");
-  }
-};
-  
+  };
 
   return (
     <div style={styles.container}>
