@@ -40,27 +40,36 @@ class AssignmentsErrorBoundary extends React.Component {
 /* ------------------------------------------------------------------- */
 
 /* --------- Lightweight PDF viewer (no toolbar, no download) ---------- */
-/* Memoized so typing answers doesn't re-mount the viewer */
+/* Uses Blob URL to avoid 'detached ArrayBuffer' errors in pdf.js */
 const PdfReader = React.memo(function PdfReader({ url, height = '60vh', watermark = '' }) {
-  const [fileData, setFileData] = useState(null);
+  const [objectUrl, setObjectUrl] = useState(null);
   const [err, setErr] = useState('');
 
   useEffect(() => {
     const ctrl = new AbortController();
+    let currentUrl = null;
+
     (async () => {
       try {
         setErr('');
-        setFileData(null);
-        // Fetch as ArrayBuffer so the browser doesn't open its native PDF viewer
+        setObjectUrl(null);
+
         const res = await fetch(url, { signal: ctrl.signal });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
         const buf = await res.arrayBuffer();
-        setFileData(new Uint8Array(buf));
+        const blob = new Blob([buf], { type: 'application/pdf' });
+        currentUrl = URL.createObjectURL(blob);
+        setObjectUrl(currentUrl);
       } catch (e) {
         if (e.name !== 'AbortError') setErr('Unable to load PDF');
       }
     })();
-    return () => ctrl.abort();
+
+    return () => {
+      ctrl.abort();
+      if (currentUrl) URL.revokeObjectURL(currentUrl);
+    };
   }, [url]);
 
   return (
@@ -96,9 +105,9 @@ const PdfReader = React.memo(function PdfReader({ url, height = '60vh', watermar
 
       <Worker workerUrl="https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.worker.min.js">
         {err && <div style={{ padding: 16, color: '#b00020' }}>{err}</div>}
-        {!fileData && !err && <div style={{ padding: 16 }}>Loading PDF…</div>}
-        {fileData && (
-          <Viewer fileUrl={fileData} defaultScale={SpecialZoomLevel.PageWidth} />
+        {!objectUrl && !err && <div style={{ padding: 16 }}>Loading PDF…</div>}
+        {objectUrl && (
+          <Viewer fileUrl={objectUrl} defaultScale={SpecialZoomLevel.PageWidth} />
         )}
       </Worker>
     </div>
@@ -232,21 +241,17 @@ const NewAssignments = () => {
 
   const canStartAssignment = (assignment) => {
     if (!assignment) return false;
-    // already fully done => cannot start again
     if (areAllSubAssignmentsCompleted(assignment)) return false;
 
-    // find position in GLOBAL ordered list
     const idx = globalAscList.findIndex((a) => String(a._id) === String(assignment._id));
-    if (idx <= 0) return true; // first item globally
+    if (idx <= 0) return true;
 
-    // all previous (globally) must be completed
     for (let i = 0; i < idx; i++) {
       if (!areAllSubAssignmentsCompleted(globalAscList[i])) return false;
     }
     return true;
   };
-
-  // ------- DISPLAY ORDER: Unlocked → Locked → Completed; then latest first -------
+// ------- DISPLAY ORDER: Unlocked → Locked → Completed; then latest first -------
   const displayList = useMemo(() => {
     const list = [...filtered];
     return list
@@ -256,7 +261,6 @@ const NewAssignments = () => {
       }))
       .sort((x, y) => {
         if (x.p !== y.p) return x.p - y.p;
-        // tie-breaker: latest first for visibility
         const dx = ms(x.a.assignedDate), dy = ms(y.a.assignedDate);
         if (dx !== dy) return dy - dx;
         return String(y.a._id || '').localeCompare(String(x.a._id || ''));
@@ -282,7 +286,6 @@ const NewAssignments = () => {
       const fromList = assignments.find((a) => String(a._id) === String(assignmentId));
       if (!fromList) throw new Error('Assignment not found in list');
 
-      // NOTE: No date gating — date is only a filter for view
       if (!canStartAssignment(fromList)) {
         throw new Error('Please complete previous assignments to unlock this one');
       }
@@ -322,7 +325,6 @@ const NewAssignments = () => {
       setSubmitting(true);
       const userId = localStorage.getItem('userId');
       if (!userId) throw new Error('User ID not found');
-
       if (!activeAssignment) throw new Error('No active assignment');
 
       const payload = { studentId: userId, assignmentId: activeAssignment._id, submittedAnswers: [] };
@@ -402,7 +404,7 @@ const NewAssignments = () => {
         }
       } catch {}
 
-      // Auto-advance inside assignment; if done, go back to list (next parent unlocks globally)
+      // Auto-advance inside assignment
       if (activeSubAssignment && (activeAssignment.subAssignments || []).length > 0) {
         const idx = activeAssignment.subAssignments.findIndex(
           (sub) => String(sub._id) === String(activeSubAssignment._id)
@@ -640,7 +642,7 @@ const NewAssignments = () => {
                     i,
                     p: s?.isCompleted ? 2 : (canStartSub(activeAssignment, i) ? 0 : 1),
                   }))
-                  .sort((x, y) => x.p - y.p || x.i - y.i); // unlocked → locked → completed; keep natural order within buckets
+                  .sort((x, y) => x.p - y.p || x.i - y.i);
 
                 return subsSorted.map(({ s, i }) => {
                   const disabled = !canStartSub(activeAssignment, i) || submitting;
@@ -765,74 +767,4 @@ const NewAssignments = () => {
                   <div className="card-head">
                     <h3 className="card-title">{assignment.moduleName}</h3>
                     <span className={`badge ${
-                      allSubsCompleted ? 'badge-success' : locked ? 'badge-neutral' : 'badge-pending'
-                    }`}>
-                      {allSubsCompleted ? 'Completed' : locked ? 'Locked' : 'Assigned'}
-                    </span>
-                  </div>
-
-                  <div className="meta">
-                    <span className="meta-key">Assigned</span>
-                    <span className="meta-val">{formatDate(assignment.assignedDate)}</span>
-                  </div>
-
-                  {assignment.subAssignments?.length > 0 && (
-                    <div className="meta">
-                      <span className="meta-key">Progress</span>
-                      <span className="meta-val">
-                        {assignment.subAssignments.filter((sub) => sub?.isCompleted).length} / {assignment.subAssignments.length} completed
-                      </span>
-                    </div>
-                  )}
-
-                  <div className="card-actions">
-                    <button className="btn" onClick={() => handleStart(assignment._id)} disabled={locked}>
-                      {allSubsCompleted ? 'Completed' : locked ? 'Locked' : (assignment.subAssignments?.length > 0 ? 'View Sections' : 'Start')}
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        ) : (
-          <div className="empty-state">
-            <div className="empty-icon"><FiClock /></div>
-            <div>
-              <h3>No assignments{selectedDate ? ' for this date' : ''}</h3>
-              <p className="muted">{selectedDate ? 'Try another date or clear the filter.' : 'Please check back later.'}</p>
-            </div>
-          </div>
-        )}
-
-        {submitting && <LoadingOverlay />}
-      </div>
-    </AssignmentsErrorBoundary>
-  );
-};
-
-// Full-screen loading overlay
-const LoadingOverlay = () => (
-  <div
-    style={{
-      position: 'fixed',
-      inset: 0,
-      background: 'rgba(255,255,255,0.7)',
-      backdropFilter: 'blur(2px)',
-      display: 'grid',
-      placeItems: 'center',
-      zIndex: 9999,
-    }}
-  >
-    <div style={{ padding: 16, borderRadius: 12, border: '1px solid #ddd', background: '#fff', minWidth: 220, textAlign: 'center' }}>
-      <div className="spinner" style={{ width: 28, height: 28, margin: '0 auto 10px', border: '3px solid #ddd', borderTopColor: '#333', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
-      <div style={{ fontWeight: 600 }}>Submitting…</div>
-      <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>Please wait</div>
-      <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
-    </div>
-  </div>
-);
-
-export default NewAssignments;
-// (Optional) also export the boundary if you want to wrap at a higher level
-export { AssignmentsErrorBoundary };
-
+                      allSubsCompleted ? 'badge-success' : locked ? 'badge-neutral'
