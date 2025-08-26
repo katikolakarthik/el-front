@@ -767,4 +767,73 @@ const NewAssignments = () => {
                   <div className="card-head">
                     <h3 className="card-title">{assignment.moduleName}</h3>
                     <span className={`badge ${
-                      allSubsCompleted ? 'badge-success' : locked ? 'badge-neutral'
+                      allSubsCompleted ? 'badge-success' : locked ? 'badge-neutral' : 'badge-pending'
+                    }`}>
+                      {allSubsCompleted ? 'Completed' : locked ? 'Locked' : 'Assigned'}
+                    </span>
+                  </div>
+
+                  <div className="meta">
+                    <span className="meta-key">Assigned</span>
+                    <span className="meta-val">{formatDate(assignment.assignedDate)}</span>
+                  </div>
+
+                  {assignment.subAssignments?.length > 0 && (
+                    <div className="meta">
+                      <span className="meta-key">Progress</span>
+                      <span className="meta-val">
+                        {assignment.subAssignments.filter((sub) => sub?.isCompleted).length} / {assignment.subAssignments.length} completed
+                      </span>
+                    </div>
+                  )}
+
+                  <div className="card-actions">
+                    <button className="btn" onClick={() => handleStart(assignment._id)} disabled={locked}>
+                      {allSubsCompleted ? 'Completed' : locked ? 'Locked' : (assignment.subAssignments?.length > 0 ? 'View Sections' : 'Start')}
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="empty-state">
+            <div className="empty-icon"><FiClock /></div>
+            <div>
+              <h3>No assignments{selectedDate ? ' for this date' : ''}</h3>
+              <p className="muted">{selectedDate ? 'Try another date or clear the filter.' : 'Please check back later.'}</p>
+            </div>
+          </div>
+        )}
+
+        {submitting && <LoadingOverlay />}
+      </div>
+    </AssignmentsErrorBoundary>
+  );
+};
+
+// Full-screen loading overlay
+const LoadingOverlay = () => (
+  <div
+    style={{
+      position: 'fixed',
+      inset: 0,
+      background: 'rgba(255,255,255,0.7)',
+      backdropFilter: 'blur(2px)',
+      display: 'grid',
+      placeItems: 'center',
+      zIndex: 9999,
+    }}
+  >
+    <div style={{ padding: 16, borderRadius: 12, border: '1px solid #ddd', background: '#fff', minWidth: 220, textAlign: 'center' }}>
+      <div className="spinner" style={{ width: 28, height: 28, margin: '0 auto 10px', border: '3px solid #ddd', borderTopColor: '#333', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+      <div style={{ fontWeight: 600 }}>Submitting…</div>
+      <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>Please wait</div>
+      <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+    </div>
+  </div>
+);
+
+export default NewAssignments;
+export { AssignmentsErrorBoundary };
+
