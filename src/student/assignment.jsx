@@ -9,9 +9,37 @@ import './AssignmentFlow.css';
 const API_BASE = 'https://el-backend-ashen.vercel.app';
 
 /* --------- Lightweight PDF viewer ---------- */
-const PdfReader = ({ url, height = '60vh', watermark = '' }) => {
+/* --------- Lightweight PDF viewer (mobile-safe) ---------- */
+const PdfReader = ({ url, height = '60svh', watermark = '' }) => {
+  // NOTE: default height uses 'svh' (mobile-safe). Fallback handled below.
   const [fileData, setFileData] = useState(null);
   const [err, setErr] = useState('');
+
+  // Fallback to 'vh' if the browser doesn't support 'svh'
+  const computedHeight = useMemo(() => {
+    // crude feature check
+    if (typeof window !== 'undefined') {
+      const test = document.createElement('div');
+      test.style.height = '1svh';
+      if (test.style.height.includes('svh')) return height; // svh supported
+    }
+    return typeof height === 'string' && height.endsWith('svh')
+      ? height.replace('svh', 'vh')
+      : height;
+  }, [height]);
+
+  // (Optional) ultra-safe dynamic vh fallback for very old browsers
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (String(computedHeight).includes('vh')) return; // using vh, fine
+    // Using svh; still set --vh for any CSS that wants it
+    const setVh = () => {
+      document.documentElement.style.setProperty('--vh', `${window.innerHeight * 0.01}px`);
+    };
+    setVh();
+    window.addEventListener('resize', setVh);
+    return () => window.removeEventListener('resize', setVh);
+  }, [computedHeight]);
 
   useEffect(() => {
     const ctrl = new AbortController();
@@ -19,7 +47,7 @@ const PdfReader = ({ url, height = '60vh', watermark = '' }) => {
       try {
         setErr('');
         setFileData(null);
-        const res = await fetch(url, { signal: ctrl.signal });
+        const res = await fetch(url, { signal: ctrl.signal, cache: 'no-store' });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const buf = await res.arrayBuffer();
         setFileData(new Uint8Array(buf));
@@ -32,45 +60,53 @@ const PdfReader = ({ url, height = '60vh', watermark = '' }) => {
 
   return (
     <div
+      className="pdf-shell"
       style={{
         position: 'relative',
-        height,
+        height: computedHeight,           // <— svh (mobile-safe)
+        minHeight: 240,
         border: '1px solid #eee',
         borderRadius: 8,
-        overflow: 'hidden',
+        overflow: 'auto',                 // give it its own scroller
+        WebkitOverflowScrolling: 'touch', // smooth iOS scrolling
+        background: '#fff',
+        // Stabilize on mobile GPUs:
+        transform: 'translateZ(0)',       // promote to its own layer
+        backfaceVisibility: 'hidden',
+        contain: 'layout paint size',     // isolate layout/paint
+        willChange: 'scroll-position',
         userSelect: 'none',
         WebkitTouchCallout: 'none',
       }}
       onContextMenu={(e) => e.preventDefault()}
     >
       {watermark && (
-        <div
-          style={{
-            pointerEvents: 'none',
-            position: 'absolute',
-            inset: 0,
-            display: 'grid',
-            placeItems: 'center',
-            opacity: 0.08,
-            fontSize: 28,
-            fontWeight: 700,
-            textAlign: 'center',
-          }}
-        >
-          {watermark}
-        </div>
+        <div className="pdf-watermark">{watermark}</div>
       )}
 
       <Worker workerUrl="https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.worker.min.js">
         {err && <div style={{ padding: 16, color: '#b00020' }}>{err}</div>}
         {!fileData && !err && <div style={{ padding: 16 }}>Loading PDF…</div>}
         {fileData && (
-          <Viewer fileUrl={fileData} defaultScale={SpecialZoomLevel.PageWidth} />
+          <Viewer
+            key={url} // force fresh mount on url change
+            fileUrl={fileData}
+            defaultScale={SpecialZoomLevel.PageWidth}
+          />
         )}
       </Worker>
     </div>
   );
 };
+/* --------------------------------------------------------- */
+
+
+
+
+
+
+
+
 /* ------------------------------------------- */
 
 const normalizeAssignment = (raw) => {
