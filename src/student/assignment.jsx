@@ -8,8 +8,40 @@ import './AssignmentFlow.css';
 
 const API_BASE = 'https://el-backend-ashen.vercel.app';
 
+/* --------------------- Error Boundary (inline) ---------------------- */
+class AssignmentsErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, message: '' };
+  }
+  static getDerivedStateFromError(e) {
+    return { hasError: true, message: e?.message || 'Unexpected error' };
+  }
+  componentDidCatch(e, info) {
+    console.error('Assignments crashed:', e, info);
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="container">
+          <div className="empty-state error">
+            <div className="empty-icon"><FiClock /></div>
+            <div>
+              <h3>Something broke in this view</h3>
+              <p className="muted">{this.state.message}</p>
+            </div>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+/* ------------------------------------------------------------------- */
+
 /* --------- Lightweight PDF viewer (no toolbar, no download) ---------- */
-const PdfReader = ({ url, height = '60vh', watermark = '' }) => {
+/* Memoized so typing answers doesn't re-mount the viewer */
+const PdfReader = React.memo(function PdfReader({ url, height = '60vh', watermark = '' }) {
   const [fileData, setFileData] = useState(null);
   const [err, setErr] = useState('');
 
@@ -71,7 +103,7 @@ const PdfReader = ({ url, height = '60vh', watermark = '' }) => {
       </Worker>
     </div>
   );
-};
+});
 /* --------------------------------------------------------------------- */
 
 const normalizeAssignment = (raw) => {
@@ -81,15 +113,15 @@ const normalizeAssignment = (raw) => {
   } else if (norm.answerKey) {
     norm.questions = [{ type: 'predefined', answerKey: norm.answerKey }];
   } else {
-    norm.questions = norm.questions || [];
+    norm.questions = Array.isArray(norm.questions) ? norm.questions : [];
   }
-  norm.subAssignments = (norm.subAssignments || []).map((sub) => {
+  norm.subAssignments = (Array.isArray(norm.subAssignments) ? norm.subAssignments : []).map((sub) => {
     if (Array.isArray(sub.dynamicQuestions) && sub.dynamicQuestions.length > 0) {
       return { ...sub, questions: sub.dynamicQuestions.map((q) => ({ ...q, type: 'dynamic' })) };
     } else if (sub.answerKey) {
       return { ...sub, questions: [{ type: 'predefined', answerKey: sub.answerKey }] };
     }
-    return { ...sub, questions: sub.questions || [] };
+    return { ...sub, questions: Array.isArray(sub.questions) ? sub.questions : [] };
   });
   return norm;
 };
@@ -136,10 +168,10 @@ const NewAssignments = () => {
   const [submitting, setSubmitting] = useState(false);  // overlay control
 
   const areAllSubAssignmentsCompleted = (assignment) => {
-    if (!assignment.subAssignments || assignment.subAssignments.length === 0) {
-      return Boolean(assignment.isCompleted);
+    if (!assignment?.subAssignments || assignment.subAssignments.length === 0) {
+      return Boolean(assignment?.isCompleted);
     }
-    return assignment.subAssignments.every((sub) => sub.isCompleted);
+    return assignment.subAssignments.every((sub) => sub?.isCompleted);
   };
 
   useEffect(() => {
@@ -199,6 +231,7 @@ const NewAssignments = () => {
   const globalAscList = useMemo(() => stableAsc(assignments), [assignments]);
 
   const canStartAssignment = (assignment) => {
+    if (!assignment) return false;
     // already fully done => cannot start again
     if (areAllSubAssignmentsCompleted(assignment)) return false;
 
@@ -233,11 +266,12 @@ const NewAssignments = () => {
 
   // sub-sections always sequential
   const canStartSub = (assignment, subIdx) => {
+    if (!assignment?.subAssignments || !assignment.subAssignments[subIdx]) return false;
     if (subIdx === 0) return !(assignment.subAssignments?.[0]?.isCompleted);
     for (let i = 0; i < subIdx; i++) {
-      if (!assignment.subAssignments[i].isCompleted) return false;
+      if (!assignment.subAssignments[i]?.isCompleted) return false;
     }
-    return !assignment.subAssignments[subIdx].isCompleted;
+    return !assignment.subAssignments[subIdx]?.isCompleted;
   };
 
   const handleStart = async (assignmentId, subAssignmentId = null) => {
@@ -280,7 +314,8 @@ const NewAssignments = () => {
     }
   };
 
-  const csvToArray = (str = '') => str.split(',').map((s) => s.trim()).filter(Boolean);
+  const csvToArray = (str = '') =>
+    String(str).split(',').map((s) => s.trim()).filter((s) => s.length > 0);
 
   const handleSubmit = async () => {
     try {
@@ -288,9 +323,15 @@ const NewAssignments = () => {
       const userId = localStorage.getItem('userId');
       if (!userId) throw new Error('User ID not found');
 
+      if (!activeAssignment) throw new Error('No active assignment');
+
       const payload = { studentId: userId, assignmentId: activeAssignment._id, submittedAnswers: [] };
       const buildDynamic = (qs, prefix = 'dynamic') =>
-        qs.map((q, idx) => ({ questionText: q.questionText, submittedAnswer: answers[`${prefix}-${idx}`] || '' }));
+        qs.map((q, idx) => ({
+          questionText: q?.questionText ?? '',
+          submittedAnswer: answers[`${prefix}-${idx}`] || ''
+        }));
+
       const buildPredefinedPayload = () => ({
         patientName: answers.patientName || '',
         ageOrDob: answers.ageOrDob || '',
@@ -304,17 +345,19 @@ const NewAssignments = () => {
       });
 
       if (activeSubAssignment) {
-        if ((activeSubAssignment.questions || []).some((q) => q.type === 'dynamic')) {
+        const qs = Array.isArray(activeSubAssignment.questions) ? activeSubAssignment.questions : [];
+        if (qs.some((q) => q?.type === 'dynamic')) {
           payload.submittedAnswers.push({
             subAssignmentId: activeSubAssignment._id,
-            dynamicQuestions: buildDynamic(activeSubAssignment.questions, 'dynamic'),
+            dynamicQuestions: buildDynamic(qs, 'dynamic'),
           });
         } else {
           payload.submittedAnswers.push({ subAssignmentId: activeSubAssignment._id, ...buildPredefinedPayload() });
         }
       } else {
-        if ((activeAssignment.questions || []).some((q) => q.type === 'dynamic')) {
-          payload.submittedAnswers.push({ dynamicQuestions: buildDynamic(activeAssignment.questions, 'dynamic') });
+        const qs = Array.isArray(activeAssignment.questions) ? activeAssignment.questions : [];
+        if (qs.some((q) => q?.type === 'dynamic')) {
+          payload.submittedAnswers.push({ dynamicQuestions: buildDynamic(qs, 'dynamic') });
         } else {
           payload.submittedAnswers.push({ ...buildPredefinedPayload() });
         }
@@ -388,30 +431,38 @@ const NewAssignments = () => {
 
   const renderQuestions = (target) => {
     if (!target) return null;
-    const qs = target.questions || [];
-    const dynamicQs = qs.filter((q) => q.type === 'dynamic');
+
+    const qs = Array.isArray(target.questions) ? target.questions : [];
+    const dynamicQs = qs.filter((q) => q && q.type === 'dynamic');
 
     if (dynamicQs.length > 0) {
       return dynamicQs.map((q, idx) => {
         const key = `dynamic-${idx}`;
+        const groupName = `q-${target?._id || 'main'}-${idx}`;
+        const hasOptions = Array.isArray(q.options) && q.options.length > 0;
+
         return (
           <div key={idx} className="q-block">
             <p className="q-title">{q.questionText}</p>
-            {q.options && q.options.length > 0 ? (
+            {hasOptions ? (
               <div className="q-options">
-                {q.options.map((opt, i) => (
-                  <label key={i} className="q-option">
-                    <input
-                      type="radio"
-                      name={`q${idx}`}
-                      value={opt}
-                      checked={answers[key] === opt}
-                      onChange={(e) => handleAnswerChange(key, e.target.value)}
-                      disabled={target.isCompleted || submitting}
-                    />
-                    <span>{opt}</span>
-                  </label>
-                ))}
+                {q.options.map((opt, i) => {
+                  const optVal = typeof opt === 'string' ? opt : JSON.stringify(opt);
+                  const optLabel = typeof opt === 'string' ? opt : String(opt?.label ?? '[option]');
+                  return (
+                    <label key={i} className="q-option">
+                      <input
+                        type="radio"
+                        name={groupName}
+                        value={optVal}
+                        checked={answers[key] === optVal}
+                        onChange={(e) => handleAnswerChange(key, e.target.value)}
+                        disabled={target.isCompleted || submitting}
+                      />
+                      <span>{optLabel}</span>
+                    </label>
+                  );
+                })}
               </div>
             ) : (
               <input
@@ -428,7 +479,7 @@ const NewAssignments = () => {
       });
     }
 
-    const predefined = qs.find((q) => q.type === 'predefined');
+    const predefined = qs.find((q) => q && q.type === 'predefined');
     if (predefined && predefined.answerKey) {
       return (
         <div className="form-grid">
@@ -568,186 +619,194 @@ const NewAssignments = () => {
       </div>
     );
   }
-// DETAIL VIEW
+
+  // ---------------- DETAIL VIEW ----------------
   if (activeAssignment) {
     if (!activeSubAssignment && activeAssignment.subAssignments?.length > 0) {
       return (
-        <div className="container">
-          <div className="page-header">
-            <button className="btn btn-ghost" onClick={() => setActiveAssignment(null)} disabled={submitting}>Back</button>
-            <h3 className="title-sm">{activeAssignment.moduleName}</h3>
-          </div>
+        <AssignmentsErrorBoundary>
+          <div className="container">
+            <div className="page-header">
+              <button className="btn btn-ghost" onClick={() => setActiveAssignment(null)} disabled={submitting}>Back</button>
+              <h3 className="title-sm">{activeAssignment.moduleName}</h3>
+            </div>
 
-          <div className="grid">
-            {(() => {
-              const withIdx = (activeAssignment.subAssignments || []).map((s, i) => ({ s, i }));
-              const subsSorted = withIdx
-                .map(({ s, i }) => ({
-                  s,
-                  i,
-                  p: s.isCompleted ? 2 : (canStartSub(activeAssignment, i) ? 0 : 1),
-                }))
-                .sort((x, y) => x.p - y.p || x.i - y.i); // unlocked → locked → completed; keep natural order within buckets
+            <div className="grid">
+              {(() => {
+                const withIdx = (activeAssignment.subAssignments || []).map((s, i) => ({ s, i }));
+                const subsSorted = withIdx
+                  .map(({ s, i }) => ({
+                    s,
+                    i,
+                    p: s?.isCompleted ? 2 : (canStartSub(activeAssignment, i) ? 0 : 1),
+                  }))
+                  .sort((x, y) => x.p - y.p || x.i - y.i); // unlocked → locked → completed; keep natural order within buckets
 
-              return subsSorted.map(({ s, i }) => {
-                const disabled = !canStartSub(activeAssignment, i) || submitting;
-                return (
-                  <div key={i} className="card sub-card">
-                    <div className="card-head">
-                      <h4 className="card-title">{s.subModuleName}</h4>
-                      <span className={`badge ${s.isCompleted ? 'badge-success' : disabled ? 'badge-neutral' : 'badge-pending'}`}>
-                        {s.isCompleted ? 'Completed' : disabled ? 'Locked' : 'Pending'}
-                      </span>
+                return subsSorted.map(({ s, i }) => {
+                  const disabled = !canStartSub(activeAssignment, i) || submitting;
+                  return (
+                    <div key={s?._id || i} className="card sub-card">
+                      <div className="card-head">
+                        <h4 className="card-title">{s?.subModuleName}</h4>
+                        <span className={`badge ${s?.isCompleted ? 'badge-success' : disabled ? 'badge-neutral' : 'badge-pending'}`}>
+                          {s?.isCompleted ? 'Completed' : disabled ? 'Locked' : 'Pending'}
+                        </span>
+                      </div>
+                      <div className="card-actions">
+                        <button
+                          className="btn"
+                          onClick={() => handleStart(activeAssignment._id, s?._id)}
+                          disabled={disabled}
+                        >
+                          {s?.isCompleted ? 'Completed' : disabled ? 'Locked' : 'Start'}
+                        </button>
+                      </div>
                     </div>
-                    <div className="card-actions">
-                      <button
-                        className="btn"
-                        onClick={() => handleStart(activeAssignment._id, s._id)}
-                        disabled={disabled}
-                      >
-                        {s.isCompleted ? 'Completed' : disabled ? 'Locked' : 'Start'}
-                      </button>
-                    </div>
-                  </div>
-                );
-              });
-            })()}
-          </div>
+                  );
+                });
+              })()}
+            </div>
 
-          {submitting && <LoadingOverlay />}
-        </div>
+            {submitting && <LoadingOverlay />}
+          </div>
+        </AssignmentsErrorBoundary>
       );
     }
 
     const pdfUrl = activeSubAssignment?.assignmentPdf || activeAssignment.assignmentPdf;
     const questionSource = activeSubAssignment || activeAssignment;
-    const isCompleted = questionSource.isCompleted;
+    const isCompleted = questionSource?.isCompleted;
 
     return (
-      <div className="container">
-        <div className="page-header">
-          <button
-            className="btn btn-ghost"
-            onClick={() => (activeSubAssignment ? setActiveSubAssignment(null) : setActiveAssignment(null))}
-            disabled={submitting}
-          >
-            Back
-          </button>
-        </div>
-
-        {/* PDF VIEWER (no download UI) */}
-        {pdfUrl && (
-          <PdfReader
-            url={pdfUrl}
-            height="60vh"
-            watermark=""
-          />
-        )}
-
-        <div className="panel">
-          <div className="panel-head">
-            <h4>Questions</h4>
-            {isCompleted && <span className="badge badge-success">Completed</span>}
-          </div>
-          <div className="panel-body">{renderQuestions(questionSource)}</div>
-          <div className="panel-actions">
-            <button className="btn btn-primary" onClick={handleSubmit} disabled={isCompleted || submitting}>
-              {isCompleted ? 'Already Submitted' : (submitting ? 'Submitting…' : 'Submit Assignment')}
+      <AssignmentsErrorBoundary>
+        <div className="container">
+          <div className="page-header">
+            <button
+              className="btn btn-ghost"
+              onClick={() => (activeSubAssignment ? setActiveSubAssignment(null) : setActiveAssignment(null))}
+              disabled={submitting}
+            >
+              Back
             </button>
           </div>
-        </div>
 
-        {submitting && <LoadingOverlay />}
-      </div>
+          {/* PDF VIEWER (no download UI) */}
+          {pdfUrl && (
+            <PdfReader
+              key={pdfUrl}               // re-mount only when URL changes
+              url={pdfUrl}
+              height="60vh"
+              watermark=""
+            />
+          )}
+
+          <div className="panel">
+            <div className="panel-head">
+              <h4>Questions</h4>
+              {isCompleted && <span className="badge badge-success">Completed</span>}
+            </div>
+            <div className="panel-body">{renderQuestions(questionSource)}</div>
+            <div className="panel-actions">
+              <button className="btn btn-primary" onClick={handleSubmit} disabled={isCompleted || submitting}>
+                {isCompleted ? 'Already Submitted' : (submitting ? 'Submitting…' : 'Submit Assignment')}
+              </button>
+            </div>
+          </div>
+
+          {submitting && <LoadingOverlay />}
+        </div>
+      </AssignmentsErrorBoundary>
     );
   }
 
-  // --------------- CARDS VIEW ---------------
+  // ---------------- CARDS VIEW ----------------
   return (
-    <div className="container">
-      <div className="page-header">
-        <h2 className="title"><FiBook className="icon" /> New Assignments</h2>
-      </div>
-
-      {/* Date Picker (filter only) */}
-      <div className="panel" style={{ marginBottom: 16 }}>
-        <div className="panel-head" style={{ gap: 12, alignItems: 'center' }}>
-          <h4 style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <FiCalendar /> Select Date (optional)
-          </h4>
+    <AssignmentsErrorBoundary>
+      <div className="container">
+        <div className="page-header">
+          <h2 className="title"><FiBook className="icon" /> New Assignments</h2>
         </div>
-        <div className="panel-body" style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
-          <input
-            type="date"
-            className="input"
-            value={selectedDate}
-            onChange={(e) => {
-              setSelectedDate(e.target.value);
-              setActiveAssignment(null);
-              setActiveSubAssignment(null);
-            }}
-            style={{ maxWidth: 220 }}
-            disabled={submitting}
-          />
-          {selectedDate && (
-            <button className="btn btn-ghost" onClick={() => setSelectedDate('')} disabled={submitting}>Clear</button>
-          )}
-          <span className="muted">Date is for search/filter only. Locking is global.</span>
-        </div>
-      </div>
 
-      {displayList.length > 0 ? (
-        <div className="grid">
-          {displayList.map((assignment, index) => {
-            const allSubsCompleted = areAllSubAssignmentsCompleted(assignment);
-            const locked = !canStartAssignment(assignment) || submitting;
-
-            return (
-              <div key={assignment._id || index} className="card">
-                <div className="card-head">
-                  <h3 className="card-title">{assignment.moduleName}</h3>
-                  <span className={`badge ${
-                    allSubsCompleted ? 'badge-success' : locked ? 'badge-neutral' : 'badge-pending'
-                  }`}>
-                    {allSubsCompleted ? 'Completed' : locked ? 'Locked' : 'Assigned'}
-                  </span>
-                </div>
-
-                <div className="meta">
-                  <span className="meta-key">Assigned</span>
-                  <span className="meta-val">{formatDate(assignment.assignedDate)}</span>
-                </div>
-
-                {assignment.subAssignments?.length > 0 && (
-                  <div className="meta">
-                    <span className="meta-key">Progress</span>
-                    <span className="meta-val">
-                      {assignment.subAssignments.filter((sub) => sub.isCompleted).length} / {assignment.subAssignments.length} completed
-                    </span>
-                  </div>
-                )}
-
-                <div className="card-actions">
-                  <button className="btn" onClick={() => handleStart(assignment._id)} disabled={locked}>
-                    {allSubsCompleted ? 'Completed' : locked ? 'Locked' : (assignment.subAssignments?.length > 0 ? 'View Sections' : 'Start')}
-                  </button>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      ) : (
-        <div className="empty-state">
-          <div className="empty-icon"><FiClock /></div>
-          <div>
-            <h3>No assignments{selectedDate ? ' for this date' : ''}</h3>
-            <p className="muted">{selectedDate ? 'Try another date or clear the filter.' : 'Please check back later.'}</p>
+        {/* Date Picker (filter only) */}
+        <div className="panel" style={{ marginBottom: 16 }}>
+          <div className="panel-head" style={{ gap: 12, alignItems: 'center' }}>
+            <h4 style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <FiCalendar /> Select Date (optional)
+            </h4>
+          </div>
+          <div className="panel-body" style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+            <input
+              type="date"
+              className="input"
+              value={selectedDate}
+              onChange={(e) => {
+                setSelectedDate(e.target.value);
+                setActiveAssignment(null);
+                setActiveSubAssignment(null);
+              }}
+              style={{ maxWidth: 220 }}
+              disabled={submitting}
+            />
+            {selectedDate && (
+              <button className="btn btn-ghost" onClick={() => setSelectedDate('')} disabled={submitting}>Clear</button>
+            )}
+            <span className="muted">Date is for search/filter only. Locking is global.</span>
           </div>
         </div>
-      )}
 
-      {submitting && <LoadingOverlay />}
-    </div>
+        {displayList.length > 0 ? (
+          <div className="grid">
+            {displayList.map((assignment, index) => {
+              const allSubsCompleted = areAllSubAssignmentsCompleted(assignment);
+              const locked = !canStartAssignment(assignment) || submitting;
+
+              return (
+                <div key={assignment._id || index} className="card">
+                  <div className="card-head">
+                    <h3 className="card-title">{assignment.moduleName}</h3>
+                    <span className={`badge ${
+                      allSubsCompleted ? 'badge-success' : locked ? 'badge-neutral' : 'badge-pending'
+                    }`}>
+                      {allSubsCompleted ? 'Completed' : locked ? 'Locked' : 'Assigned'}
+                    </span>
+                  </div>
+
+                  <div className="meta">
+                    <span className="meta-key">Assigned</span>
+                    <span className="meta-val">{formatDate(assignment.assignedDate)}</span>
+                  </div>
+
+                  {assignment.subAssignments?.length > 0 && (
+                    <div className="meta">
+                      <span className="meta-key">Progress</span>
+                      <span className="meta-val">
+                        {assignment.subAssignments.filter((sub) => sub?.isCompleted).length} / {assignment.subAssignments.length} completed
+                      </span>
+                    </div>
+                  )}
+
+                  <div className="card-actions">
+                    <button className="btn" onClick={() => handleStart(assignment._id)} disabled={locked}>
+                      {allSubsCompleted ? 'Completed' : locked ? 'Locked' : (assignment.subAssignments?.length > 0 ? 'View Sections' : 'Start')}
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="empty-state">
+            <div className="empty-icon"><FiClock /></div>
+            <div>
+              <h3>No assignments{selectedDate ? ' for this date' : ''}</h3>
+              <p className="muted">{selectedDate ? 'Try another date or clear the filter.' : 'Please check back later.'}</p>
+            </div>
+          </div>
+        )}
+
+        {submitting && <LoadingOverlay />}
+      </div>
+    </AssignmentsErrorBoundary>
   );
 };
 
@@ -774,6 +833,6 @@ const LoadingOverlay = () => (
 );
 
 export default NewAssignments;
-
-
+// (Optional) also export the boundary if you want to wrap at a higher level
+export { AssignmentsErrorBoundary };
 
