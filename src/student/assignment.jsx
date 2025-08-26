@@ -88,7 +88,7 @@ const PdfReader = ({ url, height = '60vh', watermark = '' }) => {
       )}
 
       {/* Keep worker compatible with @react-pdf-viewer/core v3.x */}
-      <Worker workerUrl="https://unpkg.com/pdfjs-dist@3.4.120/build/pdf.worker.min.js">
+     <Worker workerUrl="https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.worker.min.js">
         {err && (
           <div style={{ padding: 16, color: '#b00020' }}>
             {err}{' '}
