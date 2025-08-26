@@ -88,12 +88,15 @@ const StudentDashboard = () => {
     // Normalize studentData object used by the UI
     const totalAssigned = Number(stats?.totalAssigned ?? 0);
     const completed = Number(stats?.completed ?? 0);
-    const avgScoreNumber =
-      stats?.stats?.averageScore ??
-      (typeof stats?.averageScore === 'number'
-        ? stats.averageScore
-        : parseFloat(String(stats?.averageScore || '0').replace('%', ''))) ||
-      0;
+    // Safely compute averageScore as a number (fallback to 0)
+const _avgRaw =
+  typeof stats?.averageScore === 'number'
+    ? stats.averageScore
+    : Number.parseFloat(
+        String((stats?.averageScore ?? '0')).replace('%', '')
+      );
+
+const averageScore = Number.isFinite(_avgRaw) ? _avgRaw : 0;
 
     setStudentData({
       // from payment-details:
