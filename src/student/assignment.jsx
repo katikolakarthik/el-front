@@ -8,68 +8,26 @@ import './AssignmentFlow.css';
 
 const API_BASE = 'https://el-backend-ashen.vercel.app';
 
-/* --------------------- Error Boundary (inline) ---------------------- */
-class AssignmentsErrorBoundary extends React.Component {
-  constructor(props) {
-    super(props);
-    this.state = { hasError: false, message: '' };
-  }
-  static getDerivedStateFromError(e) {
-    return { hasError: true, message: e?.message || 'Unexpected error' };
-  }
-  componentDidCatch(e, info) {
-    console.error('Assignments crashed:', e, info);
-  }
-  render() {
-    if (this.state.hasError) {
-      return (
-        <div className="container">
-          <div className="empty-state error">
-            <div className="empty-icon"><FiClock /></div>
-            <div>
-              <h3>Something broke in this view</h3>
-              <p className="muted">{this.state.message}</p>
-            </div>
-          </div>
-        </div>
-      );
-    }
-    return this.props.children;
-  }
-}
-/* ------------------------------------------------------------------- */
-
-/* --------- Lightweight PDF viewer (no toolbar, no download) ---------- */
-/* Uses Blob URL to avoid 'detached ArrayBuffer' errors in pdf.js */
-const PdfReader = React.memo(function PdfReader({ url, height = '60vh', watermark = '' }) {
-  const [objectUrl, setObjectUrl] = useState(null);
+/* --------- Lightweight PDF viewer ---------- */
+const PdfReader = ({ url, height = '60vh', watermark = '' }) => {
+  const [fileData, setFileData] = useState(null);
   const [err, setErr] = useState('');
 
   useEffect(() => {
     const ctrl = new AbortController();
-    let currentUrl = null;
-
     (async () => {
       try {
         setErr('');
-        setObjectUrl(null);
-
+        setFileData(null);
         const res = await fetch(url, { signal: ctrl.signal });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
-
         const buf = await res.arrayBuffer();
-        const blob = new Blob([buf], { type: 'application/pdf' });
-        currentUrl = URL.createObjectURL(blob);
-        setObjectUrl(currentUrl);
+        setFileData(new Uint8Array(buf));
       } catch (e) {
         if (e.name !== 'AbortError') setErr('Unable to load PDF');
       }
     })();
-
-    return () => {
-      ctrl.abort();
-      if (currentUrl) URL.revokeObjectURL(currentUrl);
-    };
+    return () => ctrl.abort();
   }, [url]);
 
   return (
@@ -105,15 +63,15 @@ const PdfReader = React.memo(function PdfReader({ url, height = '60vh', watermar
 
       <Worker workerUrl="https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.worker.min.js">
         {err && <div style={{ padding: 16, color: '#b00020' }}>{err}</div>}
-        {!objectUrl && !err && <div style={{ padding: 16 }}>Loading PDF…</div>}
-        {objectUrl && (
-          <Viewer fileUrl={objectUrl} defaultScale={SpecialZoomLevel.PageWidth} />
+        {!fileData && !err && <div style={{ padding: 16 }}>Loading PDF…</div>}
+        {fileData && (
+          <Viewer fileUrl={fileData} defaultScale={SpecialZoomLevel.PageWidth} />
         )}
       </Worker>
     </div>
   );
-});
-/* --------------------------------------------------------------------- */
+};
+/* ------------------------------------------- */
 
 const normalizeAssignment = (raw) => {
   const norm = { ...raw };
@@ -122,15 +80,15 @@ const normalizeAssignment = (raw) => {
   } else if (norm.answerKey) {
     norm.questions = [{ type: 'predefined', answerKey: norm.answerKey }];
   } else {
-    norm.questions = Array.isArray(norm.questions) ? norm.questions : [];
+    norm.questions = norm.questions || [];
   }
-  norm.subAssignments = (Array.isArray(norm.subAssignments) ? norm.subAssignments : []).map((sub) => {
+  norm.subAssignments = (norm.subAssignments || []).map((sub) => {
     if (Array.isArray(sub.dynamicQuestions) && sub.dynamicQuestions.length > 0) {
       return { ...sub, questions: sub.dynamicQuestions.map((q) => ({ ...q, type: 'dynamic' })) };
     } else if (sub.answerKey) {
       return { ...sub, questions: [{ type: 'predefined', answerKey: sub.answerKey }] };
     }
-    return { ...sub, questions: Array.isArray(sub.questions) ? sub.questions : [] };
+    return { ...sub, questions: sub.questions || [] };
   });
   return norm;
 };
@@ -160,12 +118,6 @@ const sameDay = (dStr, ymd) => {
   return d.getFullYear() === y && (d.getMonth() + 1) === m && d.getDate() === day;
 };
 
-// priority: unlocked (0) < locked (1) < completed (2)
-const statusPriority = (assignment, canStartFn, isAllSubsDoneFn) => {
-  if (isAllSubsDoneFn(assignment)) return 2;          // completed
-  return canStartFn(assignment) ? 0 : 1;              // unlocked or locked
-};
-
 const NewAssignments = () => {
   const [assignments, setAssignments] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -174,13 +126,13 @@ const NewAssignments = () => {
   const [activeSubAssignment, setActiveSubAssignment] = useState(null);
   const [answers, setAnswers] = useState({});
   const [selectedDate, setSelectedDate] = useState(''); // yyyy-mm-dd (FILTER ONLY)
-  const [submitting, setSubmitting] = useState(false);  // overlay control
+  const [submitting, setSubmitting] = useState(false);
 
   const areAllSubAssignmentsCompleted = (assignment) => {
-    if (!assignment?.subAssignments || assignment.subAssignments.length === 0) {
-      return Boolean(assignment?.isCompleted);
+    if (!assignment.subAssignments || assignment.subAssignments.length === 0) {
+      return Boolean(assignment.isCompleted);
     }
-    return assignment.subAssignments.every((sub) => sub?.isCompleted);
+    return assignment.subAssignments.every((sub) => sub.isCompleted);
   };
 
   useEffect(() => {
@@ -230,7 +182,7 @@ const NewAssignments = () => {
       ? new Date(dateString).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })
       : '—';
 
-  // ------- VIEW FILTER (date search only) -------
+  // ------- FILTER (view only) -------
   const filtered = useMemo(() => {
     if (!selectedDate) return assignments;
     return assignments.filter((a) => sameDay(a.assignedDate, selectedDate));
@@ -240,42 +192,27 @@ const NewAssignments = () => {
   const globalAscList = useMemo(() => stableAsc(assignments), [assignments]);
 
   const canStartAssignment = (assignment) => {
-    if (!assignment) return false;
+    // already fully done => cannot start again
     if (areAllSubAssignmentsCompleted(assignment)) return false;
 
+    // find position in GLOBAL ordered list
     const idx = globalAscList.findIndex((a) => String(a._id) === String(assignment._id));
-    if (idx <= 0) return true;
+    if (idx <= 0) return true; // first item globally
 
+    // all previous (globally) must be completed
     for (let i = 0; i < idx; i++) {
       if (!areAllSubAssignmentsCompleted(globalAscList[i])) return false;
     }
     return true;
   };
-// ------- DISPLAY ORDER: Unlocked → Locked → Completed; then latest first -------
-  const displayList = useMemo(() => {
-    const list = [...filtered];
-    return list
-      .map((a) => ({
-        a,
-        p: statusPriority(a, canStartAssignment, areAllSubAssignmentsCompleted),
-      }))
-      .sort((x, y) => {
-        if (x.p !== y.p) return x.p - y.p;
-        const dx = ms(x.a.assignedDate), dy = ms(y.a.assignedDate);
-        if (dx !== dy) return dy - dx;
-        return String(y.a._id || '').localeCompare(String(x.a._id || ''));
-      })
-      .map((x) => x.a);
-  }, [filtered, canStartAssignment]);
 
   // sub-sections always sequential
   const canStartSub = (assignment, subIdx) => {
-    if (!assignment?.subAssignments || !assignment.subAssignments[subIdx]) return false;
     if (subIdx === 0) return !(assignment.subAssignments?.[0]?.isCompleted);
     for (let i = 0; i < subIdx; i++) {
-      if (!assignment.subAssignments[i]?.isCompleted) return false;
+      if (!assignment.subAssignments[i].isCompleted) return false;
     }
-    return !assignment.subAssignments[subIdx]?.isCompleted;
+    return !assignment.subAssignments[subIdx].isCompleted;
   };
 
   const handleStart = async (assignmentId, subAssignmentId = null) => {
@@ -286,6 +223,7 @@ const NewAssignments = () => {
       const fromList = assignments.find((a) => String(a._id) === String(assignmentId));
       if (!fromList) throw new Error('Assignment not found in list');
 
+      // NOTE: No date gating — date is only a filter for view
       if (!canStartAssignment(fromList)) {
         throw new Error('Please complete previous assignments to unlock this one');
       }
@@ -317,23 +255,17 @@ const NewAssignments = () => {
     }
   };
 
-  const csvToArray = (str = '') =>
-    String(str).split(',').map((s) => s.trim()).filter((s) => s.length > 0);
+  const csvToArray = (str = '') => str.split(',').map((s) => s.trim()).filter(Boolean);
 
   const handleSubmit = async () => {
     try {
       setSubmitting(true);
       const userId = localStorage.getItem('userId');
       if (!userId) throw new Error('User ID not found');
-      if (!activeAssignment) throw new Error('No active assignment');
 
       const payload = { studentId: userId, assignmentId: activeAssignment._id, submittedAnswers: [] };
       const buildDynamic = (qs, prefix = 'dynamic') =>
-        qs.map((q, idx) => ({
-          questionText: q?.questionText ?? '',
-          submittedAnswer: answers[`${prefix}-${idx}`] || ''
-        }));
-
+        qs.map((q, idx) => ({ questionText: q.questionText, submittedAnswer: answers[`${prefix}-${idx}`] || '' }));
       const buildPredefinedPayload = () => ({
         patientName: answers.patientName || '',
         ageOrDob: answers.ageOrDob || '',
@@ -347,19 +279,17 @@ const NewAssignments = () => {
       });
 
       if (activeSubAssignment) {
-        const qs = Array.isArray(activeSubAssignment.questions) ? activeSubAssignment.questions : [];
-        if (qs.some((q) => q?.type === 'dynamic')) {
+        if ((activeSubAssignment.questions || []).some((q) => q.type === 'dynamic')) {
           payload.submittedAnswers.push({
             subAssignmentId: activeSubAssignment._id,
-            dynamicQuestions: buildDynamic(qs, 'dynamic'),
+            dynamicQuestions: buildDynamic(activeSubAssignment.questions, 'dynamic'),
           });
         } else {
           payload.submittedAnswers.push({ subAssignmentId: activeSubAssignment._id, ...buildPredefinedPayload() });
         }
       } else {
-        const qs = Array.isArray(activeAssignment.questions) ? activeAssignment.questions : [];
-        if (qs.some((q) => q?.type === 'dynamic')) {
-          payload.submittedAnswers.push({ dynamicQuestions: buildDynamic(qs, 'dynamic') });
+        if ((activeAssignment.questions || []).some((q) => q.type === 'dynamic')) {
+          payload.submittedAnswers.push({ dynamicQuestions: buildDynamic(activeAssignment.questions, 'dynamic') });
         } else {
           payload.submittedAnswers.push({ ...buildPredefinedPayload() });
         }
@@ -404,7 +334,7 @@ const NewAssignments = () => {
         }
       } catch {}
 
-      // Auto-advance inside assignment
+      // Auto-advance inside assignment; if done, go back to list (next parent unlocks globally)
       if (activeSubAssignment && (activeAssignment.subAssignments || []).length > 0) {
         const idx = activeAssignment.subAssignments.findIndex(
           (sub) => String(sub._id) === String(activeSubAssignment._id)
@@ -433,38 +363,30 @@ const NewAssignments = () => {
 
   const renderQuestions = (target) => {
     if (!target) return null;
-
-    const qs = Array.isArray(target.questions) ? target.questions : [];
-    const dynamicQs = qs.filter((q) => q && q.type === 'dynamic');
+    const qs = target.questions || [];
+    const dynamicQs = qs.filter((q) => q.type === 'dynamic');
 
     if (dynamicQs.length > 0) {
       return dynamicQs.map((q, idx) => {
         const key = `dynamic-${idx}`;
-        const groupName = `q-${target?._id || 'main'}-${idx}`;
-        const hasOptions = Array.isArray(q.options) && q.options.length > 0;
-
         return (
           <div key={idx} className="q-block">
             <p className="q-title">{q.questionText}</p>
-            {hasOptions ? (
+            {q.options && q.options.length > 0 ? (
               <div className="q-options">
-                {q.options.map((opt, i) => {
-                  const optVal = typeof opt === 'string' ? opt : JSON.stringify(opt);
-                  const optLabel = typeof opt === 'string' ? opt : String(opt?.label ?? '[option]');
-                  return (
-                    <label key={i} className="q-option">
-                      <input
-                        type="radio"
-                        name={groupName}
-                        value={optVal}
-                        checked={answers[key] === optVal}
-                        onChange={(e) => handleAnswerChange(key, e.target.value)}
-                        disabled={target.isCompleted || submitting}
-                      />
-                      <span>{optLabel}</span>
-                    </label>
-                  );
-                })}
+                {q.options.map((opt, i) => (
+                  <label key={i} className="q-option">
+                    <input
+                      type="radio"
+                      name={`q${idx}`}
+                      value={opt}
+                      checked={answers[key] === opt}
+                      onChange={(e) => handleAnswerChange(key, e.target.value)}
+                      disabled={target.isCompleted || submitting}
+                    />
+                    <span>{opt}</span>
+                  </label>
+                ))}
               </div>
             ) : (
               <input
@@ -481,111 +403,45 @@ const NewAssignments = () => {
       });
     }
 
-    const predefined = qs.find((q) => q && q.type === 'predefined');
+    const predefined = qs.find((q) => q.type === 'predefined');
     if (predefined && predefined.answerKey) {
       return (
         <div className="form-grid">
           <div className="form-item">
             <label className="label">Patient Name</label>
-            <input
-              className="input"
-              type="text"
-              value={answers.patientName || ''}
-              onChange={(e) => handleAnswerChange('patientName', e.target.value)}
-              disabled={target.isCompleted || submitting}
-            />
+            <input className="input" type="text" value={answers.patientName || ''} onChange={(e) => handleAnswerChange('patientName', e.target.value)} disabled={target.isCompleted || submitting}/>
           </div>
           <div className="form-item">
             <label className="label">Age / DOB</label>
-            <input
-              className="input"
-              type="text"
-              value={answers.ageOrDob || ''}
-              onChange={(e) => handleAnswerChange('ageOrDob', e.target.value)}
-              disabled={target.isCompleted || submitting}
-            />
+            <input className="input" type="text" value={answers.ageOrDob || ''} onChange={(e) => handleAnswerChange('ageOrDob', e.target.value)} disabled={target.isCompleted || submitting}/>
           </div>
-
           <div className="form-item">
             <label className="label">ICD Codes</label>
-            <input
-              className="input"
-              type="text"
-              value={answers.icdCodes || ''}
-              onChange={(e) => handleAnswerChange('icdCodes', e.target.value)}
-              placeholder="Comma separated"
-              disabled={target.isCompleted || submitting}
-            />
+            <input className="input" type="text" value={answers.icdCodes || ''} onChange={(e) => handleAnswerChange('icdCodes', e.target.value)} placeholder="Comma separated" disabled={target.isCompleted || submitting}/>
           </div>
           <div className="form-item">
             <label className="label">CPT Codes</label>
-            <input
-              className="input"
-              type="text"
-              value={answers.cptCodes || ''}
-              onChange={(e) => handleAnswerChange('cptCodes', e.target.value)}
-              placeholder="Comma separated"
-              disabled={target.isCompleted || submitting}
-            />
+            <input className="input" type="text" value={answers.cptCodes || ''} onChange={(e) => handleAnswerChange('cptCodes', e.target.value)} placeholder="Comma separated" disabled={target.isCompleted || submitting}/>
           </div>
-
           <div className="form-item">
             <label className="label">PCS Codes</label>
-            <input
-              className="input"
-              type="text"
-              value={answers.pcsCodes || ''}
-              onChange={(e) => handleAnswerChange('pcsCodes', e.target.value)}
-              placeholder="Comma separated"
-              disabled={target.isCompleted || submitting}
-            />
+            <input className="input" type="text" value={answers.pcsCodes || ''} onChange={(e) => handleAnswerChange('pcsCodes', e.target.value)} placeholder="Comma separated" disabled={target.isCompleted || submitting}/>
           </div>
-
           <div className="form-item">
             <label className="label">HCPCS Codes</label>
-            <input
-              className="input"
-              type="text"
-              value={answers.hcpcsCodes || ''}
-              onChange={(e) => handleAnswerChange('hcpcsCodes', e.target.value)}
-              placeholder="Comma separated"
-              disabled={target.isCompleted || submitting}
-            />
+            <input className="input" type="text" value={answers.hcpcsCodes || ''} onChange={(e) => handleAnswerChange('hcpcsCodes', e.target.value)} placeholder="Comma separated" disabled={target.isCompleted || submitting}/>
           </div>
-
           <div className="form-item">
             <label className="label">DRG Value</label>
-            <input
-              className="input"
-              type="text"
-              value={answers.drgValue || ''}
-              onChange={(e) => handleAnswerChange('drgValue', e.target.value)}
-              placeholder="e.g. 470 or 470-xx"
-              disabled={target.isCompleted || submitting}
-            />
+            <input className="input" type="text" value={answers.drgValue || ''} onChange={(e) => handleAnswerChange('drgValue', e.target.value)} placeholder="e.g. 470 or 470-xx" disabled={target.isCompleted || submitting}/>
           </div>
-
           <div className="form-item">
             <label className="label">Modifiers</label>
-            <input
-              className="input"
-              type="text"
-              value={answers.modifiers || ''}
-              onChange={(e) => handleAnswerChange('modifiers', e.target.value)}
-              placeholder="Comma separated (e.g. 26, 59, LT)"
-              disabled={target.isCompleted || submitting}
-            />
+            <input className="input" type="text" value={answers.modifiers || ''} onChange={(e) => handleAnswerChange('modifiers', e.target.value)} placeholder="Comma separated (e.g. 26, 59, LT)" disabled={target.isCompleted || submitting}/>
           </div>
-
           <div className="form-item form-item--full">
             <label className="label">Notes</label>
-            <textarea
-              className="textarea"
-              value={answers.notes || ''}
-              onChange={(e) => handleAnswerChange('notes', e.target.value)}
-              rows={4}
-              disabled={target.isCompleted || submitting}
-            />
+            <textarea className="textarea" value={answers.notes || ''} onChange={(e) => handleAnswerChange('notes', e.target.value)} rows={4} disabled={target.isCompleted || submitting}/>
           </div>
         </div>
       );
@@ -621,194 +477,165 @@ const NewAssignments = () => {
       </div>
     );
   }
-
-  // ---------------- DETAIL VIEW ----------------
+// DETAIL VIEW
   if (activeAssignment) {
     if (!activeSubAssignment && activeAssignment.subAssignments?.length > 0) {
       return (
-        <AssignmentsErrorBoundary>
-          <div className="container">
-            <div className="page-header">
-              <button className="btn btn-ghost" onClick={() => setActiveAssignment(null)} disabled={submitting}>Back</button>
-              <h3 className="title-sm">{activeAssignment.moduleName}</h3>
-            </div>
-
-            <div className="grid">
-              {(() => {
-                const withIdx = (activeAssignment.subAssignments || []).map((s, i) => ({ s, i }));
-                const subsSorted = withIdx
-                  .map(({ s, i }) => ({
-                    s,
-                    i,
-                    p: s?.isCompleted ? 2 : (canStartSub(activeAssignment, i) ? 0 : 1),
-                  }))
-                  .sort((x, y) => x.p - y.p || x.i - y.i);
-
-                return subsSorted.map(({ s, i }) => {
-                  const disabled = !canStartSub(activeAssignment, i) || submitting;
-                  return (
-                    <div key={s?._id || i} className="card sub-card">
-                      <div className="card-head">
-                        <h4 className="card-title">{s?.subModuleName}</h4>
-                        <span className={`badge ${s?.isCompleted ? 'badge-success' : disabled ? 'badge-neutral' : 'badge-pending'}`}>
-                          {s?.isCompleted ? 'Completed' : disabled ? 'Locked' : 'Pending'}
-                        </span>
-                      </div>
-                      <div className="card-actions">
-                        <button
-                          className="btn"
-                          onClick={() => handleStart(activeAssignment._id, s?._id)}
-                          disabled={disabled}
-                        >
-                          {s?.isCompleted ? 'Completed' : disabled ? 'Locked' : 'Start'}
-                        </button>
-                      </div>
-                    </div>
-                  );
-                });
-              })()}
-            </div>
-
-            {submitting && <LoadingOverlay />}
-          </div>
-        </AssignmentsErrorBoundary>
-      );
-    }
-
-    const pdfUrl = activeSubAssignment?.assignmentPdf || activeAssignment.assignmentPdf;
-    const questionSource = activeSubAssignment || activeAssignment;
-    const isCompleted = questionSource?.isCompleted;
-
-    return (
-      <AssignmentsErrorBoundary>
         <div className="container">
           <div className="page-header">
-            <button
-              className="btn btn-ghost"
-              onClick={() => (activeSubAssignment ? setActiveSubAssignment(null) : setActiveAssignment(null))}
-              disabled={submitting}
-            >
-              Back
-            </button>
+            <button className="btn btn-ghost" onClick={() => setActiveAssignment(null)} disabled={submitting}>Back</button>
+            <h3 className="title-sm">{activeAssignment.moduleName}</h3>
           </div>
 
-          {/* PDF VIEWER (no download UI) */}
-          {pdfUrl && (
-            <PdfReader
-              key={pdfUrl}               // re-mount only when URL changes
-              url={pdfUrl}
-              height="60vh"
-              watermark=""
-            />
-          )}
-
-          <div className="panel">
-            <div className="panel-head">
-              <h4>Questions</h4>
-              {isCompleted && <span className="badge badge-success">Completed</span>}
-            </div>
-            <div className="panel-body">{renderQuestions(questionSource)}</div>
-            <div className="panel-actions">
-              <button className="btn btn-primary" onClick={handleSubmit} disabled={isCompleted || submitting}>
-                {isCompleted ? 'Already Submitted' : (submitting ? 'Submitting…' : 'Submit Assignment')}
-              </button>
-            </div>
-          </div>
-
-          {submitting && <LoadingOverlay />}
-        </div>
-      </AssignmentsErrorBoundary>
-    );
-  }
-
-  // ---------------- CARDS VIEW ----------------
-  return (
-    <AssignmentsErrorBoundary>
-      <div className="container">
-        <div className="page-header">
-          <h2 className="title"><FiBook className="icon" /> New Assignments</h2>
-        </div>
-
-        {/* Date Picker (filter only) */}
-        <div className="panel" style={{ marginBottom: 16 }}>
-          <div className="panel-head" style={{ gap: 12, alignItems: 'center' }}>
-            <h4 style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <FiCalendar /> Select Date (optional)
-            </h4>
-          </div>
-          <div className="panel-body" style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
-            <input
-              type="date"
-              className="input"
-              value={selectedDate}
-              onChange={(e) => {
-                setSelectedDate(e.target.value);
-                setActiveAssignment(null);
-                setActiveSubAssignment(null);
-              }}
-              style={{ maxWidth: 220 }}
-              disabled={submitting}
-            />
-            {selectedDate && (
-              <button className="btn btn-ghost" onClick={() => setSelectedDate('')} disabled={submitting}>Clear</button>
-            )}
-            <span className="muted">Date is for search/filter only. Locking is global.</span>
-          </div>
-        </div>
-
-        {displayList.length > 0 ? (
           <div className="grid">
-            {displayList.map((assignment, index) => {
-              const allSubsCompleted = areAllSubAssignmentsCompleted(assignment);
-              const locked = !canStartAssignment(assignment) || submitting;
-
+            {activeAssignment.subAssignments.map((sub, idx) => {
+              const disabled = !canStartSub(activeAssignment, idx) || submitting;
               return (
-                <div key={assignment._id || index} className="card">
+                <div key={idx} className="card sub-card">
                   <div className="card-head">
-                    <h3 className="card-title">{assignment.moduleName}</h3>
-                    <span className={`badge ${
-                      allSubsCompleted ? 'badge-success' : locked ? 'badge-neutral' : 'badge-pending'
-                    }`}>
-                      {allSubsCompleted ? 'Completed' : locked ? 'Locked' : 'Assigned'}
+                    <h4 className="card-title">{sub.subModuleName}</h4>
+                    <span className={`badge ${sub.isCompleted ? 'badge-success' : 'badge-neutral'}`}>
+                      {sub.isCompleted ? 'Completed' : disabled ? 'Locked' : 'Pending'}
                     </span>
                   </div>
-
-                  <div className="meta">
-                    <span className="meta-key">Assigned</span>
-                    <span className="meta-val">{formatDate(assignment.assignedDate)}</span>
-                  </div>
-
-                  {assignment.subAssignments?.length > 0 && (
-                    <div className="meta">
-                      <span className="meta-key">Progress</span>
-                      <span className="meta-val">
-                        {assignment.subAssignments.filter((sub) => sub?.isCompleted).length} / {assignment.subAssignments.length} completed
-                      </span>
-                    </div>
-                  )}
-
                   <div className="card-actions">
-                    <button className="btn" onClick={() => handleStart(assignment._id)} disabled={locked}>
-                      {allSubsCompleted ? 'Completed' : locked ? 'Locked' : (assignment.subAssignments?.length > 0 ? 'View Sections' : 'Start')}
+                    <button
+                      className="btn"
+                      onClick={() => handleStart(activeAssignment._id, sub._id)}
+                      disabled={disabled}
+                    >
+                      {sub.isCompleted ? 'Completed' : disabled ? 'Locked' : 'Start'}
                     </button>
                   </div>
                 </div>
               );
             })}
           </div>
-        ) : (
-          <div className="empty-state">
-            <div className="empty-icon"><FiClock /></div>
-            <div>
-              <h3>No assignments{selectedDate ? ' for this date' : ''}</h3>
-              <p className="muted">{selectedDate ? 'Try another date or clear the filter.' : 'Please check back later.'}</p>
-            </div>
+
+          {submitting && <LoadingOverlay />}
+        </div>
+      );
+    }
+
+    const pdfUrl = activeSubAssignment?.assignmentPdf || activeAssignment.assignmentPdf;
+    const questionSource = activeSubAssignment || activeAssignment;
+    const isCompleted = questionSource.isCompleted;
+
+    return (
+      <div className="container">
+        <div className="page-header">
+          <button
+            className="btn btn-ghost"
+            onClick={() => (activeSubAssignment ? setActiveSubAssignment(null) : setActiveAssignment(null))}
+            disabled={submitting}
+          >
+            Back
+          </button>
+          <h3 className="title-sm">{activeSubAssignment?.subModuleName || activeAssignment.moduleName}</h3>
+        </div>
+
+        {pdfUrl && <PdfReader url={pdfUrl} height="60vh" watermark="" />}
+
+        <div className="panel">
+          <div className="panel-head">
+            <h4>Questions</h4>
+            {isCompleted && <span className="badge badge-success">Completed</span>}
           </div>
-        )}
+          <div className="panel-body">{renderQuestions(questionSource)}</div>
+          <div className="panel-actions">
+            <button className="btn btn-primary" onClick={handleSubmit} disabled={isCompleted || submitting}>
+              {isCompleted ? 'Already Submitted' : (submitting ? 'Submitting…' : 'Submit Assignment')}
+            </button>
+          </div>
+        </div>
 
         {submitting && <LoadingOverlay />}
       </div>
-    </AssignmentsErrorBoundary>
+    );
+  }
+
+  // --------------- CARDS VIEW ---------------
+  return (
+    <div className="container">
+      <div className="page-header">
+        <h2 className="title"><FiBook className="icon" /> New Assignments</h2>
+      </div>
+
+      {/* Date Picker (filter only) */}
+      <div className="panel" style={{ marginBottom: 16 }}>
+        <div className="panel-head" style={{ gap: 12, alignItems: 'center' }}>
+          <h4 style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <FiCalendar /> Select Date (optional)
+          </h4>
+        </div>
+        <div className="panel-body" style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+          <input
+            type="date"
+            className="input"
+            value={selectedDate}
+            onChange={(e) => {
+              setSelectedDate(e.target.value);
+              setActiveAssignment(null);
+              setActiveSubAssignment(null);
+            }}
+            style={{ maxWidth: 220 }}
+            disabled={submitting}
+          />
+          {selectedDate && (
+            <button className="btn btn-ghost" onClick={() => setSelectedDate('')} disabled={submitting}>Clear</button>
+          )}
+          <span className="muted">Date is for search/filter only. Locking is global.</span>
+        </div>
+      </div>
+
+      {filtered.length > 0 ? (
+        <div className="grid">
+          {filtered.map((assignment, index) => {
+            const allSubsCompleted = areAllSubAssignmentsCompleted(assignment);
+            const locked = !canStartAssignment(assignment) || submitting;
+
+            return (
+              <div key={assignment._id || index} className="card">
+                <div className="card-head">
+                  <h3 className="card-title">{assignment.moduleName}</h3>
+                  <span className={`badge ${allSubsCompleted ? 'badge-success' : locked ? 'badge-neutral' : 'badge-pending'}`}>
+                    {allSubsCompleted ? 'Completed' : locked ? 'Locked' : 'Assigned'}
+                  </span>
+                </div>
+
+                <div className="meta">
+                  <span className="meta-key">Assigned</span>
+                  <span className="meta-val">{formatDate(assignment.assignedDate)}</span>
+                </div>
+
+                {assignment.subAssignments?.length > 0 && (
+                  <div className="meta">
+                    <span className="meta-key">Progress</span>
+                    <span className="meta-val">
+                      {assignment.subAssignments.filter((sub) => sub.isCompleted).length} / {assignment.subAssignments.length} completed
+                    </span>
+                  </div>
+                )}
+
+                <div className="card-actions">
+                  <button className="btn" onClick={() => handleStart(assignment._id)} disabled={locked}>
+                    {allSubsCompleted ? 'Completed' : locked ? 'Locked' : (assignment.subAssignments?.length > 0 ? 'View Sections' : 'Start')}
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="empty-state">
+          <div className="empty-icon"><FiClock /></div>
+          <div>
+            <h3>No assignments{selectedDate ? ' for this date' : ''}</h3>
+            <p className="muted">{selectedDate ? 'Try another date or clear the filter.' : 'Please check back later.'}</p>
+          </div>
+        </div>
+      )}
+    </div>
   );
 };
 
@@ -835,5 +662,5 @@ const LoadingOverlay = () => (
 );
 
 export default NewAssignments;
-export { AssignmentsErrorBoundary };
 
+  
