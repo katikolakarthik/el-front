@@ -626,10 +626,7 @@ const StudentDashboard = () => {
                       </span>    
                     </div>    
                     <div className="submission-details">    
-                      <div className="submission-stat">    
-                        <span>Submitted:</span>    
-                        <span>{formatDate(submission.submissionDate)}</span>    
-                      </div>    
+                      
                     </div>    
                   </div>    
                 );    
