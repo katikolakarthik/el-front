@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import {
   FiBook,
@@ -9,19 +10,16 @@ import {
   FiCalendar,
   FiDollarSign,
   FiAward,
-  FiX,
 } from 'react-icons/fi';
 import './StudentDashboard.css';
 
 const StudentDashboard = () => {
+  const navigate = useNavigate();
+
   const [studentData, setStudentData] = useState(null);
   const [assignments, setAssignments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-
-  const [showResultPopup, setShowResultPopup] = useState(false);
-  const [resultData, setResultData] = useState(null);
-  const [resultLoading, setResultLoading] = useState(false);
 
   // --- Helpers ---
   const displayValue = (val) => {
@@ -50,7 +48,7 @@ const StudentDashboard = () => {
       )}/${encodeURIComponent(userId)}`
     );
     if (!res.data) throw new Error('No stats data received');
-    return res.data; // { success, category, totalAssigned, completed, averageScore("100%"), pending, stats:{assigned,completed,averageScore(100),pending} }
+    return res.data;
   }, []);
 
   const fetchCourseInfo = useCallback(async (userId) => {
@@ -69,13 +67,12 @@ const StudentDashboard = () => {
         userId
       )}`
     );
-    // { assignments: [{ assignmentId, isCompleted, subAssignments:[{subAssignmentId,isCompleted}], moduleName? }] }
     return res.data?.assignments || [];
   }, []);
 
   const refreshDashboard = useCallback(async () => {
     const userId = localStorage.getItem('userId');
-    const courseName = localStorage.getItem('courseName'); // e.g., "CCS" (you said to read from localStorage)
+    const courseName = localStorage.getItem('courseName');
     if (!userId) throw new Error('User ID not found in localStorage');
     if (!courseName) throw new Error('Course name not found in localStorage');
 
@@ -85,7 +82,7 @@ const StudentDashboard = () => {
       fetchSubmissions(userId),
     ]);
 
-    // Normalize average score safely (no ||/?? mixing)
+    // Normalize average score
     const avgScoreRaw =
       (stats && stats.stats && stats.stats.averageScore) ??
       stats?.averageScore;
@@ -138,315 +135,41 @@ const StudentDashboard = () => {
     })();
   }, [refreshDashboard]);
 
-  // --- Results fetching (unchanged) ---
-  const fetchResultData = async (studentId, assignmentId) => {
-    try {
-      setResultLoading(true);
-      const response = await axios.post(
-        'https://el-backend-ashen.vercel.app/result',
-        { studentId, assignmentId }
-      );
-      setResultData(response.data);
-      setShowResultPopup(true);
-    } catch (err) {
-      console.error('Error fetching result:', err);
-      alert('Failed to fetch result details');
-    } finally {
-      setResultLoading(false);
-    }
-  };
-
-  // Build submissions list from new API
+  // Build submissions list from new API (parent assignment only)
   const submissions = useMemo(() => {
     if (!Array.isArray(assignments)) return [];
-    return assignments.map((a) => {
-      const totalSub = a.subAssignments?.length ?? 0;
-      const doneSub =
-        a.subAssignments?.filter((s) => s.isCompleted)?.length ?? 0;
+    return assignments
+      .filter(a => a && (a.assignmentId || a.assignmentName)) // ignore empty shells
+      .map((a) => {
+        const totalSub = a.subAssignments?.length ?? 0;
+        const doneSub = a.subAssignments?.filter((s) => s.isCompleted)?.length ?? 0;
 
-      const fallbackProgress =
-        totalSub > 0
-          ? Math.round((doneSub / totalSub) * 100)
-          : a.isCompleted
-          ? 100
-          : 0;
+        const fallbackProgress =
+          totalSub > 0
+            ? Math.round((doneSub / totalSub) * 100)
+            : a.isCompleted ? 100 : 0;
 
-      return {
-        assignmentId: a.assignmentId, // NOTE: new API field
-        moduleName: (a.moduleName || '').trim(), // show if provided; NO "Assignment 1..." fallback
-        isCompleted: a.isCompleted === true, // enable only when true
-        submissionDate: a.assignedDate, // shown if backend provides
-        totalCorrect: a.totalCorrect ?? 0, // optional if backend supports
-        totalWrong: a.totalWrong ?? 0,
-        overallProgress: a.progressPercent ?? fallbackProgress,
-      };
-    });
+        return {
+          assignmentId: a.assignmentId ?? null,
+          assignmentName: (a.assignmentName || '').trim(),
+          isCompleted: a.isCompleted === true, // clickable only when true
+          submissionDate: a.assignedDate || a.submittedAt || null,
+          overallProgress: a.progressPercent ?? fallbackProgress,
+        };
+      });
   }, [assignments]);
 
   // --- Handlers ---
   const handleSubmissionClick = (submission) => {
-    // Only allow results when assignment is completed
-    if (!submission || submission.isCompleted !== true) return;
+    if (!submission?.isCompleted) return;
+    const studentId = studentData?.studentId;
+    const assignmentId = submission?.assignmentId;
+    if (!studentId || !assignmentId) return;
 
-    const studentId = studentData?.studentId; // from payment-details API
-    const assignmentId = submission.assignmentId;
-    if (!studentId || !assignmentId) {
-      console.warn('Missing studentId or assignmentId for result fetch.');
-      return;
-    }
-    fetchResultData(studentId, assignmentId);
-  };
-
-  const closeResultPopup = async () => {
-    setShowResultPopup(false);
-    setResultData(null);
-    await refreshDashboard();
-  };
-
-  // Popup UX: lock scroll, close on Esc
-  useEffect(() => {
-    if (!showResultPopup) return;
-
-    const originalOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-
-    const handleEsc = (e) => {
-      if (e.key === 'Escape') closeResultPopup();
-    };
-    window.addEventListener('keydown', handleEsc);
-
-    return () => {
-      window.removeEventListener('keydown', handleEsc);
-      document.body.style.overflow = originalOverflow;
-    };
-  }, [showResultPopup]);
-
-  // --- Render helpers for popup content (kept from your structure) ---
-  const renderStaticAnswers = (module) => {
-    const submitted = module.submitted || {};
-    const fields = [
-      { key: 'patientName', label: 'Patient Name' },
-      { key: 'ageOrDob', label: 'Age/DOB' },
-      { key: 'icdCodes', label: 'ICD Codes' },
-      { key: 'cptCodes', label: 'CPT Codes' },
-      { key: 'notes', label: 'Notes' },
-    ];
-
-    const hasValues = fields.some((field) => {
-      const value = submitted[field.key];
-      return (
-        value !== null &&
-        value !== undefined &&
-        (!Array.isArray(value) || value.length > 0) &&
-        (typeof value !== 'string' || value.trim() !== '')
-      );
-    });
-
-    if (!hasValues) return null;
-
-    return (
-      <div className="answers-row">
-        {fields.map((field) => {
-          const value = submitted[field.key];
-          if (
-            value === null ||
-            value === undefined ||
-            (Array.isArray(value) && value.length === 0) ||
-            (typeof value === 'string' && value.trim() === '')
-          ) {
-            return null;
-          }
-          return (
-            <div key={field.key}>
-              <strong>{field.label}:</strong> {displayValue(value)}
-            </div>
-          );
-        })}
-      </div>
-    );
-  };
-
-  const renderDynamicQuestions = (submittedQuestions, correctQuestions) => {
-    if (!correctQuestions || correctQuestions.length === 0) return null;
-
-    return (
-      <div className="dynamic-questions-container">
-        {correctQuestions.map((cq, i) => {
-          const sq = submittedQuestions?.[i];
-          if (!cq.questionText) return null;
-
-        return (
-          <div key={i} className="dynamic-question">
-            <div className="question-text">
-              <strong>Q{i + 1}:</strong> {cq.questionText}
-            </div>
-            <div className="question-answers">
-              <div className="submitted-answer">
-                <span>Your Answer:</span>{' '}
-                <strong>{displayValue(sq?.submittedAnswer)}</strong>
-              </div>
-              <div className="correct-answer">
-                <span>Correct Answer:</span>{' '}
-                <strong>{displayValue(cq.answer || cq.correctAnswer)}</strong>
-              </div>
-            </div>
-            {cq.options?.length > 0 && (
-              <div className="question-options">
-                <span>Options:</span> {displayValue(cq.options)}
-              </div>
-            )}
-          </div>
-        );
-        })}
-      </div>
-    );
-  };
-
-  const renderModule = (module, index) => {
-    const hasCorrectAnswers =
-      module.correctAnswerKey &&
-      (module.correctAnswerKey.patientName ||
-        module.correctAnswerKey.ageOrDob ||
-        (module.correctAnswerKey.icdCodes &&
-          module.correctAnswerKey.icdCodes.length > 0) ||
-        (module.correctAnswerKey.cptCodes &&
-          module.correctAnswerKey.cptCodes.length > 0) ||
-        module.correctAnswerKey.notes);
-
-    return (
-      <div key={index} className="sub-assignment">
-        <div className="assignment-title">
-          <h3>{module.moduleName || module.subModuleName || 'Result'}</h3>
-          {/* Intentionally no PDF link in result popup */}
-        </div>
-
-        {/* Static fields */}
-        <div className="answers-comparison">
-          <div className="answers-section">
-            <h4>Your Answers</h4>
-            {renderStaticAnswers({ submitted: module.submitted })}
-          </div>
-
-          {hasCorrectAnswers && (
-            <div className="answers-section">
-              <h4>Correct Answers</h4>
-              <div className="answers-row">
-                {module.correctAnswerKey?.patientName && (
-                  <div>
-                    <strong>Patient Name:</strong>{' '}
-                    {displayValue(module.correctAnswerKey.patientName)}
-                  </div>
-                )}
-                {module.correctAnswerKey?.ageOrDob && (
-                  <div>
-                    <strong>Age/DOB:</strong>{' '}
-                    {displayValue(module.correctAnswerKey.ageOrDob)}
-                  </div>
-                )}
-                {module.correctAnswerKey?.icdCodes?.length > 0 && (
-                  <div>
-                    <strong>ICD Codes:</strong>{' '}
-                    {displayValue(module.correctAnswerKey.icdCodes)}
-                  </div>
-                )}
-                {module.correctAnswerKey?.cptCodes?.length > 0 && (
-                  <div>
-                    <strong>CPT Codes:</strong>{' '}
-                    {displayValue(module.correctAnswerKey.cptCodes)}
-                  </div>
-                )}
-                {module.correctAnswerKey?.notes && (
-                  <div>
-                    <strong>Notes:</strong>{' '}
-                    {displayValue(module.correctAnswerKey.notes)}
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Dynamic questions */}
-        {renderDynamicQuestions(
-          module.submitted?.dynamicQuestions,
-          module.correctDynamicQuestions
-        )}
-
-        {/* Optional per-module progress display */}
-        {(module.submitted?.correctCount !== undefined ||
-          module.submitted?.wrongCount !== undefined ||
-          module.submitted?.progressPercent !== undefined) && (
-          <div className="module-progress">
-            <p>
-              {module.submitted?.correctCount !== undefined && (
-                <>
-                  <strong>Correct:</strong> {module.submitted.correctCount} |
-                </>
-              )}{' '}
-              {module.submitted?.wrongCount !== undefined && (
-                <>
-                  <strong>Wrong:</strong> {module.submitted.wrongCount} |
-                </>
-              )}{' '}
-              {module.submitted?.progressPercent !== undefined && (
-                <>
-                  <strong>Progress:</strong>{' '}
-                  {module.submitted.progressPercent}%
-                </>
-              )}
-            </p>
-          </div>
-        )}
-      </div>
-    );
-  };
-
-  const renderResultPopup = () => {
-    if (!resultData) return null;
-
-    const modules = Array.isArray(resultData.data)
-      ? resultData.data
-      : [resultData.data];
-
-    return (
-      <div className="result-popup-overlay" onClick={closeResultPopup}>
-        <div
-          className="result-popup"
-          onClick={(e) => e.stopPropagation()}
-        >
-          <button
-            className="close-popup"
-            onClick={closeResultPopup}
-            aria-label="Close results"
-          >
-            <FiX size={24} />
-          </button>
-
-          <div className="result-header">
-            <h2>Assignment Results</h2>
-            <div className="result-summary">
-              <div className="summary-item">
-                <span>Correct Answers:</span>
-                <strong className="correct">{resultData.totalCorrect}</strong>
-              </div>
-              <div className="summary-item">
-                <span>Wrong Answers:</span>
-                <strong className="incorrect">{resultData.totalWrong}</strong>
-              </div>
-              <div className="summary-item">
-                <span>Overall Progress:</span>
-                <strong className="progress">
-                  {resultData.overallProgress}%
-                </strong>
-              </div>
-            </div>
-          </div>
-
-          <div className="multi-assignment-result">
-            {modules.map((m, i) => renderModule(m, i))}
-          </div>
-        </div>
-      </div>
+    navigate(
+      `/result?studentId=${encodeURIComponent(studentId)}&assignmentId=${encodeURIComponent(
+        assignmentId
+      )}`
     );
   };
 
@@ -580,37 +303,48 @@ const StudentDashboard = () => {
           </div>
         </div>
 
+        {/* Submissions */}
         <div className="info-card">
           <h2>Submissions</h2>
           <div className="submissions-container">
             {submissions.length > 0 ? (
               submissions.map((submission, i) => {
                 const completed = submission.isCompleted === true;
+                const hasIds = Boolean(submission.assignmentId);
+                const clickable = completed && hasIds;
+                const title =
+                  submission.assignmentName || 'Untitled Assignment';
+
                 return (
-                  <div
+                  <button
                     key={`${submission.assignmentId || 'a'}-${i}`}
                     className={`submission-item ${
-                      completed ? '' : 'submission-item--disabled'
+                      clickable ? '' : 'submission-item--disabled'
                     }`}
                     onClick={() =>
-                      completed ? handleSubmissionClick(submission) : null
+                      clickable ? handleSubmissionClick(submission) : null
                     }
                     title={
-                      completed
-                        ? 'Click to view result'
-                        : 'Result available after completion'
+                      clickable
+                        ? 'View Result'
+                        : completed
+                        ? 'Missing assignmentId'
+                        : 'Pending'
                     }
+                    disabled={!clickable}
                     style={{
-                      cursor: completed ? 'pointer' : 'not-allowed',
-                      opacity: completed ? 1 : 0.6,
+                      textAlign: 'left',
+                      width: '100%',
+                      border: 'none',
+                      background: 'transparent',
+                      padding: 0,
+                      cursor: clickable ? 'pointer' : 'not-allowed',
+                      opacity: clickable ? 1 : 0.6,
                     }}
                   >
                     <div className="submission-header">
                       <FiAward className="submission-icon" />
-                      <h3>
-                        {/* Show moduleName ONLY if provided; no "Assignment 1..." fallback */}
-                        {submission.moduleName || ' '}
-                      </h3>
+                      <h3 style={{ margin: 0 }}>{displayValue(title)}</h3>
                       <span
                         className={`status-badge ${
                           completed
@@ -628,14 +362,14 @@ const StudentDashboard = () => {
                         {completed ? 'Completed' : 'Pending'}
                       </span>
                     </div>
+
                     <div className="submission-details">
                       <div className="submission-stat">
                         <span>Submitted:</span>
                         <span>{formatDate(submission.submissionDate)}</span>
                       </div>
-                    
                     </div>
-                  </div>
+                  </button>
                 );
               })
             ) : (
@@ -647,14 +381,6 @@ const StudentDashboard = () => {
           </div>
         </div>
       </div>
-
-      {showResultPopup && renderResultPopup()}
-      {resultLoading && (
-        <div className="loading-overlay">
-          <div className="loading-spinner"></div>
-          <p>Loading result details...</p>
-        </div>
-      )}
     </div>
   );
 };
