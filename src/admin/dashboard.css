@@ -428,3 +428,27 @@ body {
     max-height: 95vh;
   }
 }
+
+/* Space the option chips in Dynamic Questions */
+.dq-opts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;           /* ← the magic: adds space between chips */
+  margin-top: 6px;
+}
+
+/* Ensure chips don’t add extra margins if you already style .tag elsewhere */
+.dq-opts .tag {
+  margin: 0;          /* rely on gap instead of individual margins */
+}
+
+/* Optional: make each option look like a pill */
+.tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: 9999px;
+  background: #f3f4f6;
+  font-size: 12px;
+  line-height: 1;
+}
