@@ -1,7 +1,7 @@
 // NewAssignments.jsx
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import axios from 'axios';
-import { FiBook, FiClock, FiSearch, FiSort } from 'react-icons/fi';
+import { FiBook, FiClock, FiSearch, FiFilter } from 'react-icons/fi';
 import { Worker, Viewer, SpecialZoomLevel } from '@react-pdf-viewer/core';
 import '@react-pdf-viewer/core/lib/styles/index.css';
 import './AssignmentFlow.css';
@@ -153,7 +153,7 @@ const NewAssignments = () => {
 
   const [startingId, setStartingId] = useState(null);
   const [search, setSearch] = useState('');              // search query
-  const [sortOrder, setSortOrder] = useState('newest');  // 'newest' | 'oldest'  (date sort)
+  const [sortOrder, setSortOrder] = useState('newest');  // 'newest' | 'oldest'
 
   const [countdown, setCountdown] = useState(null); // ms left (auto-submit at 0)
   const timerRef = useRef(null);
@@ -225,14 +225,12 @@ const NewAssignments = () => {
     return list;
   }, [filtered, sortOrder]);
 
-  // remove “lock” logic → Start is enabled unless item is already completed
-  const canStartAssignment = (assignment) => !areAllSubAssignmentsCompleted(assignment);
+  // no “lock” logic → Start enabled unless already completed
   const areAllSubAssignmentsCompleted = (assignment) => {
     if (!assignment?.subAssignments?.length) return Boolean(assignment?.isCompleted);
     return assignment.subAssignments.every((sub) => sub.isCompleted);
   };
   const canStartSub = (_assignment, subIdx) => {
-    // no sequential lock: allow any sub that is not completed
     const sub = _assignment.subAssignments?.[subIdx];
     return sub ? !sub.isCompleted : false;
   };
@@ -315,7 +313,7 @@ const NewAssignments = () => {
     try {
       const src = activeSubAssignment || activeAssignment;
       if (!src || src.isCompleted) return;
-      await handleSubmit(true); // silent
+      await handleSubmit(true); // silent auto-submit
     } finally {
       autoSubmittingRef.current = false;
     }
@@ -349,8 +347,7 @@ const NewAssignments = () => {
         notes: answers.notes || '',
         adx: answers.adx || '', // NEW: Adx
       });
-
-      if (activeSubAssignment) {
+if (activeSubAssignment) {
         if ((activeSubAssignment.questions || []).some((q) => q.type === 'dynamic')) {
           payload.submittedAnswers.push({
             subAssignmentId: activeSubAssignment._id,
@@ -442,7 +439,7 @@ const NewAssignments = () => {
     }
   };
 
-const handleAnswerChange = (key, value) => setAnswers((p) => ({ ...p, [key]: value }));
+  const handleAnswerChange = (key, value) => setAnswers((p) => ({ ...p, [key]: value }));
 
   const timerBadge = (a) => {
     const now = Date.now();
@@ -496,7 +493,7 @@ const handleAnswerChange = (key, value) => setAnswers((p) => ({ ...p, [key]: val
       });
     }
 
-    const predefined = qs.find((q) => q.type === 'predefined');
+const predefined = qs.find((q) => q.type === 'predefined');
     if (predefined && predefined.answerKey) {
       return (
         <div className="form-grid">
@@ -663,7 +660,7 @@ const handleAnswerChange = (key, value) => setAnswers((p) => ({ ...p, [key]: val
 
           <div className="grid">
             {(activeAssignment.subAssignments || []).map((s, i) => {
-              const disabled = submitting || s.isCompleted; // only disable if already completed or submitting
+              const disabled = submitting || s.isCompleted;
               const isStarting = startingId === `${activeAssignment._id}:${s._id}`;
               return (
                 <div key={i} className="card sub-card">
@@ -727,7 +724,7 @@ const handleAnswerChange = (key, value) => setAnswers((p) => ({ ...p, [key]: val
             {isCompleted && <span className="badge badge-success">Completed</span>}
           </div>
 
-          {/* Note: No "lock" here. User can attempt any time; backend still enforces window. */}
+        {/* Note: No "lock" here. User can attempt any time; backend still enforces window. */}
           <div className="panel-body">{renderQuestions(questionSource)}</div>
           <div className="panel-actions">
             <button className="btn btn-primary" onClick={() => handleSubmit(false)} disabled={isCompleted || submitting || isStartingParent}>
@@ -755,7 +752,7 @@ const handleAnswerChange = (key, value) => setAnswers((p) => ({ ...p, [key]: val
             <FiSearch /> Search
           </h4>
           <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
-            <FiSort />
+            <FiFilter />
             <select
               className="input"
               value={sortOrder}
@@ -862,19 +859,18 @@ const LoadingOverlay = () => (
     }}
   >
     <div style={{ padding: 16, borderRadius: 12, border: '1px solid #ddd', background: '#fff', minWidth: 220, textAlign: 'center' }}>
-    <div
-  className="spinner"
-  // ✅ correct
-style={{
-  width: 28,
-  height: 28,
-  margin: '0 auto 10px',
-  border: '3px solid #ddd',
-  borderTopColor: '#333',
-  borderRadius: '50%',
-  animation: 'spin 1s linear infinite',
-}}
-/>
+      <div
+        className="spinner"
+        style={{
+          width: 28,
+          height: 28,
+          margin: '0 auto 10px',
+          border: '3px solid #ddd',
+          borderTopColor: '#333',
+          borderRadius: '50%',
+          animation: 'spin 1s linear infinite',
+        }}
+      />
       <div style={{ fontWeight: 600 }}>Submitting…</div>
       <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>Please wait</div>
       <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
