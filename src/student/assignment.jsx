@@ -951,7 +951,7 @@ const LoadingOverlay = () => (
           width: 28,
           height: 28,
           margin: '0 auto 10px',
-          border: '3px solid '#ddd',
+          border: '3px solid #ddd',
           borderTopColor: '#333',
           borderRadius: '50%',
           animation: 'spin 1s linear infinite',
