@@ -7,13 +7,27 @@ export default function AddAssignment() {
   const location = useLocation();
   const [moduleName, setModuleName] = useState("");
   const [students, setStudents] = useState([]);
-  const [loading, setLoading] = useState(false); // NEW: global loading
-  const abortRef = useRef(null); // optional: cancel fetch on unmount
+  const [loading, setLoading] = useState(false); // global loading
+  const abortRef = useRef(null); // cancel fetch on unmount
+
+  // ---- NEW: optional timer states (both optional) ----
+  // Use <input type="datetime-local"> compatible values: "YYYY-MM-DDTHH:mm"
+  const [windowStart, setWindowStart] = useState(""); // empty = not set
+  const [windowEnd, setWindowEnd] = useState("");     // empty = not set
+
+  // Helper to convert datetime-local -> ISO string (server expects date-parsable)
+  const toIsoOrNull = (val) => {
+    if (!val || !val.trim()) return null;
+    // val like "2025-09-05T13:30"
+    const d = new Date(val);
+    return isNaN(d.getTime()) ? null : d.toISOString();
+  };
 
   const [subAssignments, setSubAssignments] = useState([
     {
       subModuleName: "",
       isDynamic: false,
+      // Predefined fields:
       answerPatientName: "",
       answerAgeOrDob: "",
       answerIcdCodes: "",
@@ -23,6 +37,9 @@ export default function AddAssignment() {
       answerDrgValue: "",
       answerModifiers: "",
       answerNotes: "",
+      // ---- NEW: Adx field (predefined answer key) ----
+      answerAdx: "",
+      // Dynamic:
       dynamicQuestions: [{ questionText: "", options: "", answer: "" }],
       assignmentPdf: null
     }
@@ -41,7 +58,6 @@ export default function AddAssignment() {
     };
     fetchStudents();
 
-    // cleanup: abort pending save on unmount
     return () => {
       if (abortRef.current) abortRef.current.abort();
     };
@@ -89,6 +105,7 @@ export default function AddAssignment() {
         answerDrgValue: "",
         answerModifiers: "",
         answerNotes: "",
+        answerAdx: "", // NEW
         dynamicQuestions: [{ questionText: "", options: "", answer: "" }],
         assignmentPdf: null
       }
@@ -105,19 +122,35 @@ export default function AddAssignment() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (loading) return; // prevent double submit
+    if (loading) return;
     if (!category || !category.trim()) {
       alert("Category is required");
       return;
     }
 
-    setLoading(true); // START overlay
+    // Optional: basic client-side validation for timer
+    if (windowStart && windowEnd) {
+      const start = new Date(windowStart).getTime();
+      const end = new Date(windowEnd).getTime();
+      if (!isNaN(start) && !isNaN(end) && end < start) {
+        alert("End time should be greater than or equal to Start time");
+        return;
+      }
+    }
+
+    setLoading(true);
     const controller = new AbortController();
     abortRef.current = controller;
 
     const formData = new FormData();
     formData.append("moduleName", moduleName);
     formData.append("category", category.trim());
+
+    // ---- NEW: append optional timer values if present ----
+    const wsISO = toIsoOrNull(windowStart);
+    const weISO = toIsoOrNull(windowEnd);
+    if (wsISO) formData.append("windowStart", wsISO);
+    if (weISO) formData.append("windowEnd", weISO);
 
     const subDataForJson = subAssignments.map((sub) => {
       if (sub.isDynamic) {
@@ -142,7 +175,9 @@ export default function AddAssignment() {
           answerHcpcsCodes: sub.answerHcpcsCodes,
           answerDrgValue: sub.answerDrgValue,
           answerModifiers: sub.answerModifiers,
-          answerNotes: sub.answerNotes
+          answerNotes: sub.answerNotes,
+          // ---- NEW: Adx goes to predefined answerKey as "answerAdx" ----
+          answerAdx: sub.answerAdx
         };
       }
     });
@@ -169,14 +204,12 @@ export default function AddAssignment() {
 
       const data = await res.json();
       console.log("✅ Assignment saved:", data);
-      // optional: toast instead of alert to avoid blocking UI under overlay
-      // alert("Assignment saved successfully!");
-      navigate("/admin/assignments"); // overlay stays until route change
+      navigate("/admin/assignments");
     } catch (err) {
       if (err.name !== "AbortError") {
         console.error("❌ Error:", err);
         alert(`Error saving assignment: ${err.message}`);
-        setLoading(false); // only hide on error
+        setLoading(false);
       }
     } finally {
       abortRef.current = null;
@@ -220,6 +253,30 @@ export default function AddAssignment() {
               onChange={(e) => setModuleName(e.target.value)}
               required
             />
+          </div>
+
+          {/* ---------- NEW: Timer (optional) ---------- */}
+          <div className="timer-grid">
+            <div className="form-group">
+              <label htmlFor="windowStart">Start Time (optional)</label>
+              <input
+                id="windowStart"
+                type="datetime-local"
+                value={windowStart}
+                onChange={(e) => setWindowStart(e.target.value)}
+              />
+              <small>When this assignment becomes available.</small>
+            </div>
+            <div className="form-group">
+              <label htmlFor="windowEnd">End Time (optional)</label>
+              <input
+                id="windowEnd"
+                type="datetime-local"
+                value={windowEnd}
+                onChange={(e) => setWindowEnd(e.target.value)}
+              />
+              <small>When this assignment closes.</small>
+            </div>
           </div>
 
           <h3>Sub-Assignments</h3>
@@ -361,6 +418,18 @@ export default function AddAssignment() {
                       placeholder="Comma separated modifiers (e.g. 26, 59, LT)"
                       value={sub.answerModifiers}
                       onChange={(e) => handleSubChange(idx, "answerModifiers", e.target.value)}
+                    />
+                  </div>
+
+                  {/* ---- NEW: Adx field ---- */}
+                  <div className="form-group">
+                    <label htmlFor={`answerAdx-${idx}`}>Adx</label>
+                    <input
+                      id={`answerAdx-${idx}`}
+                      type="text"
+                      placeholder="Adx (e.g. principal dx or free text)"
+                      value={sub.answerAdx}
+                      onChange={(e) => handleSubChange(idx, "answerAdx", e.target.value)}
                     />
                   </div>
 
