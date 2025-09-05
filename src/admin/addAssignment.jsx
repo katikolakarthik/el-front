@@ -2,6 +2,23 @@ import React, { useState, useEffect, useRef } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import "./addassignment.css";
 
+/* ------------------ CATEGORY OPTIONS + Visibility Rules ------------------ */
+const CATEGORY_OPTIONS = ["CPC", "CCS", "IP-DRG", "SURGERY", "Denials", "ED", "E and M"];
+
+// field keys used in the form/payload:
+// patientName, ageOrDob, icdCodes, cptCodes, pcsCodes, hcpcsCodes, drgValue, modifiers, notes, adx
+const showFieldForCategory = (category, fieldKey) => {
+  // IP-DRG => remove CPT, HCPCS, MODIFIER
+  if (category === "IP-DRG" && ["cptCodes", "hcpcsCodes", "modifiers"].includes(fieldKey)) return false;
+
+  // CPC => remove PCS, patient name, age, DRG
+  if (category === "CPC" && ["pcsCodes", "patientName", "ageOrDob", "drgValue"].includes(fieldKey)) return false;
+
+  // otherwise visible
+  return true;
+};
+/* ------------------------------------------------------------------------ */
+
 export default function AddAssignment() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -10,9 +27,14 @@ export default function AddAssignment() {
   const [loading, setLoading] = useState(false); // global loading
   const abortRef = useRef(null); // cancel fetch on unmount
 
-  // ---- NEW: single per-assignment time limit (minutes) ----
+  // ---- single per-assignment time limit (minutes) ----
   // Leave empty to mean "no limit"
   const [timeLimitMinutes, setTimeLimitMinutes] = useState("");
+
+  const initialCategory = new URLSearchParams(location.search).get("category") || "";
+  const [category, setCategory] = useState(
+    CATEGORY_OPTIONS.includes(initialCategory) ? initialCategory : ""
+  );
 
   const [subAssignments, setSubAssignments] = useState([
     {
@@ -28,7 +50,7 @@ export default function AddAssignment() {
       answerDrgValue: "",
       answerModifiers: "",
       answerNotes: "",
-      // ---- NEW: Adx field (predefined answer key) ----
+      // NEW: Adx field (predefined answer key)
       answerAdx: "",
       // Dynamic:
       dynamicQuestions: [{ questionText: "", options: "", answer: "" }],
@@ -53,9 +75,6 @@ export default function AddAssignment() {
       if (abortRef.current) abortRef.current.abort();
     };
   }, []);
-
-  const initialCategory = new URLSearchParams(location.search).get("category") || "";
-  const [category, setCategory] = useState(initialCategory);
 
   const handleSubChange = (index, field, value) => {
     const updated = [...subAssignments];
@@ -111,6 +130,29 @@ export default function AddAssignment() {
     }
   };
 
+  // Helper: include field only if visible for selected category
+  const filterPredefinedByCategory = (raw) => {
+    const out = {};
+    const map = {
+      patientName: raw.answerPatientName,
+      ageOrDob: raw.answerAgeOrDob,
+      icdCodes: raw.answerIcdCodes,
+      cptCodes: raw.answerCptCodes,
+      pcsCodes: raw.answerPcsCodes,
+      hcpcsCodes: raw.answerHcpcsCodes,
+      drgValue: raw.answerDrgValue,
+      modifiers: raw.answerModifiers,
+      notes: raw.answerNotes,
+      adx: raw.answerAdx
+    };
+    Object.entries(map).forEach(([key, val]) => {
+      if (key === "notes" || key === "adx" || showFieldForCategory(category, key)) {
+        out[`answer${key[0].toUpperCase()}${key.slice(1)}`] = val;
+      }
+    });
+    return out;
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (loading) return;
@@ -137,7 +179,7 @@ export default function AddAssignment() {
     formData.append("moduleName", moduleName);
     formData.append("category", category.trim());
 
-    // ---- NEW: append timeLimitMinutes if provided ----
+    // NEW: append timeLimitMinutes if provided
     if (timeLimitMinutes !== "") {
       formData.append("timeLimitMinutes", String(Number(timeLimitMinutes)));
     }
@@ -154,20 +196,11 @@ export default function AddAssignment() {
           }))
         };
       } else {
+        // Only include fields that are visible for the selected category
         return {
           subModuleName: sub.subModuleName,
           isDynamic: false,
-          answerPatientName: sub.answerPatientName,
-          answerAgeOrDob: sub.answerAgeOrDob,
-          answerIcdCodes: sub.answerIcdCodes,
-          answerCptCodes: sub.answerCptCodes,
-          answerPcsCodes: sub.answerPcsCodes,
-          answerHcpcsCodes: sub.answerHcpcsCodes,
-          answerDrgValue: sub.answerDrgValue,
-          answerModifiers: sub.answerModifiers,
-          answerNotes: sub.answerNotes,
-          // ---- NEW: Adx goes to predefined answerKey as "answerAdx" ----
-          answerAdx: sub.answerAdx
+          ...filterPredefinedByCategory(sub)
         };
       }
     });
@@ -223,13 +256,18 @@ export default function AddAssignment() {
         <fieldset disabled={loading} style={{ border: "none", padding: 0, margin: 0 }}>
           <div className="form-group">
             <label>Category*</label>
-            <input
-              type="text"
+            {/* Dropdown with fixed options */}
+            <select
               value={category}
               onChange={(e) => setCategory(e.target.value)}
-              placeholder="Enter category"
               required
-            />
+              className="input"
+            >
+              <option value="" disabled>Select category</option>
+              {CATEGORY_OPTIONS.map((opt) => (
+                <option key={opt} value={opt}>{opt}</option>
+              ))}
+            </select>
             <small>From popup: {initialCategory || "none"}. You can adjust if needed.</small>
           </div>
 
@@ -245,7 +283,7 @@ export default function AddAssignment() {
             />
           </div>
 
-          {/* ---------- NEW: Time limit (minutes, optional) ---------- */}
+          {/* ---------- Time limit (minutes, optional) ---------- */}
           <div className="form-group">
             <label htmlFor="timeLimitMinutes">Time Limit (minutes, optional)</label>
             <input
@@ -317,27 +355,31 @@ export default function AddAssignment() {
                 <div className="predefined-fields">
                   <h4>Predefined Answer Key</h4>
 
-                  <div className="form-group">
-                    <label htmlFor={`answerPatientName-${idx}`}>Patient Name</label>
-                    <input
-                      id={`answerPatientName-${idx}`}
-                      type="text"
-                      placeholder="Patient name"
-                      value={sub.answerPatientName}
-                      onChange={(e) => handleSubChange(idx, "answerPatientName", e.target.value)}
-                    />
-                  </div>
+                  {showFieldForCategory(category, "patientName") && (
+                    <div className="form-group">
+                      <label htmlFor={`answerPatientName-${idx}`}>Patient Name</label>
+                      <input
+                        id={`answerPatientName-${idx}`}
+                        type="text"
+                        placeholder="Patient name"
+                        value={sub.answerPatientName}
+                        onChange={(e) => handleSubChange(idx, "answerPatientName", e.target.value)}
+                      />
+                    </div>
+                  )}
 
-                  <div className="form-group">
-                    <label htmlFor={`answerAgeOrDob-${idx}`}>Age or Date of Birth</label>
-                    <input
-                      id={`answerAgeOrDob-${idx}`}
-                      type="text"
-                      placeholder="e.g. 35 or 01/01/1990"
-                      value={sub.answerAgeOrDob}
-                      onChange={(e) => handleSubChange(idx, "answerAgeOrDob", e.target.value)}
-                    />
-                  </div>
+                  {showFieldForCategory(category, "ageOrDob") && (
+                    <div className="form-group">
+                      <label htmlFor={`answerAgeOrDob-${idx}`}>Age or Date of Birth</label>
+                      <input
+                        id={`answerAgeOrDob-${idx}`}
+                        type="text"
+                        placeholder="e.g. 35 or 01/01/1990"
+                        value={sub.answerAgeOrDob}
+                        onChange={(e) => handleSubChange(idx, "answerAgeOrDob", e.target.value)}
+                      />
+                    </div>
+                  )}
 
                   <div className="form-group">
                     <label htmlFor={`answerIcdCodes-${idx}`}>ICD Codes</label>
@@ -350,62 +392,72 @@ export default function AddAssignment() {
                     />
                   </div>
 
-                  <div className="form-group">
-                    <label htmlFor={`answerCptCodes-${idx}`}>CPT Codes</label>
-                    <input
-                      id={`answerCptCodes-${idx}`}
-                      type="text"
-                      placeholder="Comma separated CPT codes"
-                      value={sub.answerCptCodes}
-                      onChange={(e) => handleSubChange(idx, "answerCptCodes", e.target.value)}
-                    />
-                  </div>
+                  {showFieldForCategory(category, "cptCodes") && (
+                    <div className="form-group">
+                      <label htmlFor={`answerCptCodes-${idx}`}>CPT Codes</label>
+                      <input
+                        id={`answerCptCodes-${idx}`}
+                        type="text"
+                        placeholder="Comma separated CPT codes"
+                        value={sub.answerCptCodes}
+                        onChange={(e) => handleSubChange(idx, "answerCptCodes", e.target.value)}
+                      />
+                    </div>
+                  )}
 
-                  <div className="form-group">
-                    <label htmlFor={`answerPcsCodes-${idx}`}>PCS Codes</label>
-                    <input
-                      id={`answerPcsCodes-${idx}`}
-                      type="text"
-                      placeholder="Comma separated ICD-10-PCS codes"
-                      value={sub.answerPcsCodes}
-                      onChange={(e) => handleSubChange(idx, "answerPcsCodes", e.target.value)}
-                    />
-                  </div>
+                  {showFieldForCategory(category, "pcsCodes") && (
+                    <div className="form-group">
+                      <label htmlFor={`answerPcsCodes-${idx}`}>PCS Codes</label>
+                      <input
+                        id={`answerPcsCodes-${idx}`}
+                        type="text"
+                        placeholder="Comma separated ICD-10-PCS codes"
+                        value={sub.answerPcsCodes}
+                        onChange={(e) => handleSubChange(idx, "answerPcsCodes", e.target.value)}
+                      />
+                    </div>
+                  )}
 
-                  <div className="form-group">
-                    <label htmlFor={`answerHcpcsCodes-${idx}`}>HCPCS Codes</label>
-                    <input
-                      id={`answerHcpcsCodes-${idx}`}
-                      type="text"
-                      placeholder="Comma separated HCPCS codes"
-                      value={sub.answerHcpcsCodes}
-                      onChange={(e) => handleSubChange(idx, "answerHcpcsCodes", e.target.value)}
-                    />
-                  </div>
+                  {showFieldForCategory(category, "hcpcsCodes") && (
+                    <div className="form-group">
+                      <label htmlFor={`answerHcpcsCodes-${idx}`}>HCPCS Codes</label>
+                      <input
+                        id={`answerHcpcsCodes-${idx}`}
+                        type="text"
+                        placeholder="Comma separated HCPCS codes"
+                        value={sub.answerHcpcsCodes}
+                        onChange={(e) => handleSubChange(idx, "answerHcpcsCodes", e.target.value)}
+                      />
+                    </div>
+                  )}
 
-                  <div className="form-group">
-                    <label htmlFor={`answerDrgValue-${idx}`}>DRG Value</label>
-                    <input
-                      id={`answerDrgValue-${idx}`}
-                      type="text"
-                      placeholder="e.g. 470 or 470-xx"
-                      value={sub.answerDrgValue}
-                      onChange={(e) => handleSubChange(idx, "answerDrgValue", e.target.value)}
-                    />
-                  </div>
+                  {showFieldForCategory(category, "drgValue") && (
+                    <div className="form-group">
+                      <label htmlFor={`answerDrgValue-${idx}`}>DRG Value</label>
+                      <input
+                        id={`answerDrgValue-${idx}`}
+                        type="text"
+                        placeholder="e.g. 470 or 470-xx"
+                        value={sub.answerDrgValue}
+                        onChange={(e) => handleSubChange(idx, "answerDrgValue", e.target.value)}
+                      />
+                    </div>
+                  )}
 
-                  <div className="form-group">
-                    <label htmlFor={`answerModifiers-${idx}`}>Modifiers</label>
-                    <input
-                      id={`answerModifiers-${idx}`}
-                      type="text"
-                      placeholder="Comma separated modifiers (e.g. 26, 59, LT)"
-                      value={sub.answerModifiers}
-                      onChange={(e) => handleSubChange(idx, "answerModifiers", e.target.value)}
-                    />
-                  </div>
+                  {showFieldForCategory(category, "modifiers") && (
+                    <div className="form-group">
+                      <label htmlFor={`answerModifiers-${idx}`}>Modifiers</label>
+                      <input
+                        id={`answerModifiers-${idx}`}
+                        type="text"
+                        placeholder="Comma separated modifiers (e.g. 26, 59, LT)"
+                        value={sub.answerModifiers}
+                        onChange={(e) => handleSubChange(idx, "answerModifiers", e.target.value)}
+                      />
+                    </div>
+                  )}
 
-                  {/* ---- NEW: Adx field ---- */}
+                  {/* Adx always available */}
                   <div className="form-group">
                     <label htmlFor={`answerAdx-${idx}`}>Adx</label>
                     <input
