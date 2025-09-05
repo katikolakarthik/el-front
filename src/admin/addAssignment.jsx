@@ -10,18 +10,9 @@ export default function AddAssignment() {
   const [loading, setLoading] = useState(false); // global loading
   const abortRef = useRef(null); // cancel fetch on unmount
 
-  // ---- NEW: optional timer states (both optional) ----
-  // Use <input type="datetime-local"> compatible values: "YYYY-MM-DDTHH:mm"
-  const [windowStart, setWindowStart] = useState(""); // empty = not set
-  const [windowEnd, setWindowEnd] = useState("");     // empty = not set
-
-  // Helper to convert datetime-local -> ISO string (server expects date-parsable)
-  const toIsoOrNull = (val) => {
-    if (!val || !val.trim()) return null;
-    // val like "2025-09-05T13:30"
-    const d = new Date(val);
-    return isNaN(d.getTime()) ? null : d.toISOString();
-  };
+  // ---- NEW: single per-assignment time limit (minutes) ----
+  // Leave empty to mean "no limit"
+  const [timeLimitMinutes, setTimeLimitMinutes] = useState("");
 
   const [subAssignments, setSubAssignments] = useState([
     {
@@ -123,17 +114,17 @@ export default function AddAssignment() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (loading) return;
+
     if (!category || !category.trim()) {
       alert("Category is required");
       return;
     }
 
-    // Optional: basic client-side validation for timer
-    if (windowStart && windowEnd) {
-      const start = new Date(windowStart).getTime();
-      const end = new Date(windowEnd).getTime();
-      if (!isNaN(start) && !isNaN(end) && end < start) {
-        alert("End time should be greater than or equal to Start time");
+    // Validate minutes (optional field)
+    if (timeLimitMinutes !== "") {
+      const n = Number(timeLimitMinutes);
+      if (!Number.isFinite(n) || n <= 0 || !Number.isInteger(n)) {
+        alert("Time limit must be a positive integer (minutes), e.g. 10 or 200.");
         return;
       }
     }
@@ -146,11 +137,10 @@ export default function AddAssignment() {
     formData.append("moduleName", moduleName);
     formData.append("category", category.trim());
 
-    // ---- NEW: append optional timer values if present ----
-    const wsISO = toIsoOrNull(windowStart);
-    const weISO = toIsoOrNull(windowEnd);
-    if (wsISO) formData.append("windowStart", wsISO);
-    if (weISO) formData.append("windowEnd", weISO);
+    // ---- NEW: append timeLimitMinutes if provided ----
+    if (timeLimitMinutes !== "") {
+      formData.append("timeLimitMinutes", String(Number(timeLimitMinutes)));
+    }
 
     const subDataForJson = subAssignments.map((sub) => {
       if (sub.isDynamic) {
@@ -255,28 +245,22 @@ export default function AddAssignment() {
             />
           </div>
 
-          {/* ---------- NEW: Timer (optional) ---------- */}
-          <div className="timer-grid">
-            <div className="form-group">
-              <label htmlFor="windowStart">Start Time (optional)</label>
-              <input
-                id="windowStart"
-                type="datetime-local"
-                value={windowStart}
-                onChange={(e) => setWindowStart(e.target.value)}
-              />
-              <small>When this assignment becomes available.</small>
-            </div>
-            <div className="form-group">
-              <label htmlFor="windowEnd">End Time (optional)</label>
-              <input
-                id="windowEnd"
-                type="datetime-local"
-                value={windowEnd}
-                onChange={(e) => setWindowEnd(e.target.value)}
-              />
-              <small>When this assignment closes.</small>
-            </div>
+          {/* ---------- NEW: Time limit (minutes, optional) ---------- */}
+          <div className="form-group">
+            <label htmlFor="timeLimitMinutes">Time Limit (minutes, optional)</label>
+            <input
+              id="timeLimitMinutes"
+              type="number"
+              min="1"
+              step="1"
+              inputMode="numeric"
+              placeholder="e.g., 10 or 200"
+              value={timeLimitMinutes}
+              onChange={(e) => setTimeLimitMinutes(e.target.value)}
+            />
+            <small>
+              Leave empty for no limit. Example: enter <b>10</b> for 10 minutes or <b>200</b> for 200 minutes.
+            </small>
           </div>
 
           <h3>Sub-Assignments</h3>
