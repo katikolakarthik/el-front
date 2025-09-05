@@ -7,8 +7,6 @@ import '@react-pdf-viewer/core/lib/styles/index.css';
 import './AssignmentFlow.css';
 
 const API_BASE = 'https://el-backend-ashen.vercel.app';
-
-// Category list (reference)
 const CATEGORY_OPTIONS = ["CPC", "CCS", "IP-DRG", "SURGERY", "Denials", "ED", "E and M"];
 
 /* ================== Robust PDF viewer (handles large PDFs) ================== */
@@ -31,7 +29,6 @@ const PdfReader = ({ url, height = '60vh', watermark = '' }) => {
         const res = await fetch(url, { signal: ctrl.signal, cache: 'no-store' });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const buf = await res.arrayBuffer();
-        await new Promise((r) => setTimeout(r, 0));
         if (abort) return;
 
         const blob = new Blob([buf], { type: 'application/pdf' });
@@ -143,38 +140,47 @@ const fmtCountdown = (msLeft) => {
   return h > 0 ? `${pad(h)}:${pad(m)}:${pad(s)}` : `${pad(m)}:${pad(s)}`;
 };
 
-// ---- Minutes-based timer persistence keys ----
-const startKey = (assignmentId) => `asgStart:${assignmentId}`;
-const getStartTime = (assignmentId) => {
-  const v = localStorage.getItem(startKey(assignmentId));
-  const n = v ? Number(v) : null;
-  return Number.isFinite(n) ? n : null;
-};
-const setStartTime = (assignmentId, ts) => {
-  localStorage.setItem(startKey(assignmentId), String(ts));
-};
-const clearStartTime = (assignmentId) => {
-  localStorage.removeItem(startKey(assignmentId));
-};
-
-// ---- Category-based visibility helpers ----
-const catU = (category) => (category || '').toUpperCase();
-
-// Field visibility for predefined path by category
-const fieldVisible = (field, category) => {
-  const c = catU(category);
-
-  // IP-DRG: hide CPT, HCPCS, Modifiers
-  if (c === 'IP-DRG' || c === 'IPDRG') {
-    if (['cptCodes', 'hcpcsCodes', 'modifiers'].includes(field)) return false;
-  }
-
-  // CPC: hide PCS, Patient Name, Age/DOB, DRG
-  if (c === 'CPC') {
-    if (['pcsCodes', 'patientName', 'ageOrDob', 'drgValue'].includes(field)) return false;
-  }
-
+/* ---------- category-based field visibility ---------- */
+const showField = (category, field) => {
+  if (category === "IP-DRG" && ["cptCodes", "hcpcsCodes", "modifiers"].includes(field)) return false;
+  if (category === "CPC" && ["pcsCodes", "patientName", "ageOrDob", "drgValue"].includes(field)) return false;
   return true;
+};
+
+/* ---------- time-limit helpers (minutes-based) ---------- */
+/**
+ * We support a minutes-only time limit. The timer begins the first time a student
+ * clicks "Start" for a given assignment/sub-assignment and is persisted in localStorage.
+ * Expected source fields (any one may exist): `timeLimitMinutes` at parent or sub level.
+ */
+const getTimeLimitMinutes = (assignment, sub) => {
+  // Prefer sub-assignment setting if present
+  if (sub && Number.isFinite(Number(sub.timeLimitMinutes))) return Number(sub.timeLimitMinutes);
+  if (Number.isFinite(Number(assignment?.timeLimitMinutes))) return Number(assignment.timeLimitMinutes);
+  return null; // no time limit
+};
+
+const makeTimerKey = (userId, assignmentId, subId) =>
+  `asgTimer:${userId}:${assignmentId}:${subId || 'parent'}`;
+
+const getOrStartTimerEnd = (userId, assignment, sub) => {
+  const minutes = getTimeLimitMinutes(assignment, sub);
+  if (!minutes || minutes <= 0) return null; // no timer
+
+  const key = makeTimerKey(userId, assignment._id, sub?._id);
+  const stored = localStorage.getItem(key);
+  if (stored) {
+    const endMs = Number(stored);
+    if (Number.isFinite(endMs) && endMs > 0) return endMs;
+  }
+  const end = Date.now() + minutes * 60 * 1000;
+  localStorage.setItem(key, String(end));
+  return end;
+};
+
+const clearTimerKey = (userId, assignmentId, subId) => {
+  const key = makeTimerKey(userId, assignmentId, subId);
+  localStorage.removeItem(key);
 };
 
 const NewAssignments = () => {
@@ -188,10 +194,12 @@ const NewAssignments = () => {
   const [answers, setAnswers] = useState({});
   const [submitting, setSubmitting] = useState(false);
 
+  const [startingId, setStartingId] = useState(null);
   const [search, setSearch] = useState('');              // search query
   const [sortOrder, setSortOrder] = useState('newest');  // 'newest' | 'oldest'
 
   const [countdown, setCountdown] = useState(null); // ms left (auto-submit at 0)
+  const [timerEndMs, setTimerEndMs] = useState(null);
   const timerRef = useRef(null);
   const autoSubmittingRef = useRef(false);
   const questionsRef = useRef(null);
@@ -261,6 +269,7 @@ const NewAssignments = () => {
     return list;
   }, [filtered, sortOrder]);
 
+  // remove “lock” logic → Start is enabled unless item is already completed
   const areAllSubAssignmentsCompleted = (assignment) => {
     if (!assignment?.subAssignments?.length) return Boolean(assignment?.isCompleted);
     return assignment.subAssignments.every((sub) => sub.isCompleted);
@@ -268,6 +277,7 @@ const NewAssignments = () => {
 
   const handleStart = async (assignmentId, subAssignmentId = null) => {
     try {
+      setStartingId(`${assignmentId}:${subAssignmentId || 'parent'}`);
       setError(null);
 
       const fromList = assignments.find((a) => String(a._id) === String(assignmentId));
@@ -281,70 +291,68 @@ const NewAssignments = () => {
           return { ...sub, isCompleted: originalSub ? originalSub.isCompleted : false };
         });
       }
-
-      // Minutes-based timer: set start if not already set
-      if (assignmentData.timeLimitMinutes && !getStartTime(assignmentData._id)) {
-        setStartTime(assignmentData._id, Date.now());
-      }
-
       setActiveAssignment(assignmentData);
 
+      let selectedSub = null;
       if (subAssignmentId) {
         const idx = assignmentData.subAssignments.findIndex((s) => String(s._id) === String(subAssignmentId));
-        setActiveSubAssignment(assignmentData.subAssignments[idx] || null);
+        selectedSub = assignmentData.subAssignments[idx] || null;
+        setActiveSubAssignment(selectedSub);
       } else {
         setActiveSubAssignment(null);
       }
 
       setAnswers({});
-      initCountdown(assignmentData);
+
+      // Initialize minutes-based timer (persisted)
+      const userId = localStorage.getItem('userId');
+      const endMs = getOrStartTimerEnd(userId, assignmentData, selectedSub);
+      if (endMs) {
+        initCountdown(endMs, assignmentData._id, selectedSub?._id);
+      } else {
+        clearCountdown();
+      }
 
       setTimeout(() => {
         questionsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
       }, 100);
     } catch (err) {
       setError(err.message);
+    } finally {
+      setStartingId(null);
     }
   };
 
-  // ---------------- TIMER: init + tick + auto-submit (minutes-based) ----------------
+  // ---------------- TIMER: init + tick + auto-submit ----------------
   const clearCountdown = () => {
     if (timerRef.current) {
       clearInterval(timerRef.current);
       timerRef.current = null;
     }
     setCountdown(null);
+    setTimerEndMs(null);
   };
 
-  const initCountdown = (assignmentLike) => {
+  const initCountdown = (endMs, assignmentId, subId) => {
     clearCountdown();
+    if (!endMs) return;
 
-    const limitMin = Number(assignmentLike?.timeLimitMinutes);
-    if (!Number.isFinite(limitMin) || limitMin <= 0) return; // no limit => no countdown
+    setTimerEndMs(endMs);
 
-    const startTs = getStartTime(assignmentLike._id);
-    if (!startTs) return; // timer starts when handleStart wrote it; if absent, no countdown
-
-    const endTs = startTs + limitMin * 60 * 1000;
-
-    const now = Date.now();
-    if (now >= endTs) {
-      setCountdown(0);
-      triggerAutoSubmit();
-      return;
-    }
-
-    setCountdown(endTs - now);
-    timerRef.current = setInterval(() => {
-      const left = endTs - Date.now();
+    const tick = () => {
+      const left = endMs - Date.now();
       if (left <= 0) {
-        clearCountdown();
         setCountdown(0);
-        triggerAutoSubmit();
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+        triggerAutoSubmit(); // auto-submit on time up
       } else {
         setCountdown(left);
       }
-    }, 500);
+    };
+
+    tick();
+    timerRef.current = setInterval(tick, 500);
   };
 
   const triggerAutoSubmit = async () => {
@@ -375,10 +383,10 @@ const NewAssignments = () => {
       const buildDynamic = (qs, prefix = 'dynamic') =>
         qs.map((q, idx) => ({ questionText: q.questionText, submittedAnswer: answers[`${prefix}-${idx}`] || '' }));
 
-      // Build predefined payload but strip fields hidden by category
       const buildPredefinedPayload = () => {
-        const category = activeAssignment?.category || '';
-        const obj = {
+        const category = activeAssignment?.category;
+        // Build with category visibility rules (omit hidden fields)
+        const base = {
           patientName: answers.patientName || '',
           ageOrDob: answers.ageOrDob || '',
           icdCodes: csvToArray(answers.icdCodes || ''),
@@ -390,10 +398,12 @@ const NewAssignments = () => {
           notes: answers.notes || '',
           adx: answers.adx || '',
         };
-        Object.keys(obj).forEach((key) => {
-          if (!fieldVisible(key, category)) delete obj[key];
+
+        const filtered = {};
+        Object.entries(base).forEach(([k, v]) => {
+          if (showField(category, k) || k === 'notes' || k === 'adx') filtered[k] = v;
         });
-        return obj;
+        return filtered;
       };
 
       if (activeSubAssignment) {
@@ -419,7 +429,7 @@ const NewAssignments = () => {
         return;
       }
 
-      // mark completed locally
+      // mark completed locally & clear timer key
       if (activeSubAssignment) {
         setActiveAssignment((prev) => {
           if (!prev) return prev;
@@ -430,17 +440,11 @@ const NewAssignments = () => {
           return { ...prev, subAssignments: updatedSubs, isCompleted: parentCompleted || prev.isCompleted };
         });
         setActiveSubAssignment((prev) => (prev ? { ...prev, isCompleted: true } : prev));
+        clearTimerKey(userId, activeAssignment._id, activeSubAssignment._id);
       } else {
         setActiveAssignment((prev) => (prev ? { ...prev, isCompleted: true } : prev));
+        clearTimerKey(userId, activeAssignment._id, null);
       }
-
-      // Clear timer token for this assignment when fully completed
-      const afterClearIfDone = (assignmentLike) => {
-        const done =
-          !assignmentLike?.subAssignments?.length ||
-          (assignmentLike.subAssignments || []).every((s) => s.isCompleted);
-        if (done) clearStartTime(assignmentLike._id);
-      };
 
       // refresh cards best-effort
       try {
@@ -474,21 +478,16 @@ const NewAssignments = () => {
             }, 150);
           } else {
             alert('Assignment completed successfully!');
-            afterClearIfDone({ ...activeAssignment, subAssignments: activeAssignment.subAssignments.map((s) =>
-              String(s._id) === String(activeSubAssignment._id) ? { ...s, isCompleted: true } : s
-            ) });
             setActiveSubAssignment(null);
             setActiveAssignment(null);
             clearCountdown();
           }
         } else {
           alert('Assignment submitted successfully!');
-          afterClearIfDone(activeAssignment);
           setActiveAssignment(null);
           clearCountdown();
         }
       } else {
-        afterClearIfDone(activeAssignment);
         setActiveAssignment(null);
         setActiveSubAssignment(null);
         clearCountdown();
@@ -503,30 +502,19 @@ const NewAssignments = () => {
 
   const handleAnswerChange = (key, value) => setAnswers((p) => ({ ...p, [key]: value }));
 
-  // Minutes-based status badges
-  const renderTimeLimitMeta = (a) => {
-    const mins = Number(a?.timeLimitMinutes);
-    if (!Number.isFinite(mins) || mins <= 0) return '—';
-    const started = Boolean(getStartTime(a._id));
-    return started ? 'In progress' : `Time limit: ${mins} min`;
+  // Show a simple status chip if there is/was a time limit
+  const timerBadge = (a) => {
+    const minutes = getTimeLimitMinutes(a, null);
+    if (!minutes) return null;
+    if (countdown === 0) return <span className="badge badge-neutral">Time up</span>;
+    return <span className="badge badge-pending">Timed ({minutes}m)</span>;
   };
 
-  const renderCountdownChip = (assignmentLike) => {
-    const mins = Number(assignmentLike?.timeLimitMinutes);
-    if (!Number.isFinite(mins) || mins <= 0) return null;
-    const showCountdown = countdown !== null && countdown >= 0;
-    if (!showCountdown) return null;
-    return (
-      <div className="countdown-chip">
-        <FiClock /> <span>{fmtCountdown(countdown)}</span>
-      </div>
-    );
-  };
-const renderQuestions = (target) => {
+  const renderQuestions = (target) => {
     if (!target) return null;
     const qs = target.questions || [];
     const dynamicQs = qs.filter((q) => q.type === 'dynamic');
-    const category = activeAssignment?.category || '';
+    const category = activeAssignment?.category;
 
     if (dynamicQs.length > 0) {
       return dynamicQs.map((q, idx) => {
@@ -569,7 +557,7 @@ const renderQuestions = (target) => {
     if (predefined && predefined.answerKey) {
       return (
         <div className="form-grid">
-          {fieldVisible('patientName', category) && (
+          {showField(category, "patientName") && (
             <div className="form-item">
               <label className="label">Patient Name</label>
               <input
@@ -581,8 +569,7 @@ const renderQuestions = (target) => {
               />
             </div>
           )}
-
-          {fieldVisible('ageOrDob', category) && (
+          {showField(category, "ageOrDob") && (
             <div className="form-item">
               <label className="label">Age / DOB</label>
               <input
@@ -595,19 +582,20 @@ const renderQuestions = (target) => {
             </div>
           )}
 
-          <div className="form-item">
-            <label className="label">ICD Codes</label>
-            <input
-              className="input"
-              type="text"
-              value={answers.icdCodes || ''}
-              onChange={(e) => handleAnswerChange('icdCodes', e.target.value)}
-              placeholder="Comma separated"
-              disabled={target.isCompleted || submitting}
-            />
-          </div>
-
-          {fieldVisible('cptCodes', category) && (
+          {showField(category, "icdCodes") && (
+            <div className="form-item">
+              <label className="label">ICD Codes</label>
+              <input
+                className="input"
+                type="text"
+                value={answers.icdCodes || ''}
+                onChange={(e) => handleAnswerChange('icdCodes', e.target.value)}
+                placeholder="Comma separated"
+                disabled={target.isCompleted || submitting}
+              />
+            </div>
+          )}
+          {showField(category, "cptCodes") && (
             <div className="form-item">
               <label className="label">CPT Codes</label>
               <input
@@ -620,8 +608,7 @@ const renderQuestions = (target) => {
               />
             </div>
           )}
-
-          {fieldVisible('pcsCodes', category) && (
+          {showField(category, "pcsCodes") && (
             <div className="form-item">
               <label className="label">PCS Codes</label>
               <input
@@ -634,8 +621,7 @@ const renderQuestions = (target) => {
               />
             </div>
           )}
-
-          {fieldVisible('hcpcsCodes', category) && (
+          {showField(category, "hcpcsCodes") && (
             <div className="form-item">
               <label className="label">HCPCS Codes</label>
               <input
@@ -648,8 +634,7 @@ const renderQuestions = (target) => {
               />
             </div>
           )}
-
-          {fieldVisible('drgValue', category) && (
+          {showField(category, "drgValue") && (
             <div className="form-item">
               <label className="label">DRG Value</label>
               <input
@@ -662,8 +647,7 @@ const renderQuestions = (target) => {
               />
             </div>
           )}
-
-          {fieldVisible('modifiers', category) && (
+          {showField(category, "modifiers") && (
             <div className="form-item">
               <label className="label">Modifiers</label>
               <input
@@ -677,6 +661,7 @@ const renderQuestions = (target) => {
             </div>
           )}
 
+          {/* Adx always available */}
           <div className="form-item">
             <label className="label">Adx</label>
             <input
@@ -720,7 +705,7 @@ const renderQuestions = (target) => {
     );
   }
 
-  if (error && !activeAssignment) {
+if (error && !activeAssignment) {
     return (
       <div className="container">
         <div className="empty-state error">
@@ -742,14 +727,13 @@ const renderQuestions = (target) => {
           <div className="page-header">
             <button className="btn btn-ghost" onClick={() => { setActiveAssignment(null); clearCountdown(); }} disabled={submitting}>Back</button>
             <h3 className="title-sm">{activeAssignment.moduleName}</h3>
-            <div style={{ marginLeft: 'auto' }}>
-              <span className="badge badge-neutral">{renderTimeLimitMeta(activeAssignment)}</span>
-            </div>
+            <div style={{ marginLeft: 'auto' }}>{timerBadge(activeAssignment)}</div>
           </div>
 
           <div className="grid">
             {(activeAssignment.subAssignments || []).map((s, i) => {
-              const disabled = s.isCompleted; // ✅ Only block if already completed
+              const disabled = submitting || s.isCompleted; // only disable if already completed or submitting
+              const isStarting = startingId === `${activeAssignment._id}:${s._id}`;
               return (
                 <div key={i} className="card sub-card">
                   <div className="card-head">
@@ -762,9 +746,9 @@ const renderQuestions = (target) => {
                     <button
                       className="btn"
                       onClick={() => handleStart(activeAssignment._id, s._id)}
-                      disabled={disabled}
+                      disabled={disabled || isStarting}
                     >
-                      {s.isCompleted ? 'Completed' : 'Start'}
+                      {isStarting ? 'Opening…' : s.isCompleted ? 'Completed' : 'Start'}
                     </button>
                   </div>
                 </div>
@@ -780,6 +764,10 @@ const renderQuestions = (target) => {
     const pdfUrl = activeSubAssignment?.assignmentPdf || activeAssignment.assignmentPdf;
     const questionSource = activeSubAssignment || activeAssignment;
     const isCompleted = questionSource.isCompleted;
+    const isStartingParent = startingId === `${activeAssignment._id}:parent`;
+    const showCountdown = Number.isFinite(timerEndMs);
+
+    const timeLeft = showCountdown ? Math.max(0, timerEndMs - Date.now()) : null;
 
     return (
       <div className="container">
@@ -793,8 +781,12 @@ const renderQuestions = (target) => {
           </button>
           <h3 className="title-sm">{activeSubAssignment?.subModuleName || activeAssignment.moduleName}</h3>
           <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 10 }}>
-            <span className="badge badge-neutral">{renderTimeLimitMeta(activeAssignment)}</span>
-            {renderCountdownChip(activeAssignment)}
+            {timerBadge(activeAssignment)}
+            {showCountdown && (
+              <div className="countdown-chip">
+                <FiClock /> <span>{fmtCountdown(timeLeft ?? countdown ?? 0)}</span>
+              </div>
+            )}
           </div>
         </div>
 
@@ -806,10 +798,10 @@ const renderQuestions = (target) => {
             {isCompleted && <span className="badge badge-success">Completed</span>}
           </div>
 
-          {/* User can attempt any time; backend enforces rules if any. */}
+          {/* Note: No "lock" here. User can attempt any time; minutes limit enforced by timer. */}
           <div className="panel-body">{renderQuestions(questionSource)}</div>
           <div className="panel-actions">
-            <button className="btn btn-primary" onClick={() => handleSubmit(false)} disabled={isCompleted || submitting}>
+            <button className="btn btn-primary" onClick={() => handleSubmit(false)} disabled={isCompleted || submitting || isStartingParent}>
               {isCompleted ? 'Already Submitted' : (submitting ? 'Submitting…' : 'Submit Assignment')}
             </button>
           </div>
@@ -872,6 +864,7 @@ const renderQuestions = (target) => {
         <div className="grid">
           {sorted.map((assignment) => {
             const allSubsCompleted = areAllSubAssignmentsCompleted(assignment);
+            const isStarting = startingId === `${assignment._id}:parent`;
             return (
               <div key={assignment._id} className="card">
                 <div className="card-head">
@@ -881,17 +874,14 @@ const renderQuestions = (target) => {
                   </span>
                 </div>
 
-                {/* Time limit status */}
+                {/* Timed? just show a hint if minutes exist */}
                 <div className="meta">
                   <span className="meta-key">Status</span>
                   <span className="meta-val">
-                    {renderTimeLimitMeta(assignment)}
+                    {Number.isFinite(Number(assignment?.timeLimitMinutes))
+                      ? `Timed (${Number(assignment.timeLimitMinutes)}m)`
+                      : '—'}
                   </span>
-                </div>
-
-                <div className="meta">
-                  <span className="meta-key">Category</span>
-                  <span className="meta-val">{assignment.category || '—'}</span>
                 </div>
 
                 {assignment.subAssignments?.length > 0 && (
@@ -907,9 +897,9 @@ const renderQuestions = (target) => {
                   <button
                     className="btn"
                     onClick={() => handleStart(assignment._id)}
-                    disabled={allSubsCompleted}  // ✅ Only block if ALL done
+                    disabled={submitting || allSubsCompleted || isStarting}
                   >
-                    {allSubsCompleted ? 'Completed' : (assignment.subAssignments?.length > 0 ? 'View Sections' : 'Start')}
+                    {isStarting ? 'Opening…' : allSubsCompleted ? 'Completed' : (assignment.subAssignments?.length > 0 ? 'View Sections' : 'Start')}
                   </button>
                 </div>
               </div>
