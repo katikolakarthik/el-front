@@ -19,3 +19,5 @@ const CRSWidget = () => {
  </div>
   );
 };
+
+export default CRSWidget;
