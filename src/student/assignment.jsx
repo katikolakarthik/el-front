@@ -154,7 +154,6 @@ const showField = (category, field) => {
  * Expected source fields (any one may exist): `timeLimitMinutes` at parent or sub level.
  */
 const getTimeLimitMinutes = (assignment, sub) => {
-  // Prefer sub-assignment setting if present
   if (sub && Number.isFinite(Number(sub.timeLimitMinutes))) return Number(sub.timeLimitMinutes);
   if (Number.isFinite(Number(assignment?.timeLimitMinutes))) return Number(assignment.timeLimitMinutes);
   return null; // no time limit
@@ -361,7 +360,7 @@ const NewAssignments = () => {
     try {
       const src = activeSubAssignment || activeAssignment;
       if (!src || src.isCompleted) return;
-      await handleSubmit(true); // silent auto-submit
+      await handleSubmit(true); // auto-submit (with alert)
     } finally {
       autoSubmittingRef.current = false;
     }
@@ -425,7 +424,7 @@ const NewAssignments = () => {
 
       const res = await axios.post(`${API_BASE}/student/submit-assignment`, payload);
       if (!res.data?.success) {
-        if (!isAuto) alert(res.data?.message || 'Failed to submit assignment');
+        alert(res.data?.message || 'Failed to submit assignment');
         return;
       }
 
@@ -465,36 +464,32 @@ const NewAssignments = () => {
         }
       } catch {}
 
-      if (!isAuto) {
-        if (activeSubAssignment && (activeAssignment.subAssignments || []).length > 0) {
-          const idx = activeAssignment.subAssignments.findIndex(
-            (sub) => String(sub._id) === String(activeSubAssignment._id)
-          );
-          if (idx < activeAssignment.subAssignments.length - 1) {
-            alert('Submitted. You can open any other section now.');
-            setActiveSubAssignment({ ...activeAssignment.subAssignments[idx + 1], isCompleted: false });
-            setTimeout(() => {
-              questionsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-            }, 150);
-          } else {
-            alert('Assignment completed successfully!');
-            setActiveSubAssignment(null);
-            setActiveAssignment(null);
-            clearCountdown();
-          }
+      // === Alerts for manual AND auto ===
+      if (activeSubAssignment && (activeAssignment.subAssignments || []).length > 0) {
+        const idx = activeAssignment.subAssignments.findIndex(
+          (sub) => String(sub._id) === String(activeSubAssignment._id)
+        );
+        if (idx < activeAssignment.subAssignments.length - 1) {
+          alert(isAuto ? '⏰ Time is up. Your answers were auto-submitted.' : 'Submitted. You can open any other section now.');
+          setActiveSubAssignment({ ...activeAssignment.subAssignments[idx + 1], isCompleted: false });
+          setTimeout(() => {
+            questionsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          }, 150);
         } else {
-          alert('Assignment submitted successfully!');
+          alert(isAuto ? '⏰ Time is up. Your answers were auto-submitted.' : 'Assignment completed successfully!');
+          setActiveSubAssignment(null);
           setActiveAssignment(null);
           clearCountdown();
         }
       } else {
+        alert(isAuto ? '⏰ Time is up. Your answers were auto-submitted.' : 'Assignment submitted successfully!');
         setActiveAssignment(null);
-        setActiveSubAssignment(null);
         clearCountdown();
       }
+
       setAnswers({});
     } catch (err) {
-      if (!isAuto) alert('Error: ' + err.message);
+      alert('Error: ' + err.message);
     } finally {
       setSubmitting(false);
     }
@@ -584,7 +579,7 @@ const NewAssignments = () => {
 
           {showField(category, "icdCodes") && (
             <div className="form-item">
-              <label className="label">ICD Codes</label>
+              <label className="label">ICD (Pdx) </label>
               <input
                 className="input"
                 type="text"
@@ -705,7 +700,7 @@ const NewAssignments = () => {
     );
   }
 
-if (error && !activeAssignment) {
+  if (error && !activeAssignment) {
     return (
       <div className="container">
         <div className="empty-state error">
@@ -893,7 +888,7 @@ if (error && !activeAssignment) {
                   </div>
                 )}
 
-                <div className="card-actions">
+    <div className="card-actions">
                   <button
                     className="btn"
                     onClick={() => handleStart(assignment._id)}
