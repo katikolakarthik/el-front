@@ -11,17 +11,52 @@ import "./layout.css";
 const Layout = ({ children }) => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [user, setUser] = useState(null);
+  const [courseCategory, setCourseCategory] = useState(null);
   const navigate = useNavigate();
   
   // Use session validation hook
   useSessionValidation();
 
   useEffect(() => {
-  const storedUser = JSON.parse(localStorage.getItem("user"));
-  if (storedUser) {
-    setUser(storedUser);
-  }
-}, []); // ✅ no navigate here
+    const storedUser = JSON.parse(localStorage.getItem("user"));
+    if (storedUser) {
+      setUser(storedUser);
+    }
+  }, []); // ✅ no navigate here
+
+  // Fetch course category for students
+  useEffect(() => {
+    const fetchCourseCategory = async () => {
+      if (user?.role === "user") {
+        try {
+          const userId = localStorage.getItem("userId");
+          const courseName = localStorage.getItem("courseName");
+          
+          if (userId && courseName) {
+            const response = await axios.get(
+              `https://el-backend-ashen.vercel.app/category/${encodeURIComponent(courseName)}?studentId=${encodeURIComponent(userId)}`
+            );
+            
+            // Extract category from the first assignment or response
+            let category = null;
+            if (response?.data?.assignments?.length > 0) {
+              category = response.data.assignments[0].category;
+            } else if (response?.data?.category) {
+              category = response.data.category;
+            } else if (response?.data?.data?.length > 0) {
+              category = response.data.data[0].category;
+            }
+            
+            setCourseCategory(category);
+          }
+        } catch (error) {
+          console.error("Error fetching course category:", error);
+        }
+      }
+    };
+
+    fetchCourseCategory();
+  }, [user]);
 
   const toggleSidebar = () => setIsSidebarOpen(!isSidebarOpen);
   const closeSidebar = () => setIsSidebarOpen(false);
@@ -157,8 +192,8 @@ const Layout = ({ children }) => {
         <main className="content">{children}</main>
       </div>
       
-      {/* CRS Widget - Only for Students */}
-      {user?.role === "user" && <CRSWidget />}
+      {/* CRS Widget - Only for IP-DRG Students */}
+      {user?.role === "user" && <CRSWidget courseCategory={courseCategory} />}
       
       {/* AI Assistance Widget - Only for Students */}
       {user?.role === "user" && <AIAssistance />}
