@@ -255,9 +255,6 @@ const StudentDashboard = () => {
           }
           return true;
         });
-      case 'avgScore':
-        // For average score, we'll show all assignments with their scores
-        return assignments;
       default:
         return assignments;
     }
@@ -577,21 +574,6 @@ const StudentDashboard = () => {
 
         <div 
           className="stat-card clickable-card" 
-          onClick={() => handleCardClick('avgScore')}
-          title="Click to view assignments with scores"
-        >
-          <div className="stat-icon">
-            <FiTrendingUp size={24} />
-          </div>
-          <div className="stat-content">
-            <h3>Average Score</h3>
-            <p className="stat-value">{studentData.averageScore}%</p>
-            <p className="stat-label">Your performance</p>
-          </div>
-        </div>
-
-        <div 
-          className="stat-card clickable-card" 
           onClick={() => handleCardClick('pending')}
           title="Click to view pending assignments"
         >
@@ -614,7 +596,6 @@ const StudentDashboard = () => {
               {filteredView === 'total' && 'All Assignments'}
               {filteredView === 'completed' && 'Completed Assignments'}
               {filteredView === 'pending' && 'Pending Assignments'}
-              {filteredView === 'avgScore' && 'Assignments with Scores'}
             </h2>
             <button 
               className="clear-filter-btn" 
@@ -678,13 +659,6 @@ const StudentDashboard = () => {
                       </div>
                     )}
                     
-                    {filteredView === 'avgScore' && submission && (
-                      <div className="assignment-score">
-                        <span>Score: {submission.overallProgress || 0}%</span>
-                        <span>Correct: {submission.totalCorrect || 0}</span>
-                        <span>Wrong: {submission.totalWrong || 0}</span>
-                      </div>
-                    )}
                     
                     <div className="assignment-details">
                       <span>Assigned: {formatDate(assignment.assignedDate)}</span>
@@ -705,7 +679,6 @@ const StudentDashboard = () => {
                   {filteredView === 'completed' && 'No completed assignments yet.'}
                   {filteredView === 'pending' && 'No pending assignments.'}
                   {filteredView === 'total' && 'No assignments found.'}
-                  {filteredView === 'avgScore' && 'No assignments with scores available.'}
                 </p>
               </div>
             )}
@@ -713,22 +686,6 @@ const StudentDashboard = () => {
         </div>
       )}
 
-      {/* Progress Section */}
-      <div className="progress-section">
-        <div className="progress-card">
-          <h2>Overall Progress</h2>
-          <div className="progress-bar-container">
-            <div
-              className="progress-bar"
-              style={{ width: `${studentData.courseProgress}%` }}
-            ></div>
-          </div>
-          <div className="progress-details">
-            <span>Course Progress {studentData.courseProgress}%</span>
-            <span>Assignment Completion {studentData.assignmentCompletion}</span>
-          </div>
-        </div>
-      </div>
 
       {/* Info Section */}
       <div className="info-grid">
