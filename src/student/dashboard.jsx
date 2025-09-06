@@ -23,6 +23,10 @@ const StudentDashboard = () => {
   const [resultData, setResultData] = useState(null);
   const [resultLoading, setResultLoading] = useState(false);
 
+  // New state for filtered assignments view
+  const [filteredView, setFilteredView] = useState(null); // 'total', 'completed', 'pending', 'avgScore'
+  const [filteredAssignments, setFilteredAssignments] = useState([]);
+
   // --- Helpers ---
   const displayValue = (val) => {
     if (val === null || val === undefined) return '';
@@ -181,6 +185,37 @@ const StudentDashboard = () => {
       };
     }).filter(Boolean);
   }, [assignments]);
+
+  // --- Assignment Filtering Logic ---
+  const filterAssignments = useCallback((filterType) => {
+    if (!Array.isArray(assignments)) return [];
+
+    switch (filterType) {
+      case 'total':
+        return assignments;
+      case 'completed':
+        return assignments.filter(assignment => assignment.isCompleted === true);
+      case 'pending':
+        return assignments.filter(assignment => assignment.isCompleted !== true);
+      case 'avgScore':
+        // For average score, we'll show all assignments with their scores
+        return assignments;
+      default:
+        return assignments;
+    }
+  }, [assignments]);
+
+  // --- Card Click Handlers ---
+  const handleCardClick = (cardType) => {
+    const filtered = filterAssignments(cardType);
+    setFilteredAssignments(filtered);
+    setFilteredView(cardType);
+  };
+
+  const clearFilter = () => {
+    setFilteredView(null);
+    setFilteredAssignments([]);
+  };
 
   // --- Handlers ---
   const handleSubmissionClick = (submission) => {
@@ -452,7 +487,11 @@ const StudentDashboard = () => {
 
       {/* Stats Section */}
       <div className="stats-grid">
-        <div className="stat-card">
+        <div 
+          className="stat-card clickable-card" 
+          onClick={() => handleCardClick('total')}
+          title="Click to view all assignments"
+        >
           <div className="stat-icon">
             <FiBook size={24} />
           </div>
@@ -463,7 +502,11 @@ const StudentDashboard = () => {
           </div>
         </div>
 
-        <div className="stat-card">
+        <div 
+          className="stat-card clickable-card" 
+          onClick={() => handleCardClick('completed')}
+          title="Click to view completed assignments"
+        >
           <div className="stat-icon">
             <FiCheckCircle size={24} />
           </div>
@@ -474,7 +517,11 @@ const StudentDashboard = () => {
           </div>
         </div>
 
-        <div className="stat-card">
+        <div 
+          className="stat-card clickable-card" 
+          onClick={() => handleCardClick('avgScore')}
+          title="Click to view assignments with scores"
+        >
           <div className="stat-icon">
             <FiTrendingUp size={24} />
           </div>
@@ -485,7 +532,11 @@ const StudentDashboard = () => {
           </div>
         </div>
 
-        <div className="stat-card">
+        <div 
+          className="stat-card clickable-card" 
+          onClick={() => handleCardClick('pending')}
+          title="Click to view pending assignments"
+        >
           <div className="stat-icon">
             <FiAlertCircle size={24} />
           </div>
@@ -496,6 +547,99 @@ const StudentDashboard = () => {
           </div>
         </div>
       </div>
+
+      {/* Filtered Assignments Section */}
+      {filteredView && (
+        <div className="filtered-assignments-section">
+          <div className="filtered-header">
+            <h2>
+              {filteredView === 'total' && 'All Assignments'}
+              {filteredView === 'completed' && 'Completed Assignments'}
+              {filteredView === 'pending' && 'Pending Assignments'}
+              {filteredView === 'avgScore' && 'Assignments with Scores'}
+            </h2>
+            <button 
+              className="clear-filter-btn" 
+              onClick={clearFilter}
+              title="Clear filter and return to dashboard"
+            >
+              <FiX size={16} />
+              Clear Filter
+            </button>
+          </div>
+          
+          <div className="filtered-assignments-container">
+            {filteredAssignments.length > 0 ? (
+              filteredAssignments.map((assignment, index) => {
+                const completed = assignment.isCompleted === true;
+                const submission = submissions.find(s => s.assignmentId === assignment.assignmentId);
+                
+                return (
+                  <div
+                    key={`${assignment.assignmentId || 'a'}-${index}`}
+                    className={`filtered-assignment-item ${
+                      completed ? '' : 'filtered-assignment-item--disabled'
+                    }`}
+                    onClick={() =>
+                      completed && submission ? handleSubmissionClick(submission) : null
+                    }
+                    title={
+                      completed
+                        ? 'Click to view result'
+                        : 'Result available after completion'
+                    }
+                    style={{
+                      cursor: completed ? 'pointer' : 'not-allowed',
+                      opacity: completed ? 1 : 0.6,
+                    }}
+                  >
+                    <div className="filtered-assignment-header">
+                      <FiAward className="filtered-assignment-icon" />
+                      <h3>
+                        {assignment.assignmentName || assignment.moduleName || 'Assignment'}
+                      </h3>
+                      <span
+                        className={`status-badge ${
+                          completed
+                            ? 'status-badge--completed'
+                            : 'status-badge--pending'
+                        }`}
+                      >
+                        {completed ? 'Completed' : 'Pending'}
+                      </span>
+                    </div>
+                    
+                    {filteredView === 'avgScore' && submission && (
+                      <div className="assignment-score">
+                        <span>Score: {submission.overallProgress || 0}%</span>
+                        <span>Correct: {submission.totalCorrect || 0}</span>
+                        <span>Wrong: {submission.totalWrong || 0}</span>
+                      </div>
+                    )}
+                    
+                    <div className="assignment-details">
+                      <span>Assigned: {formatDate(assignment.assignedDate)}</span>
+                      {assignment.dueDate && (
+                        <span>Due: {formatDate(assignment.dueDate)}</span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })
+            ) : (
+              <div className="no-filtered-assignments">
+                <FiClock size={32} />
+                <p>
+                  {filteredView === 'completed' && 'No completed assignments yet.'}
+                  {filteredView === 'pending' && 'No pending assignments.'}
+                  {filteredView === 'total' && 'No assignments found.'}
+                  {filteredView === 'avgScore' && 'No assignments with scores available.'}
+                </p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Progress Section */}
       <div className="progress-section">
