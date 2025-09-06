@@ -10,7 +10,7 @@ const API_BASE = 'https://el-backend-ashen.vercel.app';
 
 const PdfReader = ({ url, height = '60vh', watermark = '' }) => {
   const [blobUrl, setBlobUrl] = useState('');
-  the
+ 
   const [err, setErr] = useState('');
   const [viewKey, setViewKey] = useState(0);
   const currentBlob = useRef('');
@@ -270,8 +270,7 @@ const NewAssignments = () => {
       const isAlreadyDone = selectedSub ? selectedSub.isCompleted : assignmentData.isCompleted;
 
       // If we have frozen answers (from time-up earlier), load them & keep frozen
-      const frozen = loadFrozenAnswers(userId, assignmentData._id, selectedSub?._id : null);
-
+      const frozen = loadFrozenAnswers(userId, assignmentData._id, selectedSub?._id);
       if (frozen?.timeUp) {
         setAnswers(frozen.answers || {});
         setTimeUp(true);
