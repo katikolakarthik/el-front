@@ -600,3 +600,37 @@ body {
   font-size: 12px;
   line-height: 1;
 }
+
+/* Student Management Styles */
+.student-actions {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.student-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem;
+  border-bottom: 1px solid var(--gray-200);
+  transition: var(--transition);
+}
+
+.student-item:hover {
+  background: var(--gray-50);
+}
+
+.student-content {
+  flex: 1;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.student-controls {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
