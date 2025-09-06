@@ -8,46 +8,100 @@ import './AssignmentFlow.css';
 
 const API_BASE = 'https://el-backend-ashen.vercel.app';
 
+/* ================== Robust PDF viewer ================== */
 const PdfReader = ({ url, height = '60vh', watermark = '' }) => {
   const [blobUrl, setBlobUrl] = useState('');
   const [err, setErr] = useState('');
   const [viewKey, setViewKey] = useState(0);
   const currentBlob = useRef('');
+
   useEffect(() => {
     let abort = false;
     const ctrl = new AbortController();
     (async () => {
       try {
-        setErr(''); setBlobUrl(''); setViewKey((k) => k + 1);
+        setErr('');
+        setBlobUrl('');
+        setViewKey((k) => k + 1);
         const res = await fetch(url, { signal: ctrl.signal, cache: 'no-store' });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const buf = await res.arrayBuffer();
         if (abort) return;
         const blob = new Blob([buf], { type: 'application/pdf' });
         const bUrl = URL.createObjectURL(blob);
-        currentBlob.current = bUrl; setBlobUrl(bUrl);
-      } catch (e) { if (e.name !== 'AbortError') setErr('Unable to load PDF'); }
+        currentBlob.current = bUrl;
+        setBlobUrl(bUrl);
+      } catch (e) {
+        if (e.name !== 'AbortError') setErr('Unable to load PDF');
+      }
     })();
+
     return () => {
-      abort = true; ctrl.abort();
-      if (currentBlob.current) { URL.revokeObjectURL(currentBlob.current); currentBlob.current = ''; }
+      abort = true;
+      ctrl.abort();
+      if (currentBlob.current) {
+        URL.revokeObjectURL(currentBlob.current);
+        currentBlob.current = '';
+      }
     };
   }, [url]);
+
   return (
-    <div style={{ position: 'relative', height, border: '1px solid #eee', borderRadius: 8, overflow: 'hidden', userSelect: 'none', WebkitTouchCallout: 'none', background: '#fff' }} onContextMenu={(e) => e.preventDefault()}>
+    <div
+      style={{
+        position: 'relative',
+        height,
+        border: '1px solid #eee',
+        borderRadius: 8,
+        overflow: 'hidden',
+        userSelect: 'none',
+        WebkitTouchCallout: 'none',
+        background: '#fff',
+      }}
+      onContextMenu={(e) => e.preventDefault()}
+    >
       {watermark && (
-        <div style={{ pointerEvents: 'none', position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', opacity: 0.08, fontSize: 28, fontWeight: 700, textAlign: 'center' }}>
+        <div
+          style={{
+            pointerEvents: 'none',
+            position: 'absolute',
+            inset: 0,
+            display: 'grid',
+            placeItems: 'center',
+            opacity: 0.08,
+            fontSize: 28,
+            fontWeight: 700,
+            textAlign: 'center',
+          }}
+        >
           {watermark}
         </div>
       )}
       <Worker workerUrl="https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.worker.min.js">
-        {err && <div style={{ padding: 16, color: '#b00020' }}>{err} {url && (<a href={url} target="_blank" rel="noreferrer" style={{ textDecoration: 'underline' }}>Open PDF in new tab</a>)}</div>}
+        {err && (
+          <div style={{ padding: 16, color: '#b00020' }}>
+            {err}{' '}
+            {url && (
+              <a href={url} target="_blank" rel="noreferrer" style={{ textDecoration: 'underline' }}>
+                Open PDF in new tab
+              </a>
+            )}
+          </div>
+        )}
         {!err && !blobUrl && <div style={{ padding: 16 }}>Loading PDF…</div>}
-        {!err && blobUrl && <Viewer key={viewKey} fileUrl={blobUrl} defaultScale={SpecialZoomLevel.PageWidth} onDocumentLoadFail={() => setErr('Failed to render PDF')} />}
+        {!err && blobUrl && (
+          <Viewer
+            key={viewKey}
+            fileUrl={blobUrl}
+            defaultScale={SpecialZoomLevel.PageWidth}
+            onDocumentLoadFail={() => setErr('Failed to render PDF')}
+          />
+        )}
       </Worker>
     </div>
   );
 };
+/* ======================================================= */
 
 const normalizeAssignment = (raw) => {
   const norm = { ...raw };
@@ -122,7 +176,23 @@ const chip = (text, tone = 'neutral', title = '') => {
   const bd = tone === 'good' ? '#bfe6c7' : tone === 'bad' ? '#f3c1bf' : '#e5e7eb';
   const col = tone === 'good' ? '#1b5e20' : tone === 'bad' ? '#7f1d1d' : '#374151';
   return (
-    <span title={title} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 8px', borderRadius: 999, fontSize: 12, background: bg, border: `1px solid ${bd}`, color: col, lineHeight: 1, marginRight: 6, marginBottom: 6 }}>
+    <span
+      title={title}
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 6,
+        padding: '4px 8px',
+        borderRadius: 999,
+        fontSize: 12,
+        background: bg,
+        border: `1px solid ${bd}`,
+        color: col,
+        lineHeight: 1,
+        marginRight: 6,
+        marginBottom: 6,
+      }}
+    >
       {text}
     </span>
   );
@@ -147,6 +217,8 @@ const NewAssignments = () => {
   const [timerEndMs, setTimerEndMs] = useState(null);
   const timerRef = useRef(null);
   const autoSubmittingRef = useRef(false);
+  const hasAutoTriggeredRef = useRef(false);   // one-shot guard
+  const deadlineTimeoutRef = useRef(null);     // absolute deadline timeout
   const questionsRef = useRef(null);
 
   const [resultLoading, setResultLoading] = useState(false);
@@ -156,13 +228,20 @@ const NewAssignments = () => {
   useEffect(() => {
     const fetchAssignments = async () => {
       try {
-        setLoading(true); setError(null);
+        setLoading(true);
+        setError(null);
         const userId = localStorage.getItem('userId');
         if (!userId) throw new Error('User ID not found');
         const courseResp = await axios.get(`${API_BASE}/student/${userId}/course`);
-        const courseName = courseResp?.data?.courseName || courseResp?.data?.course?.name || courseResp?.data?.course?.courseName || null;
+        const courseName =
+          courseResp?.data?.courseName ||
+          courseResp?.data?.course?.name ||
+          courseResp?.data?.course?.courseName ||
+          null;
         if (!courseName) throw new Error('Course name not found for this student');
-        const asgResp = await axios.get(`${API_BASE}/category/${encodeURIComponent(courseName)}?studentId=${userId}`);
+        const asgResp = await axios.get(
+          `${API_BASE}/category/${encodeURIComponent(courseName)}?studentId=${userId}`
+        );
         let assignmentsData = [];
         if (asgResp?.data?.success && Array.isArray(asgResp.data.assignments)) assignmentsData = asgResp.data.assignments;
         else if (Array.isArray(asgResp?.data)) assignmentsData = asgResp.data;
@@ -172,7 +251,9 @@ const NewAssignments = () => {
       } catch (err) {
         if (err.response?.status === 404) setAssignments([]);
         else setError(err?.message || 'Failed to fetch assignments');
-      } finally { setLoading(false); }
+      } finally {
+        setLoading(false);
+      }
     };
     fetchAssignments();
   }, []);
@@ -182,14 +263,18 @@ const NewAssignments = () => {
     if (!searchLower) return assignments;
     return assignments.filter((a) => {
       const mod = (a.moduleName || '').toLowerCase();
-      const subMatch = (a.subAssignments || []).some((s) => (s.subModuleName || '').toLowerCase().includes(searchLower));
+      const subMatch = (a.subAssignments || []).some((s) =>
+        (s.subModuleName || '').toLowerCase().includes(searchLower)
+      );
       return mod.includes(searchLower) || subMatch;
     });
   }, [assignments, searchLower]);
+
   const sorted = useMemo(() => {
     const list = [...filtered];
     list.sort((a, b) => {
-      const da = ms(a.assignedDate), db = ms(b.assignedDate);
+      const da = ms(a.assignedDate),
+        db = ms(b.assignedDate);
       return sortOrder === 'newest' ? db - da : da - db;
     });
     return list;
@@ -201,19 +286,24 @@ const NewAssignments = () => {
   };
 
   const fetchResultForView = async (studentId, assignmentId) => {
-    setResultLoading(true); setResultError(''); setViewResult(null);
+    setResultLoading(true);
+    setResultError('');
+    setViewResult(null);
     try {
       const { data } = await axios.post(`${API_BASE}/result`, { studentId, assignmentId });
       if (!data) throw new Error('No result data');
       setViewResult(data);
     } catch (e) {
       setResultError(e?.response?.data?.message || e.message);
-    } finally { setResultLoading(false); }
+    } finally {
+      setResultLoading(false);
+    }
   };
 
   const handleStart = async (assignmentId, subAssignmentId = null) => {
     try {
-      setStartingId(`${assignmentId}:${subAssignmentId || 'parent'}`); setError('');
+      setStartingId(`${assignmentId}:${subAssignmentId || 'parent'}`);
+      setError('');
       const fromList = assignments.find((a) => String(a._id) === String(assignmentId));
       if (!fromList) throw new Error('Assignment not found in list');
       const assignmentData = normalizeAssignment(fromList);
@@ -228,7 +318,9 @@ const NewAssignments = () => {
 
       let selectedSub = null;
       if (subAssignmentId) {
-        const idx = assignmentData.subAssignments.findIndex((s) => String(s._id) === String(subAssignmentId));
+        const idx = assignmentData.subAssignments.findIndex(
+          (s) => String(s._id) === String(subAssignmentId)
+        );
         selectedSub = assignmentData.subAssignments[idx] || null;
         setActiveSubAssignment(selectedSub);
       } else {
@@ -236,49 +328,117 @@ const NewAssignments = () => {
       }
 
       setAnswers({});
-      setViewResult(null); setResultError(''); setResultLoading(false);
+      setViewResult(null);
+      setResultError('');
+      setResultLoading(false);
 
       const userId = localStorage.getItem('userId');
       const isAlreadyDone = selectedSub ? selectedSub.isCompleted : assignmentData.isCompleted;
 
       if (!isAlreadyDone) {
         const endMs = getOrStartTimerEnd(userId, assignmentData, selectedSub);
-        if (endMs) initCountdown(endMs); else clearCountdown();
+        if (endMs) initCountdown(endMs);
+        else clearCountdown();
       } else {
-        clearCountdown();
+        clearCountdown(); // ensure no timer on view-only
         await fetchResultForView(userId, assignmentData._id);
       }
 
-      setTimeout(() => { questionsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 100);
+      setTimeout(() => {
+        questionsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 100);
     } catch (err) {
       setError(err.message);
-    } finally { setStartingId(null); }
+    } finally {
+      setStartingId(null);
+    }
   };
 
+  /* ================= TIMER: clear / init / auto-submit ================= */
   const clearCountdown = () => {
-    if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
-    setCountdown(null); setTimerEndMs(null);
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+    if (deadlineTimeoutRef.current) {
+      clearTimeout(deadlineTimeoutRef.current);
+      deadlineTimeoutRef.current = null;
+    }
+    hasAutoTriggeredRef.current = false;
+    setCountdown(null);
+    setTimerEndMs(null);
   };
+
   const initCountdown = (endMs) => {
-    clearCountdown(); if (!endMs) return;
+    clearCountdown();
+    if (!endMs) return;
     setTimerEndMs(endMs);
+
+    // UI ticker (may be throttled in background)
     const tick = () => {
       const left = endMs - Date.now();
-      if (left <= 0) { setCountdown(0); clearInterval(timerRef.current); timerRef.current = null; triggerAutoSubmit(); }
-      else setCountdown(left);
+      if (left <= 0) {
+        setCountdown(0);
+        if (timerRef.current) {
+          clearInterval(timerRef.current);
+          timerRef.current = null;
+        }
+        triggerAutoSubmit(); // guard ensures single-shot
+      } else {
+        setCountdown(left);
+      }
     };
-    tick(); timerRef.current = setInterval(tick, 500);
+    tick();
+    timerRef.current = setInterval(tick, 500);
   };
+
   const triggerAutoSubmit = async () => {
-    if (autoSubmittingRef.current) return;
+    if (autoSubmittingRef.current || hasAutoTriggeredRef.current) return;
+    hasAutoTriggeredRef.current = true;
     autoSubmittingRef.current = true;
     try {
       const src = activeSubAssignment || activeAssignment;
       if (!src || src.isCompleted) return;
       await handleSubmit(true);
-    } finally { autoSubmittingRef.current = false; }
+    } finally {
+      autoSubmittingRef.current = false;
+    }
   };
-  useEffect(() => () => clearCountdown(), []);
+
+  // Absolute deadline + visibility fallback
+  useEffect(() => {
+    if (!timerEndMs) return;
+
+    const msLeft = timerEndMs - Date.now();
+    if (msLeft <= 0) {
+      triggerAutoSubmit();
+      return;
+    }
+
+    deadlineTimeoutRef.current = setTimeout(() => {
+      triggerAutoSubmit();
+    }, msLeft + 50);
+
+    const onVis = () => {
+      if (document.visibilityState === 'visible' && Date.now() >= timerEndMs) {
+        triggerAutoSubmit();
+      }
+    };
+    document.addEventListener('visibilitychange', onVis);
+
+    return () => {
+      if (deadlineTimeoutRef.current) {
+        clearTimeout(deadlineTimeoutRef.current);
+        deadlineTimeoutRef.current = null;
+      }
+      document.removeEventListener('visibilitychange', onVis);
+    };
+  }, [timerEndMs]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    return () => clearCountdown();
+  }, []);
+  /* ===================================================================== */
 
   const csvToArray = (str = '') => str.split(',').map((s) => s.trim()).filter(Boolean);
 
@@ -289,24 +449,36 @@ const NewAssignments = () => {
       if (!userId) throw new Error('User ID not found');
 
       const payload = { studentId: userId, assignmentId: activeAssignment._id, submittedAnswers: [] };
-      const buildDynamic = (qs, prefix = 'dynamic') => qs.map((q, idx) => ({ questionText: q.questionText, submittedAnswer: answers[`${prefix}-${idx}`] || '' }));
+      const buildDynamic = (qs, prefix = 'dynamic') =>
+        qs.map((q, idx) => ({ questionText: q.questionText, submittedAnswer: answers[`${prefix}-${idx}`] || '' }));
+
       const buildPredefinedPayload = () => {
         const category = activeAssignment?.category;
         const base = {
-          patientName: answers.patientName || '', ageOrDob: answers.ageOrDob || '',
-          icdCodes: csvToArray(answers.icdCodes || ''), cptCodes: csvToArray(answers.cptCodes || ''),
-          pcsCodes: csvToArray(answers.pcsCodes || ''), hcpcsCodes: csvToArray(answers.hcpcsCodes || ''),
-          drgValue: answers.drgValue || '', modifiers: csvToArray(answers.modifiers || ''),
-          notes: answers.notes || '', adx: answers.adx || '',
+          patientName: answers.patientName || '',
+          ageOrDob: answers.ageOrDob || '',
+          icdCodes: csvToArray(answers.icdCodes || ''),
+          cptCodes: csvToArray(answers.cptCodes || ''),
+          pcsCodes: csvToArray(answers.pcsCodes || ''),
+          hcpcsCodes: csvToArray(answers.hcpcsCodes || ''),
+          drgValue: answers.drgValue || '',
+          modifiers: csvToArray(answers.modifiers || ''),
+          notes: answers.notes || '',
+          adx: answers.adx || '',
         };
         const filtered = {};
-        Object.entries(base).forEach(([k, v]) => { if (showField(category, k) || k === 'notes' || k === 'adx') filtered[k] = v; });
+        Object.entries(base).forEach(([k, v]) => {
+          if (showField(category, k) || k === 'notes' || k === 'adx') filtered[k] = v;
+        });
         return filtered;
       };
 
       if (activeSubAssignment) {
         if ((activeSubAssignment.questions || []).some((q) => q.type === 'dynamic')) {
-          payload.submittedAnswers.push({ subAssignmentId: activeSubAssignment._id, dynamicQuestions: buildDynamic(activeSubAssignment.questions, 'dynamic') });
+          payload.submittedAnswers.push({
+            subAssignmentId: activeSubAssignment._id,
+            dynamicQuestions: buildDynamic(activeSubAssignment.questions, 'dynamic'),
+          });
         } else {
           payload.submittedAnswers.push({ subAssignmentId: activeSubAssignment._id, ...buildPredefinedPayload() });
         }
@@ -319,12 +491,18 @@ const NewAssignments = () => {
       }
 
       const res = await axios.post(`${API_BASE}/student/submit-assignment`, payload);
-      if (!res.data?.success) { alert(res.data?.message || 'Failed to submit assignment'); return; }
+      if (!res.data?.success) {
+        alert(res.data?.message || 'Failed to submit assignment');
+        return;
+      }
 
+      // mark completed in local state + clear TTL key
       if (activeSubAssignment) {
         setActiveAssignment((prev) => {
           if (!prev) return prev;
-          const updatedSubs = (prev.subAssignments || []).map((s) => String(s._id) === String(activeSubAssignment._id) ? { ...s, isCompleted: true } : s);
+          const updatedSubs = (prev.subAssignments || []).map((s) =>
+            String(s._id) === String(activeSubAssignment._id) ? { ...s, isCompleted: true } : s
+          );
           const parentCompleted = updatedSubs.every((s) => s.isCompleted);
           return { ...prev, subAssignments: updatedSubs, isCompleted: parentCompleted || prev.isCompleted };
         });
@@ -335,12 +513,16 @@ const NewAssignments = () => {
         clearTimerKey(userId, activeAssignment._id, null);
       }
 
+      // refresh list (best-effort)
       try {
         const userId2 = localStorage.getItem('userId');
         const courseResp2 = await axios.get(`${API_BASE}/student/${userId2}/course`);
-        const courseName2 = courseResp2?.data?.courseName || courseResp2?.data?.course?.name || courseResp2?.data?.course?.courseName;
+        const courseName2 =
+          courseResp2?.data?.courseName || courseResp2?.data?.course?.name || courseResp2?.data?.course?.courseName;
         if (courseName2) {
-          const asgResp2 = await axios.get(`${API_BASE}/category/${encodeURIComponent(courseName2)}?studentId=${userId2}`);
+          const asgResp2 = await axios.get(
+            `${API_BASE}/category/${encodeURIComponent(courseName2)}?studentId=${userId2}`
+          );
           let refreshed = [];
           if (asgResp2?.data?.success && Array.isArray(asgResp2.data.assignments)) refreshed = asgResp2.data.assignments;
           else if (Array.isArray(asgResp2?.data)) refreshed = asgResp2.data;
@@ -350,25 +532,36 @@ const NewAssignments = () => {
         }
       } catch {}
 
+      // alerts & navigation / results
       if (activeSubAssignment && (activeAssignment.subAssignments || []).length > 0) {
-        const idx = activeAssignment.subAssignments.findIndex((sub) => String(sub._id) === String(activeSubAssignment._id));
+        const idx = activeAssignment.subAssignments.findIndex(
+          (sub) => String(sub._id) === String(activeSubAssignment._id)
+        );
         if (idx < activeAssignment.subAssignments.length - 1) {
           alert(isAuto ? '⏰ Time is up. Your answers were auto-submitted.' : 'Submitted. You can open any other section now.');
           setActiveSubAssignment({ ...activeAssignment.subAssignments[idx + 1], isCompleted: false });
-          setTimeout(() => { questionsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 150);
+          setTimeout(() => {
+            questionsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          }, 150);
         } else {
           alert(isAuto ? '⏰ Time is up. Your answers were auto-submitted.' : 'Assignment completed successfully!');
-          setActiveSubAssignment(null); setActiveAssignment(null); clearCountdown();
+          setActiveSubAssignment(null);
+          setActiveAssignment(null);
+          clearCountdown();
         }
       } else {
         alert(isAuto ? '⏰ Time is up. Your answers were auto-submitted.' : 'Assignment submitted successfully!');
-        await fetchResultForView(userId, activeAssignment._id);
+        // show result in-place for single-type views
+        const userId3 = localStorage.getItem('userId');
+        await fetchResultForView(userId3, activeAssignment._id);
       }
 
       setAnswers({});
     } catch (err) {
       alert('Error: ' + err.message);
-    } finally { setSubmitting(false); }
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const handleAnswerChange = (key, value) => setAnswers((p) => ({ ...p, [key]: value }));
@@ -380,23 +573,31 @@ const NewAssignments = () => {
     return <span className="badge badge-pending">Timed ({minutes}m)</span>;
   };
 
-  // ----- pick the correct block for current view (single vs multi) -----
-  const pickResultBlock = (target) => {
+  // pick result block (single or active sub for multi)
+  const pickResultBlock = () => {
     if (!viewResult || !viewResult.data) return null;
     const type = viewResult.assignmentType || 'single';
     if (type === 'single') return viewResult.data;
     if (!activeSubAssignment) return null;
     const arr = Array.isArray(viewResult.data) ? viewResult.data : [];
-    let blk = arr.find(b => String(b?.submitted?.subAssignmentId) === String(activeSubAssignment._id));
-    if (!blk) blk = arr.find(b => (b?.subModuleName || '').toLowerCase() === (activeSubAssignment?.subModuleName || '').toLowerCase());
+    let blk = arr.find(
+      (b) => String(b?.submitted?.subAssignmentId) === String(activeSubAssignment._id)
+    );
+    if (!blk)
+      blk = arr.find(
+        (b) =>
+          (b?.subModuleName || '').toLowerCase() ===
+          (activeSubAssignment?.subModuleName || '').toLowerCase()
+      );
     return blk || null;
   };
-// ---------- RESULTS RENDERERS ----------
+
+  /* ====================== RESULTS RENDERERS ====================== */
   const renderDynamicViewOnly = (resultBlock) => {
     if (!resultBlock) return null;
     const submittedDyn = resultBlock.submitted?.dynamicQuestions || [];
     const corrList = resultBlock.correctDynamicQuestions || [];
-    const correctMap = new Map(corrList.map(q => [q.questionText, q.answer]));
+    const correctMap = new Map(corrList.map((q) => [q.questionText, q.answer]));
     const toRender = submittedDyn.length ? submittedDyn : [];
     return toRender.map((q, idx) => {
       const qText = q.questionText;
@@ -408,7 +609,9 @@ const NewAssignments = () => {
         <div key={idx} className="q-block">
           <p className="q-title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             {qText}
-            {isCorrect ? chip('Correct', 'good', 'Your answer is correct') : chip('Wrong', 'bad', 'Your answer is wrong')}
+            {isCorrect
+              ? chip('Correct', 'good', 'Your answer is correct')
+              : chip('Wrong', 'bad', 'Your answer is wrong')}
           </p>
           <div className="q-options">
             {options.map((opt, i) => {
@@ -417,20 +620,43 @@ const NewAssignments = () => {
               let outline = '#d1d5db';
               let title = '';
               let icon = null;
-              if (isTheCorrect) { outline = '#10b981'; title = 'Correct answer'; icon = <FiCheck aria-hidden />; }
-              if (selected && !isTheCorrect) { outline = '#ef4444'; title = 'Your selected (incorrect)'; icon = <FiX aria-hidden />; }
-              if (selected && isTheCorrect) { title = 'You selected (correct)'; }
+              if (isTheCorrect) {
+                outline = '#10b981';
+                title = 'Correct answer';
+                icon = <FiCheck aria-hidden />;
+              }
+              if (selected && !isTheCorrect) {
+                outline = '#ef4444';
+                title = 'Your selected (incorrect)';
+                icon = <FiX aria-hidden />;
+              }
+              if (selected && isTheCorrect) {
+                title = 'You selected (correct)';
+              }
               return (
                 <label key={i} className="q-option" title={title} style={{ borderColor: outline }}>
                   <input type="radio" name={`q${idx}`} value={opt} checked={selected} readOnly disabled />
-                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>{opt} {icon}</span>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                    {opt} {icon}
+                  </span>
                 </label>
               );
             })}
             {!options.length && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                <input className="input" type="text" value={submittedAnswer || ''} readOnly disabled placeholder="Your answer" title={isCorrect ? 'Your answer is correct' : 'Your answer is wrong'} style={{ borderColor: isCorrect ? '#10b981' : '#ef4444' }} />
-                <div style={{ fontSize: 12 }}>{chip(`Correct: ${correctAnswer || '—'}`, isCorrect ? 'good' : 'neutral', 'Correct answer')}</div>
+                <input
+                  className="input"
+                  type="text"
+                  value={submittedAnswer || ''}
+                  readOnly
+                  disabled
+                  placeholder="Your answer"
+                  title={isCorrect ? 'Your answer is correct' : 'Your answer is wrong'}
+                  style={{ borderColor: isCorrect ? '#10b981' : '#ef4444' }}
+                />
+                <div style={{ fontSize: 12 }}>
+                  {chip(`Correct: ${correctAnswer || '—'}`, isCorrect ? 'good' : 'neutral', 'Correct answer')}
+                </div>
               </div>
             )}
           </div>
@@ -444,8 +670,8 @@ const NewAssignments = () => {
     const submitted = resultBlock.submitted || {};
     const key = resultBlock.correctAnswerKey || {};
     const field = (label, yourVal, correctVal, isList = false) => {
-      const yourArr = isList ? asArray(yourVal) : (yourVal ? [yourVal] : []);
-      const correctArr = isList ? asArray(correctVal) : (correctVal ? [correctVal] : []);
+      const yourArr = isList ? asArray(yourVal) : yourVal ? [yourVal] : [];
+      const correctArr = isList ? asArray(correctVal) : correctVal ? [correctVal] : [];
       const ok = arrEq(yourArr, correctArr);
       return (
         <div className="form-item">
@@ -463,7 +689,9 @@ const NewAssignments = () => {
         </div>
       );
     };
-    const show = (f) => showField(category, f) || f === 'notes' || f === 'adx';
+
+
+ const show = (f) => showField(category, f) || f === 'notes' || f === 'adx';
     return (
       <div className="form-grid">
         {show('patientName') && field('Patient Name', submitted.patientName, key.patientName, false)}
@@ -479,6 +707,7 @@ const NewAssignments = () => {
       </div>
     );
   };
+  /* ================================================================ */
 
   const renderQuestions = (target) => {
     if (!target) return null;
@@ -487,13 +716,18 @@ const NewAssignments = () => {
     const dynamicQs = qs.filter((q) => q.type === 'dynamic');
     const category = activeAssignment?.category;
 
+    // View-only (completed) -> pull from /result
     if (isCompleted && viewResult) {
-      const block = pickResultBlock(target);
+      const block = pickResultBlock();
       if (!block) return <p className="muted">No results for this section.</p>;
-      const hasDyn = (block.submitted?.dynamicQuestions || []).length > 0 || (block.correctDynamicQuestions || []).length > 0 || dynamicQs.length > 0;
+      const hasDyn =
+        (block.submitted?.dynamicQuestions || []).length > 0 ||
+        (block.correctDynamicQuestions || []).length > 0 ||
+        dynamicQs.length > 0;
       return hasDyn ? renderDynamicViewOnly(block) : renderPredefinedViewOnly(category, block);
     }
 
+    // Entry UI (not completed)
     const readOnly = submitting;
 
     if (dynamicQs.length > 0) {
@@ -507,13 +741,27 @@ const NewAssignments = () => {
               <div className="q-options">
                 {options.map((opt, i) => (
                   <label key={i} className="q-option">
-                    <input type="radio" name={`q${idx}`} value={opt} checked={answers[key] === opt} onChange={(e) => handleAnswerChange(key, e.target.value)} disabled={readOnly} />
+                    <input
+                      type="radio"
+                      name={`q${idx}`}
+                      value={opt}
+                      checked={answers[key] === opt}
+                      onChange={(e) => handleAnswerChange(key, e.target.value)}
+                      disabled={readOnly}
+                    />
                     <span>{opt}</span>
                   </label>
                 ))}
               </div>
             ) : (
-              <input className="input" type="text" placeholder="Type your answer" value={answers[key] || ''} onChange={(e) => handleAnswerChange(key, e.target.value)} disabled={readOnly} />
+              <input
+                className="input"
+                type="text"
+                placeholder="Type your answer"
+                value={answers[key] || ''}
+                onChange={(e) => handleAnswerChange(key, e.target.value)}
+                disabled={readOnly}
+              />
             )}
           </div>
         );
@@ -527,58 +775,125 @@ const NewAssignments = () => {
           {showField(category, 'patientName') && (
             <div className="form-item">
               <label className="label">Patient Name</label>
-              <input className="input" type="text" value={answers.patientName || ''} onChange={(e) => handleAnswerChange('patientName', e.target.value)} disabled={readOnly} />
+              <input
+                className="input"
+                type="text"
+                value={answers.patientName || ''}
+                onChange={(e) => handleAnswerChange('patientName', e.target.value)}
+                disabled={readOnly}
+              />
             </div>
           )}
           {showField(category, 'ageOrDob') && (
             <div className="form-item">
               <label className="label">Age / DOB</label>
-              <input className="input" type="text" value={answers.ageOrDob || ''} onChange={(e) => handleAnswerChange('ageOrDob', e.target.value)} disabled={readOnly} />
+              <input
+                className="input"
+                type="text"
+                value={answers.ageOrDob || ''}
+                onChange={(e) => handleAnswerChange('ageOrDob', e.target.value)}
+                disabled={readOnly}
+              />
             </div>
           )}
           {showField(category, 'icdCodes') && (
             <div className="form-item">
               <label className="label">ICD (Pdx)</label>
-              <input className="input" type="text" value={answers.icdCodes || ''} onChange={(e) => handleAnswerChange('icdCodes', e.target.value)} placeholder="Comma separated" disabled={readOnly} />
+              <input
+                className="input"
+                type="text"
+                value={answers.icdCodes || ''}
+                onChange={(e) => handleAnswerChange('icdCodes', e.target.value)}
+                placeholder="Comma separated"
+                disabled={readOnly}
+              />
             </div>
           )}
           {showField(category, 'cptCodes') && (
             <div className="form-item">
               <label className="label">CPT Codes</label>
-              <input className="input" type="text" value={answers.cptCodes || ''} onChange={(e) => handleAnswerChange('cptCodes', e.target.value)} placeholder="Comma separated" disabled={readOnly} />
+              <input
+                className="input"
+                type="text"
+                value={answers.cptCodes || ''}
+                onChange={(e) => handleAnswerChange('cptCodes', e.target.value)}
+                placeholder="Comma separated"
+                disabled={readOnly}
+              />
             </div>
           )}
           {showField(category, 'pcsCodes') && (
             <div className="form-item">
               <label className="label">PCS Codes</label>
-              <input className="input" type="text" value={answers.pcsCodes || ''} onChange={(e) => handleAnswerChange('pcsCodes', e.target.value)} placeholder="Comma separated" disabled={readOnly} />
+              <input
+                className="input"
+                type="text"
+                value={answers.pcsCodes || ''}
+                onChange={(e) => handleAnswerChange('pcsCodes', e.target.value)}
+                placeholder="Comma separated"
+                disabled={readOnly}
+              />
             </div>
           )}
           {showField(category, 'hcpcsCodes') && (
             <div className="form-item">
               <label className="label">HCPCS Codes</label>
-              <input className="input" type="text" value={answers.hcpcsCodes || ''} onChange={(e) => handleAnswerChange('hcpcsCodes', e.target.value)} placeholder="Comma separated" disabled={readOnly} />
+              <input
+                className="input"
+                type="text"
+                value={answers.hcpcsCodes || ''}
+                onChange={(e) => handleAnswerChange('hcpcsCodes', e.target.value)}
+                placeholder="Comma separated"
+                disabled={readOnly}
+              />
             </div>
           )}
           {showField(category, 'drgValue') && (
             <div className="form-item">
               <label className="label">DRG Value</label>
-              <input className="input" type="text" value={answers.drgValue || ''} onChange={(e) => handleAnswerChange('drgValue', e.target.value)} placeholder="e.g. 470 or 470-xx" disabled={readOnly} />
+              <input
+                className="input"
+                type="text"
+                value={answers.drgValue || ''}
+                onChange={(e) => handleAnswerChange('drgValue', e.target.value)}
+                placeholder="e.g. 470 or 470-xx"
+                disabled={readOnly}
+              />
             </div>
           )}
           {showField(category, 'modifiers') && (
             <div className="form-item">
               <label className="label">Modifiers</label>
-              <input className="input" type="text" value={answers.modifiers || ''} onChange={(e) => handleAnswerChange('modifiers', e.target.value)} placeholder="Comma separated (e.g. 26, 59, LT)" disabled={readOnly} />
+              <input
+                className="input"
+                type="text"
+                value={answers.modifiers || ''}
+                onChange={(e) => handleAnswerChange('modifiers', e.target.value)}
+                placeholder="Comma separated (e.g. 26, 59, LT)"
+                disabled={readOnly}
+              />
             </div>
           )}
           <div className="form-item">
             <label className="label">Adx</label>
-            <input className="input" type="text" value={answers.adx || ''} onChange={(e) => handleAnswerChange('adx', e.target.value)} placeholder="Adx (e.g., principal diagnosis / free text)" disabled={readOnly} />
+            <input
+              className="input"
+              type="text"
+              value={answers.adx || ''}
+              onChange={(e) => handleAnswerChange('adx', e.target.value)}
+              placeholder="Adx (e.g., principal diagnosis / free text)"
+              disabled={readOnly}
+            />
           </div>
           <div className="form-item form-item--full">
             <label className="label">Notes</label>
-            <textarea className="textarea" value={answers.notes || ''} onChange={(e) => handleAnswerChange('notes', e.target.value)} rows={4} disabled={readOnly} />
+            <textarea
+              className="textarea"
+              value={answers.notes || ''}
+              onChange={(e) => handleAnswerChange('notes', e.target.value)}
+              rows={4}
+              disabled={readOnly}
+            />
           </div>
         </div>
       );
@@ -587,13 +902,20 @@ const NewAssignments = () => {
     return <p className="muted">No questions available for this assignment.</p>;
   };
 
+  /* ============================ RENDER ============================ */
   if (loading) {
     return (
       <div className="container">
         <div className="page-header">
-          <h2 className="title"><FiBook className="icon" /> New Assignments</h2>
+          <h2 className="title">
+            <FiBook className="icon" /> New Assignments
+          </h2>
         </div>
-        <div className="skeleton-list">{[...Array(3)].map((_, i) => <div className="skeleton-card" key={i} />)}</div>
+        <div className="skeleton-list">
+          {[...Array(3)].map((_, i) => (
+            <div className="skeleton-card" key={i} />
+          ))}
+        </div>
       </div>
     );
   }
@@ -602,7 +924,9 @@ const NewAssignments = () => {
     return (
       <div className="container">
         <div className="empty-state error">
-          <div className="empty-icon"><FiClock /></div>
+          <div className="empty-icon">
+            <FiClock />
+          </div>
           <div>
             <h3>Something went wrong</h3>
             <p>{error}</p>
@@ -612,12 +936,23 @@ const NewAssignments = () => {
     );
   }
 
+  // Detail root
   if (activeAssignment) {
+    // Section list (multi)
     if (!activeSubAssignment && activeAssignment.subAssignments?.length > 0) {
       return (
         <div className="container">
           <div className="page-header">
-            <button className="btn btn-ghost" onClick={() => { setActiveAssignment(null); clearCountdown(); }} disabled={submitting}>Back</button>
+            <button
+              className="btn btn-ghost"
+              onClick={() => {
+                setActiveAssignment(null);
+                clearCountdown();
+              }}
+              disabled={submitting}
+            >
+              Back
+            </button>
             <h3 className="title-sm">{activeAssignment.moduleName}</h3>
             <div style={{ marginLeft: 'auto' }}>{timerBadge(activeAssignment)}</div>
           </div>
@@ -630,10 +965,16 @@ const NewAssignments = () => {
                 <div key={i} className="card sub-card">
                   <div className="card-head">
                     <h4 className="card-title">{s.subModuleName}</h4>
-                    <span className={`badge ${s.isCompleted ? 'badge-success' : 'badge-pending'}`}>{s.isCompleted ? 'Completed' : 'Pending'}</span>
+                    <span className={`badge ${s.isCompleted ? 'badge-success' : 'badge-pending'}`}>
+                      {s.isCompleted ? 'Completed' : 'Pending'}
+                    </span>
                   </div>
                   <div className="card-actions">
-                    <button className="btn" onClick={() => handleStart(activeAssignment._id, s._id)} disabled={submitting || isStarting}>
+                    <button
+                      className="btn"
+                      onClick={() => handleStart(activeAssignment._id, s._id)}
+                      disabled={submitting || isStarting}
+                    >
                       {isStarting ? 'Opening…' : btnLabel}
                     </button>
                   </div>
@@ -647,9 +988,11 @@ const NewAssignments = () => {
       );
     }
 
-  const pdfUrl = activeSubAssignment?.assignmentPdf || activeAssignment.assignmentPdf;
+    // Question view (single or sub in multi)
+    const pdfUrl = activeSubAssignment?.assignmentPdf || activeAssignment.assignmentPdf;
     const questionSource = activeSubAssignment || activeAssignment;
     const isCompleted = questionSource.isCompleted;
+    const hasTime = Number.isFinite(Number(activeAssignment?.timeLimitMinutes));
     const showCountdown = Number.isFinite(timerEndMs);
     const timeLeft = showCountdown ? Math.max(0, timerEndMs - Date.now()) : null;
 
@@ -658,23 +1001,36 @@ const NewAssignments = () => {
         <div className="page-header">
           <button
             className="btn btn-ghost"
-            onClick={() => { activeSubAssignment ? setActiveSubAssignment(null) : setActiveAssignment(null); clearCountdown(); setViewResult(null); setResultError(''); setResultLoading(false); }}
+            onClick={() => {
+              if (activeSubAssignment) setActiveSubAssignment(null);
+              else setActiveAssignment(null);
+              clearCountdown();
+              setViewResult(null);
+              setResultError('');
+              setResultLoading(false);
+            }}
             disabled={submitting}
           >
             Back
           </button>
           <h3 className="title-sm">{activeSubAssignment?.subModuleName || activeAssignment.moduleName}</h3>
           <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 10 }}>
-            {timerBadge(activeAssignment)}
-            {showCountdown && <div className="countdown-chip"><FiClock /> <span>{fmtCountdown(timeLeft ?? countdown ?? 0)}</span></div>}
+            {hasTime && timerBadge(activeAssignment)}
+            {showCountdown && (
+              <div className="countdown-chip">
+                <FiClock /> <span>{fmtCountdown(timeLeft ?? countdown ?? 0)}</span>
+              </div>
+            )}
             {isCompleted && <span className="badge badge-success">Completed (View Only)</span>}
           </div>
         </div>
 
-        {pdfUrl && <PdfReader url={pdfUrl} height="60vh" watermark="" />}
+{pdfUrl && <PdfReader url={pdfUrl} height="60vh" watermark="" />}
 
         <div ref={questionsRef} className="panel">
-          <div className="panel-head"><h4>Questions</h4></div>
+          <div className="panel-head">
+            <h4>Questions</h4>
+          </div>
 
           {isCompleted && resultLoading && (
             <div className="loading-container" style={{ marginTop: 8 }}>
@@ -684,7 +1040,9 @@ const NewAssignments = () => {
           )}
           {isCompleted && resultError && (
             <div className="empty-state error" style={{ marginTop: 8 }}>
-              <div className="empty-icon"><FiX /></div>
+              <div className="empty-icon">
+                <FiX />
+              </div>
               <div>
                 <h3>Couldn’t load results</h3>
                 <p className="muted">{resultError}</p>
@@ -696,7 +1054,9 @@ const NewAssignments = () => {
 
           <div className="panel-actions">
             {isCompleted ? (
-              <button className="btn" disabled>View Only</button>
+              <button className="btn" disabled>
+                View Only
+              </button>
             ) : (
               <button className="btn btn-primary" onClick={() => handleSubmit(false)} disabled={submitting}>
                 {submitting ? 'Submitting…' : 'Submit Assignment'}
@@ -710,10 +1070,13 @@ const NewAssignments = () => {
     );
   }
 
+  // Cards view
   return (
     <div className="container">
       <div className="page-header">
-        <h2 className="title"><FiBook className="icon" /> New Assignments</h2>
+        <h2 className="title">
+          <FiBook className="icon" /> New Assignments
+        </h2>
       </div>
 
       <div className="panel" style={{ marginBottom: 16 }}>
@@ -723,15 +1086,37 @@ const NewAssignments = () => {
           </h4>
           <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
             <FiFilter />
-            <select className="input" value={sortOrder} onChange={(e) => setSortOrder(e.target.value)} style={{ width: 180 }} disabled={submitting}>
+            <select
+              className="input"
+              value={sortOrder}
+              onChange={(e) => setSortOrder(e.target.value)}
+              style={{ width: 180 }}
+              disabled={submitting}
+            >
               <option value="newest">Newest first</option>
               <option value="oldest">Oldest first</option>
             </select>
           </div>
         </div>
         <div className="panel-body" style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
-          <input type="text" className="input" value={search} onChange={(e) => { setSearch(e.target.value); setActiveAssignment(null); setActiveSubAssignment(null); }} placeholder="Search by module or section name…" style={{ maxWidth: 360 }} disabled={submitting} />
-          {search && <button className="btn btn-ghost" onClick={() => setSearch('')} disabled={submitting}>Clear</button>}
+          <input
+            type="text"
+            className="input"
+            value={search}
+            onChange={(e) => {
+              setSearch(e.target.value);
+              setActiveAssignment(null);
+              setActiveSubAssignment(null);
+            }}
+            placeholder="Search by module or section name…"
+            style={{ maxWidth: 360 }}
+            disabled={submitting}
+          />
+          {search && (
+            <button className="btn btn-ghost" onClick={() => setSearch('')} disabled={submitting}>
+              Clear
+            </button>
+          )}
           <span className="muted">Sort controls affect date; search filters the view.</span>
         </div>
       </div>
@@ -742,12 +1127,21 @@ const NewAssignments = () => {
             const allSubsCompleted = areAllSubAssignmentsCompleted(assignment);
             const isStarting = startingId === `${assignment._id}:parent`;
             const hasTime = Number.isFinite(Number(assignment?.timeLimitMinutes));
-            const btnLabel = allSubsCompleted ? (assignment.subAssignments?.length > 0 ? 'View Sections' : 'View') : (assignment.subAssignments?.length > 0 ? 'View Sections' : 'Start');
+            const btnLabel = allSubsCompleted
+              ? assignment.subAssignments?.length > 0
+                ? 'View Sections'
+                : 'View'
+              : assignment.subAssignments?.length > 0
+              ? 'View Sections'
+              : 'Start';
+
             return (
               <div key={assignment._id} className="card">
                 <div className="card-head">
                   <h3 className="card-title">{assignment.moduleName}</h3>
-                  <span className={`badge ${allSubsCompleted ? 'badge-success' : 'badge-pending'}`}>{allSubsCompleted ? 'Completed' : 'Assigned'}</span>
+                  <span className={`badge ${allSubsCompleted ? 'badge-success' : 'badge-pending'}`}>
+                    {allSubsCompleted ? 'Completed' : 'Assigned'}
+                  </span>
                 </div>
 
                 {hasTime && (
@@ -761,13 +1155,18 @@ const NewAssignments = () => {
                   <div className="meta">
                     <span className="meta-key">Progress</span>
                     <span className="meta-val">
-                      {assignment.subAssignments.filter((sub) => sub.isCompleted).length} / {assignment.subAssignments.length} completed
+                      {assignment.subAssignments.filter((sub) => sub.isCompleted).length} /{' '}
+                      {assignment.subAssignments.length} completed
                     </span>
                   </div>
                 )}
 
                 <div className="card-actions">
-                  <button className="btn" onClick={() => handleStart(assignment._id)} disabled={submitting || isStarting}>
+                  <button
+                    className="btn"
+                    onClick={() => handleStart(assignment._id)}
+                    disabled={submitting || isStarting}
+                  >
                     {isStarting ? 'Opening…' : btnLabel}
                   </button>
                 </div>
@@ -777,7 +1176,9 @@ const NewAssignments = () => {
         </div>
       ) : (
         <div className="empty-state">
-          <div className="empty-icon"><FiClock /></div>
+          <div className="empty-icon">
+            <FiClock />
+          </div>
           <div>
             <h3>No assignments found</h3>
             <p className="muted">Try a different search.</p>
@@ -788,12 +1189,45 @@ const NewAssignments = () => {
   );
 };
 
+/* ================= Overlay ================= */
 const LoadingOverlay = () => (
-  <div style={{ position: 'fixed', inset: 0, background: 'rgba(255,255,255,0.7)', backdropFilter: 'blur(2px)', display: 'grid', placeItems: 'center', zIndex: 9999 }}>
-    <div style={{ padding: 16, borderRadius: 12, border: '1px solid #ddd', background: '#fff', minWidth: 220, textAlign: 'center' }}>
-      <div className="spinner" style={{ width: 28, height: 28, margin: '0 auto 10px', border: '3px solid #ddd', borderTopColor: '#333', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+  <div
+    style={{
+      position: 'fixed',
+      inset: 0,
+      background: 'rgba(255,255,255,0.7)',
+      backdropFilter: 'blur(2px)',
+      display: 'grid',
+      placeItems: 'center',
+      zIndex: 9999,
+    }}
+  >
+    <div
+      style={{
+        padding: 16,
+        borderRadius: 12,
+        border: '1px solid #ddd',
+        background: '#fff',
+        minWidth: 220,
+        textAlign: 'center',
+      }}
+    >
+      <div
+        className="spinner"
+        style={{
+          width: 28,
+          height: 28,
+          margin: '0 auto 10px',
+          border: '3px solid #ddd',
+          borderTopColor: '#333',
+          borderRadius: '50%',
+          animation: 'spin 1s linear infinite',
+        }}
+      />
       <div style={{ fontWeight: 600 }}>Submitting…</div>
-      <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>Please wait</div>
+      <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>
+        Please wait
+      </div>
       <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
     </div>
   </div>
