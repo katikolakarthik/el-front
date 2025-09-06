@@ -231,6 +231,18 @@ export default function Dashboard() {
     }
   };
 
+  // Add student functionality - open student management page
+  const handleAddStudent = () => {
+    closeCategory();
+    navigate('/admin/student');
+  };
+
+  // Edit student functionality - open student management page with edit parameter
+  const handleEditStudent = (studentId) => {
+    closeCategory();
+    navigate(`/admin/student?edit=${studentId}`);
+  };
+
   /** Formatters */
   const fmtDate = (iso, withTime = false) => {
     if (!iso) return "-";
@@ -464,11 +476,8 @@ export default function Dashboard() {
                   <div className="student-actions">
                     <button
                       className="action-btn add-btn"
-                      onClick={() => {
-                        closeCategory();
-                        navigate('/admin/student');
-                      }}
-                      title="Manage students"
+                      onClick={handleAddStudent}
+                      title="Add new student"
                     >+ Add Student</button>
                   </div>
                 </div>
@@ -492,8 +501,7 @@ export default function Dashboard() {
                             className="control-btn edit-btn"
                             onClick={(e) => {
                               e.stopPropagation();
-                              closeCategory();
-                              navigate(`/admin/student?edit=${s._id}`);
+                              handleEditStudent(s._id);
                             }}
                             title="Edit student"
                           >Edit</button>
@@ -514,10 +522,7 @@ export default function Dashboard() {
                     <p className="muted">No students found</p>
                     <button 
                       className="action-btn add-btn" 
-                      onClick={() => {
-                        closeCategory();
-                        navigate('/admin/student');
-                      }}
+                      onClick={handleAddStudent}
                     >
                       + Add First Student
                     </button>
