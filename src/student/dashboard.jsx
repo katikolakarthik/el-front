@@ -1,3 +1,4 @@
+// StudentDashboard.jsx
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import axios from 'axios';
 import {
@@ -23,11 +24,10 @@ const StudentDashboard = () => {
   const [resultData, setResultData] = useState(null);
   const [resultLoading, setResultLoading] = useState(false);
 
-  // New state for filtered assignments view
-  const [filteredView, setFilteredView] = useState(null); // 'total', 'completed', 'pending', 'avgScore'
+  const [filteredView, setFilteredView] = useState(null); // 'total' | 'completed' | 'pending' | 'avgScore'
   const [filteredAssignments, setFilteredAssignments] = useState([]);
 
-  // --- Helpers ---
+  // ---------- helpers ----------
   const displayValue = (val) => {
     if (val === null || val === undefined) return '';
     if (Array.isArray(val)) return val.length > 0 ? val.join(', ') : '';
@@ -46,14 +46,10 @@ const StudentDashboard = () => {
     if (!dateString) return 'N/A';
     const d = new Date(dateString);
     if (isNaN(d.getTime())) return 'N/A';
-    return d.toLocaleDateString(undefined, {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-    });
+    return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
   };
 
-  // --- Fetchers (NEW ENDPOINTS) ---
+  // ---------- API calls ----------
   const fetchDashboardStats = useCallback(async (userId, courseName) => {
     const res = await axios.get(
       `https://el-backend-ashen.vercel.app/stats/${encodeURIComponent(courseName)}/${encodeURIComponent(userId)}`
@@ -70,18 +66,11 @@ const StudentDashboard = () => {
     return res.data;
   }, []);
 
-  const fetchSubmissions = useCallback(async (userId) => {
-    const res = await axios.get(
-      `https://el-backend-ashen.vercel.app/submitted-assignments?studentId=${encodeURIComponent(userId)}`
-    );
-    return res.data?.assignments || [];
-  }, []);
-
   const fetchAllAssignments = useCallback(async (userId, courseName) => {
     const res = await axios.get(
       `https://el-backend-ashen.vercel.app/category/${encodeURIComponent(courseName)}?studentId=${encodeURIComponent(userId)}`
     );
-    
+
     let assignmentsData = [];
     if (res?.data?.success && Array.isArray(res.data.assignments)) {
       assignmentsData = res.data.assignments;
@@ -92,7 +81,7 @@ const StudentDashboard = () => {
     } else if (res?.data?.assignment) {
       assignmentsData = [res.data.assignment];
     }
-    
+
     return assignmentsData;
   }, []);
 
@@ -102,22 +91,14 @@ const StudentDashboard = () => {
     if (!userId) throw new Error('User ID not found in localStorage');
     if (!courseName) throw new Error('Course name not found in localStorage');
 
-    const [stats, courseInfo, submissions, allAssignments] = await Promise.all([
+    const [stats, courseInfo, allAssignments] = await Promise.all([
       fetchDashboardStats(userId, courseName),
       fetchCourseInfo(userId),
-      fetchSubmissions(userId),
       fetchAllAssignments(userId, courseName),
     ]);
 
-    console.log('Dashboard data fetched:');
-    console.log('Stats:', stats);
-    console.log('Course Info:', courseInfo);
-    console.log('Submissions from API:', submissions);
-    console.log('All Assignments from API:', allAssignments);
-
     const avgScoreRaw =
-      (stats && stats.stats && stats.stats.averageScore) ??
-      stats?.averageScore;
+      (stats && stats.stats && stats.stats.averageScore) ?? stats?.averageScore;
     let avgScoreNumber = 0;
     if (typeof avgScoreRaw === 'number') {
       avgScoreNumber = avgScoreRaw;
@@ -150,9 +131,9 @@ const StudentDashboard = () => {
     });
 
     setAssignments(allAssignments);
-  }, [fetchCourseInfo, fetchDashboardStats, fetchSubmissions, fetchAllAssignments]);
+  }, [fetchCourseInfo, fetchDashboardStats, fetchAllAssignments]);
 
-  // Initial load
+  // initial load
   useEffect(() => {
     (async () => {
       try {
@@ -165,14 +146,14 @@ const StudentDashboard = () => {
     })();
   }, [refreshDashboard]);
 
-  // --- Results fetching ---
+  // fetch /result
   const fetchResultData = async (studentId, assignmentId) => {
     try {
       setResultLoading(true);
-      const response = await axios.post(
-        'https://el-backend-ashen.vercel.app/result',
-        { studentId, assignmentId }
-      );
+      const response = await axios.post('https://el-backend-ashen.vercel.app/result', {
+        studentId,
+        assignmentId,
+      });
       setResultData(response.data);
       setShowResultPopup(true);
     } catch (err) {
@@ -183,87 +164,79 @@ const StudentDashboard = () => {
     }
   };
 
-  // Build submissions list from new API
+  // ---------- submissions (source for bottom "Submissions" list) ----------
+  // STRICT multi logic: completed ONLY if all subs are completed
   const submissions = useMemo(() => {
-    if (!Array.isArray(assignments)) {
-      console.log('Assignments not array:', assignments);
-      return [];
-    }
-
-    console.log('Building submissions from assignments:', assignments);
-
-    const result = assignments.map((a) => {
-      // Handle both _id and assignmentId for compatibility
-      const assignmentId = a._id || a.assignmentId;
-      if (!assignmentId) {
-        console.log('Assignment missing ID:', a);
-        return null;
-      }
-
-      const totalSub = a.subAssignments?.length ?? 0;
-      const doneSub = a.subAssignments?.filter((s) => s.isCompleted)?.length ?? 0;
-
-      const fallbackProgress =
-        totalSub > 0
-          ? Math.round((doneSub / totalSub) * 100)
-          : a.isCompleted
-          ? 100
-          : 0;
-
-      const submission = {
-        assignmentId: assignmentId,
-        moduleName: (a.moduleName || a.assignmentName || 'Untitled Assignment').trim(),
-        isCompleted: a.isCompleted === true || (totalSub > 0 && doneSub === totalSub),
-        submissionDate: a.assignedDate || a.submissionDate,
-        totalCorrect: a.totalCorrect ?? 0,
-        totalWrong: a.totalWrong ?? 0,
-        overallProgress: a.progressPercent ?? fallbackProgress,
-        // Add assignment data for reference
-        assignmentData: a,
-      };
-
-      console.log('Created submission:', submission);
-      return submission;
-    }).filter(Boolean);
-
-    console.log('Final submissions array:', result);
-    return result;
-  }, [assignments]);
-
-  // --- Assignment Filtering Logic ---
-  const filterAssignments = useCallback((filterType) => {
     if (!Array.isArray(assignments)) return [];
 
-    switch (filterType) {
-      case 'total':
-        return assignments;
-      case 'completed':
-        return assignments.filter(assignment => {
-          // Check if assignment is completed (either directly or all sub-assignments completed)
-          if (assignment.isCompleted === true) return true;
-          if (assignment.subAssignments?.length > 0) {
-            return assignment.subAssignments.every(sub => sub.isCompleted === true);
-          }
-          return false;
-        });
-      case 'pending':
-        return assignments.filter(assignment => {
-          // Check if assignment is pending (not completed)
-          if (assignment.isCompleted === true) return false;
-          if (assignment.subAssignments?.length > 0) {
-            return !assignment.subAssignments.every(sub => sub.isCompleted === true);
-          }
-          return true;
-        });
-      case 'avgScore':
-        // For average score, we'll show all assignments with their scores
-        return assignments;
-      default:
-        return assignments;
-    }
+    return assignments
+      .map((a) => {
+        const assignmentId = a._id || a.assignmentId;
+        if (!assignmentId) return null;
+
+        const totalSub = a.subAssignments?.length ?? 0;
+        const doneSub = a.subAssignments?.filter((s) => s.isCompleted)?.length ?? 0;
+
+        const isCompleted = totalSub > 0 ? doneSub === totalSub : Boolean(a.isCompleted);
+
+        const fallbackProgress =
+          totalSub > 0
+            ? Math.round((doneSub / totalSub) * 100)
+            : isCompleted
+            ? 100
+            : 0;
+
+        return {
+          assignmentId,
+          moduleName:
+            (a.moduleName || a.assignmentName || 'Untitled Assignment').trim(),
+          isCompleted,
+          submissionDate: a.assignedDate || a.submissionDate,
+          totalCorrect: a.totalCorrect ?? 0,
+          totalWrong: a.totalWrong ?? 0,
+          overallProgress: a.progressPercent ?? fallbackProgress,
+          assignmentData: a,
+        };
+      })
+      .filter(Boolean);
   }, [assignments]);
 
-  // --- Card Click Handlers ---
+  // ---------- filtering for the stat cards section ----------
+  const filterAssignments = useCallback(
+    (filterType) => {
+      if (!Array.isArray(assignments)) return [];
+
+      switch (filterType) {
+        case 'total':
+          return assignments;
+
+        case 'completed':
+          return assignments.filter((a) => {
+            const hasSubs = a.subAssignments?.length > 0;
+            return hasSubs
+              ? a.subAssignments.every((s) => s.isCompleted === true)
+              : a.isCompleted === true;
+          });
+
+        case 'pending':
+          return assignments.filter((a) => {
+            const hasSubs = a.subAssignments?.length > 0;
+            return hasSubs
+              ? !a.subAssignments.every((s) => s.isCompleted === true)
+              : a.isCompleted !== true;
+          });
+
+        case 'avgScore':
+          return assignments;
+
+        default:
+          return assignments;
+      }
+    },
+    [assignments]
+  );
+
+  // stat card clicks
   const handleCardClick = (cardType) => {
     const filtered = filterAssignments(cardType);
     setFilteredAssignments(filtered);
@@ -275,16 +248,12 @@ const StudentDashboard = () => {
     setFilteredAssignments([]);
   };
 
-  // --- Handlers ---
+  // click on a submission row (only if completed)
   const handleSubmissionClick = (submission) => {
     if (!submission || submission.isCompleted !== true) return;
-
     const studentId = studentData?.studentId;
     const assignmentId = submission.assignmentId;
-    if (!studentId || !assignmentId) {
-      console.warn('Missing studentId or assignmentId for result fetch.');
-      return;
-    }
+    if (!studentId || !assignmentId) return;
     fetchResultData(studentId, assignmentId);
   };
 
@@ -294,27 +263,20 @@ const StudentDashboard = () => {
     await refreshDashboard();
   };
 
-  // Popup UX: lock scroll, close on Esc
+  // lock scroll on popup, close on Esc
   useEffect(() => {
     if (!showResultPopup) return;
-
     const originalOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
-
-    const handleEsc = (e) => {
-      if (e.key === 'Escape') closeResultPopup();
-    };
+    const handleEsc = (e) => { if (e.key === 'Escape') closeResultPopup(); };
     window.addEventListener('keydown', handleEsc);
-
     return () => {
       window.removeEventListener('keydown', handleEsc);
       document.body.style.overflow = originalOverflow;
     };
   }, [showResultPopup]);
 
-  /* -------------------- RESULT POPUP RENDER HELPERS -------------------- */
-
-  // All supported fields (we will show only if non-empty)
+  // ---------- result popup UI helpers ----------
   const FIELD_DEFS = [
     { key: 'patientName', label: 'Patient Name' },
     { key: 'ageOrDob', label: 'Age/DOB' },
@@ -333,7 +295,6 @@ const StudentDashboard = () => {
     const items = FIELD_DEFS
       .map((f) => ({ ...f, value: submitted[f.key] }))
       .filter((f) => hasNonEmpty(f.value));
-
     if (items.length === 0) return null;
 
     return (
@@ -351,7 +312,6 @@ const StudentDashboard = () => {
     const items = FIELD_DEFS
       .map((f) => ({ ...f, value: correctAnswerKey[f.key] }))
       .filter((f) => hasNonEmpty(f.value));
-
     if (items.length === 0) return null;
 
     return (
@@ -412,7 +372,6 @@ const StudentDashboard = () => {
           <h3>{module.moduleName || module.subModuleName || 'Result'}</h3>
         </div>
 
-        {/* Static fields */}
         <div className="answers-comparison">
           <div className="answers-section">
             <h4>Your Answers</h4>
@@ -427,13 +386,11 @@ const StudentDashboard = () => {
           )}
         </div>
 
-        {/* Dynamic questions */}
         {renderDynamicQuestions(
           module.submitted?.dynamicQuestions,
           module.correctDynamicQuestions
         )}
 
-        {/* Optional per-module progress display */}
         {(module.submitted?.correctCount !== undefined ||
           module.submitted?.wrongCount !== undefined ||
           module.submitted?.progressPercent !== undefined) && (
@@ -451,8 +408,7 @@ const StudentDashboard = () => {
               )}{' '}
               {module.submitted?.progressPercent !== undefined && (
                 <>
-                  <strong>Progress:</strong>{' '}
-                  {module.submitted.progressPercent}%
+                  <strong>Progress:</strong> {module.submitted.progressPercent}%
                 </>
               )}
             </p>
@@ -464,22 +420,12 @@ const StudentDashboard = () => {
 
   const renderResultPopup = () => {
     if (!resultData) return null;
-
-    const modules = Array.isArray(resultData.data)
-      ? resultData.data
-      : [resultData.data];
+    const modules = Array.isArray(resultData.data) ? resultData.data : [resultData.data];
 
     return (
       <div className="result-popup-overlay" onClick={closeResultPopup}>
-        <div
-          className="result-popup"
-          onClick={(e) => e.stopPropagation()}
-        >
-          <button
-            className="close-popup"
-            onClick={closeResultPopup}
-            aria-label="Close results"
-          >
+        <div className="result-popup" onClick={(e) => e.stopPropagation()}>
+          <button className="close-popup" onClick={closeResultPopup} aria-label="Close results">
             <FiX size={24} />
           </button>
 
@@ -496,9 +442,7 @@ const StudentDashboard = () => {
               </div>
               <div className="summary-item">
                 <span>Overall Progress:</span>
-                <strong className="progress">
-                  {resultData.overallProgress}%
-                </strong>
+                <strong className="progress">{resultData.overallProgress}%</strong>
               </div>
             </div>
           </div>
@@ -511,7 +455,7 @@ const StudentDashboard = () => {
     );
   };
 
-  // --- Top-level renders ---
+  // ---------- top-level renders ----------
   if (loading) {
     return (
       <div className="dashboard-loading">
@@ -543,16 +487,10 @@ const StudentDashboard = () => {
         <h1>Welcome back, {studentData.name}!</h1>
       </header>
 
-      {/* Stats Section */}
+      {/* Stats cards */}
       <div className="stats-grid">
-        <div 
-          className="stat-card clickable-card" 
-          onClick={() => handleCardClick('total')}
-          title="Click to view all assignments"
-        >
-          <div className="stat-icon">
-            <FiBook size={24} />
-          </div>
+        <div className="stat-card clickable-card" onClick={() => handleCardClick('total')} title="Click to view all assignments">
+          <div className="stat-icon"><FiBook size={24} /></div>
           <div className="stat-content">
             <h3>Total Assignments</h3>
             <p className="stat-value">{studentData.totalAssignments}</p>
@@ -560,14 +498,8 @@ const StudentDashboard = () => {
           </div>
         </div>
 
-        <div 
-          className="stat-card clickable-card" 
-          onClick={() => handleCardClick('completed')}
-          title="Click to view completed assignments"
-        >
-          <div className="stat-icon">
-            <FiCheckCircle size={24} />
-          </div>
+        <div className="stat-card clickable-card" onClick={() => handleCardClick('completed')} title="Click to view completed assignments">
+          <div className="stat-icon"><FiCheckCircle size={24} /></div>
           <div className="stat-content">
             <h3>Completed</h3>
             <p className="stat-value">{studentData.completedCount}</p>
@@ -575,14 +507,8 @@ const StudentDashboard = () => {
           </div>
         </div>
 
-        <div 
-          className="stat-card clickable-card" 
-          onClick={() => handleCardClick('avgScore')}
-          title="Click to view assignments with scores"
-        >
-          <div className="stat-icon">
-            <FiTrendingUp size={24} />
-          </div>
+        <div className="stat-card clickable-card" onClick={() => handleCardClick('avgScore')} title="Click to view assignments with scores">
+          <div className="stat-icon"><FiTrendingUp size={24} /></div>
           <div className="stat-content">
             <h3>Average Score</h3>
             <p className="stat-value">{studentData.averageScore}%</p>
@@ -590,14 +516,8 @@ const StudentDashboard = () => {
           </div>
         </div>
 
-        <div 
-          className="stat-card clickable-card" 
-          onClick={() => handleCardClick('pending')}
-          title="Click to view pending assignments"
-        >
-          <div className="stat-icon">
-            <FiAlertCircle size={24} />
-          </div>
+        <div className="stat-card clickable-card" onClick={() => handleCardClick('pending')} title="Click to view pending assignments">
+          <div className="stat-icon"><FiAlertCircle size={24} /></div>
           <div className="stat-content">
             <h3>Pending</h3>
             <p className="stat-value">{studentData.pendingCount}</p>
@@ -606,7 +526,7 @@ const StudentDashboard = () => {
         </div>
       </div>
 
-      {/* Filtered Assignments Section */}
+    {/* Filtered section */}
       {filteredView && (
         <div className="filtered-assignments-section">
           <div className="filtered-header">
@@ -616,68 +536,51 @@ const StudentDashboard = () => {
               {filteredView === 'pending' && 'Pending Assignments'}
               {filteredView === 'avgScore' && 'Assignments with Scores'}
             </h2>
-            <button 
-              className="clear-filter-btn" 
-              onClick={clearFilter}
-              title="Clear filter and return to dashboard"
-            >
-              <FiX size={16} />
-              Clear Filter
+            <button className="clear-filter-btn" onClick={clearFilter} title="Clear filter and return to dashboard">
+              <FiX size={16} /> Clear Filter
             </button>
           </div>
-          
+
           <div className="filtered-assignments-container">
             {filteredAssignments.length > 0 ? (
               filteredAssignments.map((assignment, index) => {
-                const isCompleted = assignment.isCompleted === true || 
-                  (assignment.subAssignments?.length > 0 && 
-                   assignment.subAssignments.every(sub => sub.isCompleted === true));
-                
-                const submission = submissions.find(s => s.assignmentId === assignment._id);
-                
+                const hasSubs = assignment.subAssignments?.length > 0;
+                // ✅ strict multi logic on filtered cards
+                const isCompleted = hasSubs
+                  ? assignment.subAssignments.every((sub) => sub.isCompleted === true)
+                  : assignment.isCompleted === true;
+
+                const idForFind = assignment._id || assignment.assignmentId;
+                const submission = submissions.find((s) => s.assignmentId === idForFind);
+
                 return (
                   <div
-                    key={`${assignment._id || 'a'}-${index}`}
-                    className={`filtered-assignment-item ${
-                      isCompleted ? '' : 'filtered-assignment-item--disabled'
-                    }`}
-                    onClick={() =>
-                      isCompleted && submission ? handleSubmissionClick(submission) : null
-                    }
-                    title={
-                      isCompleted
-                        ? 'Click to view result'
-                        : 'Result available after completion'
-                    }
-                    style={{
-                      cursor: isCompleted ? 'pointer' : 'not-allowed',
-                      opacity: isCompleted ? 1 : 0.6,
-                    }}
+                    key={`${idForFind || 'a'}-${index}`}
+                    className={`filtered-assignment-item ${isCompleted ? '' : 'filtered-assignment-item--disabled'}`}
+                    onClick={() => (isCompleted && submission ? handleSubmissionClick(submission) : null)}
+                    title={isCompleted ? 'Click to view result' : 'Result available after completion'}
+                    style={{ cursor: isCompleted ? 'pointer' : 'not-allowed', opacity: isCompleted ? 1 : 0.6 }}
                   >
                     <div className="filtered-assignment-header">
                       <FiAward className="filtered-assignment-icon" />
-                      <h3>
-                        {assignment.moduleName || assignment.assignmentName || 'Assignment'}
-                      </h3>
+                      <h3>{assignment.moduleName || assignment.assignmentName || 'Assignment'}</h3>
                       <span
-                        className={`status-badge ${
-                          isCompleted
-                            ? 'status-badge--completed'
-                            : 'status-badge--pending'
-                        }`}
+                        className={`status-badge ${isCompleted ? 'status-badge--completed' : 'status-badge--pending'}`}
                       >
                         {isCompleted ? 'Completed' : 'Pending'}
                       </span>
                     </div>
-                    
-                    {assignment.subAssignments?.length > 0 && (
+
+                    {hasSubs && (
                       <div className="assignment-progress">
                         <span>
-                          Progress: {assignment.subAssignments.filter(sub => sub.isCompleted).length} / {assignment.subAssignments.length} sections completed
+                          Progress:{' '}
+                          {assignment.subAssignments.filter((sub) => sub.isCompleted).length} / {assignment.subAssignments.length}{' '}
+                          sections completed
                         </span>
                       </div>
                     )}
-                    
+
                     {filteredView === 'avgScore' && submission && (
                       <div className="assignment-score">
                         <span>Score: {submission.overallProgress || 0}%</span>
@@ -685,15 +588,11 @@ const StudentDashboard = () => {
                         <span>Wrong: {submission.totalWrong || 0}</span>
                       </div>
                     )}
-                    
+
                     <div className="assignment-details">
                       <span>Assigned: {formatDate(assignment.assignedDate)}</span>
-                      {assignment.dueDate && (
-                        <span>Due: {formatDate(assignment.dueDate)}</span>
-                      )}
-                      {assignment.category && (
-                        <span>Category: {assignment.category}</span>
-                      )}
+                      {assignment.dueDate && <span>Due: {formatDate(assignment.dueDate)}</span>}
+                      {assignment.category && <span>Category: {assignment.category}</span>}
                     </div>
                   </div>
                 );
@@ -718,10 +617,7 @@ const StudentDashboard = () => {
         <div className="progress-card">
           <h2>Overall Progress</h2>
           <div className="progress-bar-container">
-            <div
-              className="progress-bar"
-              style={{ width: `${studentData.courseProgress}%` }}
-            ></div>
+            <div className="progress-bar" style={{ width: `${studentData.courseProgress}%` }}></div>
           </div>
           <div className="progress-details">
             <span>Course Progress {studentData.courseProgress}%</span>
@@ -730,7 +626,7 @@ const StudentDashboard = () => {
         </div>
       </div>
 
-      {/* Info Section */}
+      {/* Info + Submissions */}
       <div className="info-grid">
         <div className="info-card">
           <h2>Course Information</h2>
@@ -755,51 +651,33 @@ const StudentDashboard = () => {
               <p className="info-value">
                 {studentData.remainingAmount > 0
                   ? `Partially paid (₹${studentData.paidAmount}/₹${
-                      (studentData.paidAmount ?? 0) +
-                      (studentData.remainingAmount ?? 0)
+                      (studentData.paidAmount ?? 0) + (studentData.remainingAmount ?? 0)
                     })`
                   : 'Fully paid'}
               </p>
             </div>
           </div>
         </div>
+
         <div className="info-card">
           <h2>Submissions</h2>
-
           <div className="submissions-container">
             {submissions.length > 0 ? (
               submissions.map((submission, i) => {
-                const completed = submission.isCompleted === true;
+                const completed = submission.isCompleted === true; // ✅ strict multi logic already applied above
                 return (
                   <div
                     key={`${submission.assignmentId || 'a'}-${i}`}
-                    className={`submission-item ${
-                      completed ? '' : 'submission-item--disabled'
-                    }`}
-                    onClick={() =>
-                      completed ? handleSubmissionClick(submission) : null
-                    }
-                    title={
-                      completed
-                        ? 'Click to view result'
-                        : 'Result available after completion'
-                    }
-                    style={{
-                      cursor: completed ? 'pointer' : 'not-allowed',
-                      opacity: completed ? 1 : 0.6,
-                    }}
+                    className={`submission-item ${completed ? '' : 'submission-item--disabled'}`}
+                    onClick={() => (completed ? handleSubmissionClick(submission) : null)}
+                    title={completed ? 'Click to view result' : 'Result available after completion'}
+                    style={{ cursor: completed ? 'pointer' : 'not-allowed', opacity: completed ? 1 : 0.6 }}
                   >
                     <div className="submission-header">
                       <FiAward className="submission-icon" />
-                      <h3>
-                        {submission.moduleName || 'Untitled Assignment'}
-                      </h3>
+                      <h3>{submission.moduleName || 'Untitled Assignment'}</h3>
                       <span
-                        className={`status-badge ${
-                          completed
-                            ? 'status-badge--completed'
-                            : 'status-badge--pending'
-                        }`}
+                        className={`status-badge ${completed ? 'status-badge--completed' : 'status-badge--pending'}`}
                         style={{
                           marginLeft: 'auto',
                           fontSize: 12,
@@ -834,6 +712,7 @@ const StudentDashboard = () => {
       </div>
 
       {showResultPopup && renderResultPopup()}
+
       {resultLoading && (
         <div className="loading-overlay">
           <div className="loading-spinner"></div>
@@ -843,6 +722,5 @@ const StudentDashboard = () => {
     </div>
   );
 };
-
 
 export default StudentDashboard;
