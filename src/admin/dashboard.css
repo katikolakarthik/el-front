@@ -340,6 +340,186 @@ body {
   color: var(--gray-500);
 }
 
+/* Submitted Students Modal Styles */
+.submitted-header {
+  margin-bottom: 1.5rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--gray-200);
+}
+
+.submitted-header h3 {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: var(--dark);
+  margin: 0;
+}
+
+.submitted-loading,
+.submitted-error {
+  text-align: center;
+  padding: 2rem;
+}
+
+.submitted-error p {
+  color: var(--danger);
+  font-weight: 500;
+}
+
+.submitted-students-container {
+  max-height: 70vh;
+  overflow-y: auto;
+  padding-right: 0.5rem;
+}
+
+.submitted-student-card {
+  background: var(--gray-100);
+  border-radius: var(--radius);
+  padding: 1.5rem;
+  margin-bottom: 1rem;
+  border: 1px solid var(--gray-200);
+}
+
+.student-header {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.student-avatar {
+  font-size: 2rem;
+  color: var(--primary);
+  flex-shrink: 0;
+}
+
+.student-info {
+  flex: 1;
+}
+
+.student-info h4 {
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: var(--dark);
+  margin: 0 0 0.25rem 0;
+}
+
+.student-course {
+  color: var(--gray-600);
+  font-size: 0.875rem;
+  margin: 0 0 0.25rem 0;
+}
+
+.student-enrolled {
+  color: var(--gray-500);
+  font-size: 0.75rem;
+  margin: 0;
+}
+
+.submission-stats {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.25rem;
+}
+
+.submission-count {
+  background: var(--primary);
+  color: white;
+  padding: 0.25rem 0.75rem;
+  border-radius: var(--radius);
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+.average-score {
+  color: var(--success);
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.assignments-list {
+  margin-top: 1rem;
+}
+
+.assignments-list h5 {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--dark);
+  margin: 0 0 0.75rem 0;
+}
+
+.assignment-item {
+  background: white;
+  border-radius: var(--radius);
+  padding: 1rem;
+  margin-bottom: 0.75rem;
+  border: 1px solid var(--gray-200);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.assignment-info {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex: 1;
+}
+
+.assignment-icon {
+  color: var(--primary);
+  font-size: 1.25rem;
+}
+
+.assignment-name {
+  display: block;
+  font-weight: 500;
+  color: var(--dark);
+  margin-bottom: 0.25rem;
+}
+
+.assignment-category {
+  font-size: 0.75rem;
+  color: var(--gray-500);
+  background: var(--gray-100);
+  padding: 0.125rem 0.5rem;
+  border-radius: var(--radius);
+}
+
+.assignment-scores {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.25rem;
+  font-size: 0.875rem;
+}
+
+.score {
+  color: var(--success);
+  font-weight: 600;
+}
+
+.progress {
+  color: var(--primary);
+  font-weight: 500;
+}
+
+.submitted-date {
+  color: var(--gray-500);
+  font-size: 0.75rem;
+}
+
+.no-submissions {
+  text-align: center;
+  padding: 3rem 2rem;
+  color: var(--gray-500);
+}
+
+.no-submissions svg {
+  margin-bottom: 1rem;
+  opacity: 0.5;
+}
+
 /* Modal */
 .modal-overlay {
   position: fixed;

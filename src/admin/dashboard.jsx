@@ -106,6 +106,12 @@ export default function Dashboard() {
   const [catSection, setCatSection] = useState(null); // null | 'assignments' | 'students'
   const [detailView, setDetailView] = useState(null); // {type: 'assignment'|'student', data: {...}}
 
+  // Submitted Students Modal state
+  const [submittedModalOpen, setSubmittedModalOpen] = useState(false);
+  const [submittedStudents, setSubmittedStudents] = useState([]);
+  const [submittedLoading, setSubmittedLoading] = useState(false);
+  const [submittedError, setSubmittedError] = useState("");
+
   /** DASHBOARD DATA */
   useEffect(() => {
     let alive = true;
@@ -208,6 +214,29 @@ export default function Dashboard() {
     }
   };
 
+  // Fetch submitted students data
+  const fetchSubmittedStudents = async () => {
+    setSubmittedLoading(true);
+    setSubmittedError("");
+    
+    try {
+      const response = await axios.get('https://el-backend-ashen.vercel.app/admin/submitted-students');
+      setSubmittedStudents(response.data || []);
+      setSubmittedModalOpen(true);
+    } catch (error) {
+      console.error('Error fetching submitted students:', error);
+      setSubmittedError('Failed to fetch submitted students data');
+    } finally {
+      setSubmittedLoading(false);
+    }
+  };
+
+  const closeSubmittedModal = () => {
+    setSubmittedModalOpen(false);
+    setSubmittedStudents([]);
+    setSubmittedError("");
+  };
+
   /** Formatters */
   const fmtDate = (iso, withTime = false) => {
     if (!iso) return "-";
@@ -274,7 +303,11 @@ export default function Dashboard() {
           </div>
         </div>
 
-        <div className="stat-card">
+        <div 
+          className="stat-card clickable-card" 
+          onClick={fetchSubmittedStudents}
+          title="Click to view submitted students details"
+        >
           <FaCheckCircle className="stat-icon green" />
           <div>
             <p>Students Submitted</p>
@@ -602,6 +635,80 @@ export default function Dashboard() {
               </div>
             )}
           </>
+        )}
+      </Modal>
+
+      {/* Submitted Students Modal */}
+      <Modal open={submittedModalOpen} onClose={closeSubmittedModal}>
+        <div className="submitted-header">
+          <h3>Submitted Students Details</h3>
+        </div>
+
+        {submittedLoading && (
+          <div className="submitted-loading">
+            <div className="spinner"></div>
+            <p>Loading submitted students...</p>
+          </div>
+        )}
+
+        {!submittedLoading && submittedError && (
+          <div className="submitted-error">
+            <p>{submittedError}</p>
+          </div>
+        )}
+
+        {!submittedLoading && !submittedError && submittedStudents.length > 0 && (
+          <div className="submitted-students-container">
+            {submittedStudents.map((student, index) => (
+              <div key={student._id || index} className="submitted-student-card">
+                <div className="student-header">
+                  <FaUserCircle className="student-avatar" />
+                  <div className="student-info">
+                    <h4>{student.name || 'Unknown Student'}</h4>
+                    <p className="student-course">{student.courseName || 'No Course'}</p>
+                    <p className="student-enrolled">Enrolled: {fmtDate(student.enrolledDate)}</p>
+                  </div>
+                  <div className="submission-stats">
+                    <span className="submission-count">
+                      {student.submittedAssignments?.length || 0} submissions
+                    </span>
+                    <span className="average-score">
+                      Avg Score: {student.averageScore || 0}%
+                    </span>
+                  </div>
+                </div>
+                
+                {student.submittedAssignments && student.submittedAssignments.length > 0 && (
+                  <div className="assignments-list">
+                    <h5>Submitted Assignments:</h5>
+                    {student.submittedAssignments.map((assignment, idx) => (
+                      <div key={assignment._id || idx} className="assignment-item">
+                        <div className="assignment-info">
+                          <MdAssignment className="assignment-icon" />
+                          <div>
+                            <span className="assignment-name">{assignment.moduleName || 'Unknown Assignment'}</span>
+                            <span className="assignment-category">{assignment.category || 'No Category'}</span>
+                          </div>
+                        </div>
+                        <div className="assignment-scores">
+                          <span className="score">Score: {assignment.score || 0}%</span>
+                          <span className="progress">Progress: {assignment.progress || 0}%</span>
+                          <span className="submitted-date">Submitted: {fmtDate(assignment.submittedDate)}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {!submittedLoading && !submittedError && submittedStudents.length === 0 && (
+          <div className="no-submissions">
+            <FaCheckCircle size={48} />
+            <p>No students have submitted assignments yet.</p>
+          </div>
         )}
       </Modal>
     </div>
