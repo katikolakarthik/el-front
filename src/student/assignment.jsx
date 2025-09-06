@@ -7,7 +7,6 @@ import '@react-pdf-viewer/core/lib/styles/index.css';
 import './AssignmentFlow.css';
 
 const API_BASE = 'https://el-backend-ashen.vercel.app';
-const CATEGORY_OPTIONS = ["CPC", "CCS", "IP-DRG", "SURGERY", "Denials", "ED", "E and M"];
 
 /* ================== Robust PDF viewer (handles large PDFs) ================== */
 const PdfReader = ({ url, height = '60vh', watermark = '' }) => {
@@ -128,6 +127,8 @@ const normalizeAssignment = (raw) => {
 };
 
 const ms = (d) => (d ? new Date(d).getTime() : 0);
+
+// Format countdown mm:ss (or HH:MM:SS if long)
 const fmtCountdown = (msLeft) => {
   if (msLeft < 0) msLeft = 0;
   const totalSec = Math.floor(msLeft / 1000);
@@ -138,9 +139,10 @@ const fmtCountdown = (msLeft) => {
   return h > 0 ? `${pad(h)}:${pad(m)}:${pad(s)}` : `${pad(m)}:${pad(s)}`;
 };
 
+/* ---------- category-based field visibility ---------- */
 const showField = (category, field) => {
-  if (category === "IP-DRG" && ["cptCodes", "hcpcsCodes", "modifiers"].includes(field)) return false;
-  if (category === "CPC" && ["pcsCodes", "patientName", "ageOrDob", "drgValue"].includes(field)) return false;
+  if (category === 'IP-DRG' && ['cptCodes', 'hcpcsCodes', 'modifiers'].includes(field)) return false;
+  if (category === 'CPC' && ['pcsCodes', 'patientName', 'ageOrDob', 'drgValue'].includes(field)) return false;
   return true;
 };
 
@@ -148,7 +150,7 @@ const showField = (category, field) => {
 const getTimeLimitMinutes = (assignment, sub) => {
   if (sub && Number.isFinite(Number(sub.timeLimitMinutes))) return Number(sub.timeLimitMinutes);
   if (Number.isFinite(Number(assignment?.timeLimitMinutes))) return Number(assignment.timeLimitMinutes);
-  return null;
+  return null; // no time limit
 };
 
 const makeTimerKey = (userId, assignmentId, subId) =>
@@ -188,7 +190,7 @@ const NewAssignments = () => {
   const [search, setSearch] = useState('');
   const [sortOrder, setSortOrder] = useState('newest');
 
-  const [countdown, setCountdown] = useState(null); // ms left
+  const [countdown, setCountdown] = useState(null); // ms left (auto-submit at 0)
   const [timerEndMs, setTimerEndMs] = useState(null);
   const timerRef = useRef(null);
   const autoSubmittingRef = useRef(false);
@@ -236,7 +238,7 @@ const NewAssignments = () => {
     fetchAssignments();
   }, []);
 
-  // ------- SEARCH + SORT -------
+  // ------- SEARCH FILTER -------
   const searchLower = search.trim().toLowerCase();
   const filtered = useMemo(() => {
     if (!searchLower) return assignments;
@@ -249,6 +251,7 @@ const NewAssignments = () => {
     });
   }, [assignments, searchLower]);
 
+  // ------- DATE SORT (Newest/Oldest) -------
   const sorted = useMemo(() => {
     const list = [...filtered];
     list.sort((a, b) => {
@@ -292,7 +295,7 @@ const NewAssignments = () => {
 
       setAnswers({});
 
-      // ====== VIEW-ONLY WHEN COMPLETED: do NOT start timer ======
+      // VIEW-ONLY WHEN COMPLETED: do NOT start timer
       const userId = localStorage.getItem('userId');
       const isAlreadyDone = selectedSub ? selectedSub.isCompleted : assignmentData.isCompleted;
 
@@ -327,7 +330,7 @@ const NewAssignments = () => {
     setTimerEndMs(null);
   };
 
-  const initCountdown = (endMs, assignmentId, subId) => {
+  const initCountdown = (endMs /*, assignmentId, subId */) => {
     clearCountdown();
     if (!endMs) return;
 
@@ -439,7 +442,7 @@ const NewAssignments = () => {
         clearTimerKey(userId, activeAssignment._id, null);
       }
 
-      // refresh list best-effort
+      // refresh cards best-effort
       try {
         const userId2 = localStorage.getItem('userId');
         const courseResp2 = await axios.get(`${API_BASE}/student/${userId2}/course`);
@@ -491,7 +494,7 @@ const NewAssignments = () => {
 
   const handleAnswerChange = (key, value) => setAnswers((p) => ({ ...p, [key]: value }));
 
-  // Status chip for timed assignments
+  // Status chip (only when time limit exists)
   const timerBadge = (a) => {
     const minutes = getTimeLimitMinutes(a, null);
     if (!minutes) return null;
@@ -504,7 +507,7 @@ const NewAssignments = () => {
     const qs = target.questions || [];
     const dynamicQs = qs.filter((q) => q.type === 'dynamic');
     const category = activeAssignment?.category;
-    const readOnly = target.isCompleted || submitting; // <-- core: completed => read-only
+    const readOnly = target.isCompleted || submitting; // completed => read-only
 
     if (dynamicQs.length > 0) {
       return dynamicQs.map((q, idx) => {
@@ -543,11 +546,11 @@ const NewAssignments = () => {
       });
     }
 
-    const predefined = qs.find((q) => q.type === 'predefined');
+  const predefined = qs.find((q) => q.type === 'predefined');
     if (predefined && predefined.answerKey) {
       return (
         <div className="form-grid">
-          {showField(category, "patientName") && (
+          {showField(category, 'patientName') && (
             <div className="form-item">
               <label className="label">Patient Name</label>
               <input
@@ -559,7 +562,7 @@ const NewAssignments = () => {
               />
             </div>
           )}
-          {showField(category, "ageOrDob") && (
+          {showField(category, 'ageOrDob') && (
             <div className="form-item">
               <label className="label">Age / DOB</label>
               <input
@@ -572,9 +575,9 @@ const NewAssignments = () => {
             </div>
           )}
 
-          {showField(category, "icdCodes") && (
+          {showField(category, 'icdCodes') && (
             <div className="form-item">
-              <label className="label">ICD (Pdx) </label>
+              <label className="label">ICD (Pdx)</label>
               <input
                 className="input"
                 type="text"
@@ -585,7 +588,7 @@ const NewAssignments = () => {
               />
             </div>
           )}
-          {showField(category, "cptCodes") && (
+          {showField(category, 'cptCodes') && (
             <div className="form-item">
               <label className="label">CPT Codes</label>
               <input
@@ -598,7 +601,7 @@ const NewAssignments = () => {
               />
             </div>
           )}
-          {showField(category, "pcsCodes") && (
+          {showField(category, 'pcsCodes') && (
             <div className="form-item">
               <label className="label">PCS Codes</label>
               <input
@@ -611,7 +614,7 @@ const NewAssignments = () => {
               />
             </div>
           )}
-          {showField(category, "hcpcsCodes") && (
+          {showField(category, 'hcpcsCodes') && (
             <div className="form-item">
               <label className="label">HCPCS Codes</label>
               <input
@@ -624,7 +627,7 @@ const NewAssignments = () => {
               />
             </div>
           )}
-          {showField(category, "drgValue") && (
+          {showField(category, 'drgValue') && (
             <div className="form-item">
               <label className="label">DRG Value</label>
               <input
@@ -637,7 +640,7 @@ const NewAssignments = () => {
               />
             </div>
           )}
-          {showField(category, "modifiers") && (
+          {showField(category, 'modifiers') && (
             <div className="form-item">
               <label className="label">Modifiers</label>
               <input
@@ -715,7 +718,13 @@ const NewAssignments = () => {
       return (
         <div className="container">
           <div className="page-header">
-            <button className="btn btn-ghost" onClick={() => { setActiveAssignment(null); clearCountdown(); }} disabled={submitting}>Back</button>
+            <button
+              className="btn btn-ghost"
+              onClick={() => { setActiveAssignment(null); clearCountdown(); }}
+              disabled={submitting}
+            >
+              Back
+            </button>
             <h3 className="title-sm">{activeAssignment.moduleName}</h3>
             <div style={{ marginLeft: 'auto' }}>{timerBadge(activeAssignment)}</div>
           </div>
@@ -733,10 +742,11 @@ const NewAssignments = () => {
                     </span>
                   </div>
                   <div className="card-actions">
+                    {/* allow viewing even if completed */}
                     <button
                       className="btn"
                       onClick={() => handleStart(activeAssignment._id, s._id)}
-                      disabled={submitting || isStarting}  // <-- allow viewing even if completed
+                      disabled={submitting || isStarting}
                     >
                       {isStarting ? 'Opening…' : btnLabel}
                     </button>
@@ -750,13 +760,11 @@ const NewAssignments = () => {
         </div>
       );
     }
-
-    const pdfUrl = activeSubAssignment?.assignmentPdf || activeAssignment.assignmentPdf;
+const pdfUrl = activeSubAssignment?.assignmentPdf || activeAssignment.assignmentPdf;
     const questionSource = activeSubAssignment || activeAssignment;
     const isCompleted = questionSource.isCompleted;
     const isStartingParent = startingId === `${activeAssignment._id}:parent`;
     const showCountdown = Number.isFinite(timerEndMs);
-
     const timeLeft = showCountdown ? Math.max(0, timerEndMs - Date.now()) : null;
 
     return (
@@ -764,27 +772,29 @@ const NewAssignments = () => {
         <div className="page-header">
           <button
             className="btn btn-ghost"
-            onClick={() => { activeSubAssignment ? setActiveSubAssignment(null) : setActiveAssignment(null); clearCountdown(); }}
+            onClick={() => {
+              activeSubAssignment ? setActiveSubAssignment(null) : setActiveAssignment(null);
+              clearCountdown();
+            }}
             disabled={submitting}
           >
             Back
           </button>
-          <h3 className="title-sm">{activeSubAssignment?.subModuleName || activeAssignment.moduleName}</h3>
-          <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 10 }}>
+        </div>
+
+        {pdfUrl && <PdfReader url={pdfUrl} height="60vh" watermark="" />}
+
+        <div ref={questionsRef} className="panel">
+          <div className="panel-head" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <h4 style={{ marginRight: 'auto' }}>
+              {activeSubAssignment?.subModuleName || activeAssignment.moduleName}
+            </h4>
             {timerBadge(activeAssignment)}
             {showCountdown && (
               <div className="countdown-chip">
                 <FiClock /> <span>{fmtCountdown(timeLeft ?? countdown ?? 0)}</span>
               </div>
             )}
-          </div>
-        </div>
-
-        {pdfUrl && <PdfReader url={pdfUrl} height="60vh" watermark="" />}
-
-        <div ref={questionsRef} className="panel">
-          <div className="panel-head">
-            <h4>Questions</h4>
             {isCompleted && <span className="badge badge-success">Completed (View Only)</span>}
           </div>
 
@@ -809,7 +819,8 @@ const NewAssignments = () => {
       </div>
     );
   }
-// --------------- CARDS VIEW ---------------
+
+  // --------------- CARDS VIEW ---------------
   return (
     <div className="container">
       <div className="page-header">
@@ -862,6 +873,9 @@ const NewAssignments = () => {
           {sorted.map((assignment) => {
             const allSubsCompleted = areAllSubAssignmentsCompleted(assignment);
             const isStarting = startingId === `${assignment._id}:parent`;
+            const hasTime = Number.isFinite(Number(assignment?.timeLimitMinutes));
+
+            // Button label switches to View/View Sections when completed
             const btnLabel = allSubsCompleted
               ? (assignment.subAssignments?.length > 0 ? 'View Sections' : 'View')
               : (assignment.subAssignments?.length > 0 ? 'View Sections' : 'Start');
@@ -875,14 +889,13 @@ const NewAssignments = () => {
                   </span>
                 </div>
 
-                <div className="meta">
-                  <span className="meta-key">Status</span>
-                  <span className="meta-val">
-                    {Number.isFinite(Number(assignment?.timeLimitMinutes))
-                      ? `Timed (${Number(assignment.timeLimitMinutes)}m)`
-                      : '—'}
-                  </span>
-                </div>
+                {/* Show Status only when time limit exists */}
+                {hasTime && (
+                  <div className="meta">
+                    <span className="meta-key">Status</span>
+                    <span className="meta-val">Timed ({Number(assignment.timeLimitMinutes)}m)</span>
+                  </div>
+                )}
 
                 {assignment.subAssignments?.length > 0 && (
                   <div className="meta">
@@ -894,10 +907,11 @@ const NewAssignments = () => {
                 )}
 
                 <div className="card-actions">
+                  {/* allow viewing even if completed */}
                   <button
                     className="btn"
                     onClick={() => handleStart(assignment._id)}
-                    disabled={submitting || isStarting}  {/* <-- allow viewing even if completed */}
+                    disabled={submitting || isStarting}
                   >
                     {isStarting ? 'Opening…' : btnLabel}
                   </button>
