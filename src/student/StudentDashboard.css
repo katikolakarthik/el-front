@@ -749,6 +749,19 @@ body {
   font-weight: 500;
 }
 
+.assignment-progress {
+  margin: var(--space-sm) 0;
+  padding: var(--space-sm);
+  background: var(--primary-light);
+  border-radius: var(--radius-sm);
+  font-size: 0.875rem;
+}
+
+.assignment-progress span {
+  color: var(--primary);
+  font-weight: 500;
+}
+
 .assignment-details {
   display: flex;
   gap: var(--space-md);
