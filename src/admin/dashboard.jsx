@@ -250,7 +250,11 @@ export default function Dashboard() {
 
       {/* Summary Cards */}
       <div className="stats-grid">
-        <div className="stat-card">
+        <div 
+          className="stat-card clickable-card" 
+          onClick={() => navigate('/admin/student')}
+          title="Click to view all students"
+        >
           <FaUsers className="stat-icon" />
           <div>
             <p>Total Students</p>
@@ -258,7 +262,11 @@ export default function Dashboard() {
           </div>
         </div>
 
-        <div className="stat-card">
+        <div 
+          className="stat-card clickable-card" 
+          onClick={() => navigate('/admin/assignments')}
+          title="Click to view all assignments"
+        >
           <FaClipboardList className="stat-icon pink" />
           <div>
             <p>Total Assignments</p>
