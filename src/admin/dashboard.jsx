@@ -3,9 +3,7 @@ import {
   FaUsers,
   FaClipboardList,
   FaCheckCircle,
-  FaChartLine,
   FaUserCircle,
-  FaStar,
   FaTimes,
 } from "react-icons/fa";
 import { MdAssignment, MdPictureAsPdf } from "react-icons/md";
@@ -252,21 +250,6 @@ export default function Dashboard() {
           </div>
         </div>
 
-        <div className="stat-card">
-          <FaChartLine className="stat-icon blue" />
-          <div>
-            <p>Avg Progress</p>
-            <h3>{stats?.averageProgress ?? 0}%</h3>
-          </div>
-        </div>
-
-        <div className="stat-card">
-          <FaStar className="stat-icon orange" />
-          <div>
-            <p>Avg Score</p>
-            <h3>{stats?.averageScore ?? 0}%</h3>
-          </div>
-        </div>
       </div>
 
       {/* Recent */}
