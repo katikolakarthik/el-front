@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { FaChevronDown, FaTrash, FaTimes, FaEllipsisV, FaPlus, FaEdit } from "react-icons/fa";
 import axios from "axios";
 import "./student.css";
@@ -16,9 +16,9 @@ export default function Students() {
     courseName: "",
     paidAmount: 0,
     remainingAmount: 0,
-    enrolledDate: new Date().toISOString().split('T')[0],
-    expiryDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // Default: 30 days from now
-    profileImage: null
+    enrolledDate: new Date().toISOString().split("T")[0],
+    expiryDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0],
+    profileImage: null,
   });
   const [selectedFile, setSelectedFile] = useState(null);
   const [isEditMode, setIsEditMode] = useState(false);
@@ -33,21 +33,53 @@ export default function Students() {
 
   const CATEGORY_OPTIONS = ["CPC", "CCS", "IP-DRG", "SURGERY", "Denials", "ED", "E and M"];
 
+  // StrictMode mount guard to prevent double initial fetch in dev
+  const didFetchRef = useRef(false);
+
+  const fetchStudents = useCallback(
+    async (showSpinner = true, signal) => {
+      if (showSpinner) setIsLoading(true);
+      try {
+        const res = await axios.get(`${API_URL}/students/summary`, { signal });
+        setStudents(res.data);
+      } catch (err) {
+        if (err.name === "CanceledError") return;
+        console.error("Error fetching students:", err);
+      } finally {
+        if (showSpinner) setIsLoading(false);
+      }
+    },
+    []
+  );
+
   useEffect(() => {
-    fetchStudents();
+    if (didFetchRef.current) return;
+    didFetchRef.current = true;
+
+    const controller = new AbortController();
+    fetchStudents(true, controller.signal);
+    return () => controller.abort();
+  }, [fetchStudents]);
+
+  // Close both modals and clear selection
+  const closeModal = useCallback(() => {
+    setIsDetailsModalOpen(false);
+    setIsFormModalOpen(false);
+    setSelectedStudent(null);
   }, []);
 
-  const fetchStudents = async () => {
-    setIsLoading(true);
-    try {
-      const res = await axios.get(`${API_URL}/students/summary`);
-      setStudents(res.data);
-    } catch (err) {
-      console.error("Error fetching students:", err);
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  // Add/Remove ESC key listener only when any modal is open
+  useEffect(() => {
+    const hasOpenModal = isDetailsModalOpen || isFormModalOpen;
+    if (!hasOpenModal) return;
+
+    const handleKeyDown = (e) => {
+      if (e.key === "Escape") closeModal();
+    };
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [isDetailsModalOpen, isFormModalOpen, closeModal]);
 
   // DELETE with full-screen processing overlay
   const handleDelete = async (id) => {
@@ -55,8 +87,8 @@ export default function Students() {
     setIsDeleting(true);
     try {
       await axios.delete(`${API_URL}/student/${id}`);
-      // refresh list
-      await fetchStudents();
+      // refresh list silently (no page-wide spinner)
+      await fetchStudents(false);
       // close any open modal so overlay isn't stuck
       closeModal();
     } catch (err) {
@@ -82,45 +114,48 @@ export default function Students() {
       const pendingAssignmentsRaw = stats.pendingAssignments || [];
 
       // Submitted (flatten to sub-level for existing UI)
-      const submittedFlattened = submittedAssignmentsRaw.flatMap(a => {
+      const submittedFlattened = submittedAssignmentsRaw.flatMap((a) => {
         const subs = a.subAssignments || [];
         if (!subs.length) {
-          return [{
-            _id: a.assignmentId,
-            moduleName: a.moduleName,
-            subModuleName: a.moduleName,
-            progressPercent: a.overallProgress ?? 0,
-            correctCount: a.totalCorrect ?? 0,
-            wrongCount: a.totalWrong ?? 0
-          }];
+          return [
+            {
+              _id: a.assignmentId,
+              moduleName: a.moduleName,
+              subModuleName: a.moduleName,
+              progressPercent: a.overallProgress ?? 0,
+              correctCount: a.totalCorrect ?? 0,
+              wrongCount: a.totalWrong ?? 0,
+            },
+          ];
         }
-        return subs.map(sub => ({
+        return subs.map((sub) => ({
           _id: sub.subAssignmentId,
           moduleName: a.moduleName,
           subModuleName: sub.subModuleName || "",
           progressPercent: sub.progressPercent ?? 0,
           correctCount: sub.correctCount ?? 0,
-          wrongCount: sub.wrongCount ?? 0
+          wrongCount: sub.wrongCount ?? 0,
         }));
       });
 
       // Not submitted: one row per assignment (grouped by module in UI)
-      const notSubmittedMapped = pendingAssignmentsRaw.map(p => ({
+      const notSubmittedMapped = pendingAssignmentsRaw.map((p) => ({
         _id: p._id,
         moduleName: p.moduleName,
-        subModuleName: p.moduleName
+        subModuleName: p.moduleName,
       }));
 
       // Optional aggregates for header block
       const overallProgressAvg = Math.round(
         submittedAssignmentsRaw.length
-          ? submittedAssignmentsRaw.reduce((acc, a) => acc + (a.overallProgress ?? 0), 0) / submittedAssignmentsRaw.length
+          ? submittedAssignmentsRaw.reduce((acc, a) => acc + (a.overallProgress ?? 0), 0) /
+              submittedAssignmentsRaw.length
           : 0
       );
       const totalCorrectSum = submittedAssignmentsRaw.reduce((acc, a) => acc + (a.totalCorrect ?? 0), 0);
       const totalWrongSum = submittedAssignmentsRaw.reduce((acc, a) => acc + (a.totalWrong ?? 0), 0);
 
-      setSelectedStudent(prev => ({
+      setSelectedStudent((prev) => ({
         ...prev,
         submittedCount: stats.submittedCount ?? submittedAssignmentsRaw.length ?? 0,
         notSubmittedCount: stats.pendingCount ?? pendingAssignmentsRaw.length ?? 0,
@@ -129,8 +164,8 @@ export default function Students() {
         progress: {
           overallProgress: overallProgressAvg,
           totalCorrect: totalCorrectSum,
-          totalWrong: totalWrongSum
-        }
+          totalWrong: totalWrongSum,
+        },
       }));
     } catch (err) {
       console.error("Error fetching student stats:", err);
@@ -142,8 +177,6 @@ export default function Students() {
   const openDetailsModal = (student) => {
     setSelectedStudent(student);
     setIsDetailsModalOpen(true);
-    document.addEventListener('keydown', handleKeyDown);
-
     // fetch stats for submitted/not-submitted sections
     fetchAndInjectStudentStats(student);
   };
@@ -155,13 +188,17 @@ export default function Students() {
       setFormData({
         id: student.id,
         name: student.name,
-        password: '', // Password is not retrieved from backend for security
+        password: "", // Password is not retrieved from backend for security
         courseName: student.courseName || "",
         paidAmount: student.paidAmount || 0,
         remainingAmount: student.remainingAmount || 0,
-        enrolledDate: student.enrolledDate ? student.enrolledDate.split('T')[0] : new Date().toISOString().split('T')[0],
-        expiryDate: student.expiryDate ? student.expiryDate.split('T')[0] : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-        profileImage: student.profileImage || null
+        enrolledDate: student.enrolledDate
+          ? student.enrolledDate.split("T")[0]
+          : new Date().toISOString().split("T")[0],
+        expiryDate: student.expiryDate
+          ? student.expiryDate.split("T")[0]
+          : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0],
+        profileImage: student.profileImage || null,
       });
     } else {
       // Add mode
@@ -172,28 +209,14 @@ export default function Students() {
         courseName: "",
         paidAmount: 0,
         remainingAmount: 0,
-        enrolledDate: new Date().toISOString().split('T')[0],
-        expiryDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-        profileImage: null
+        enrolledDate: new Date().toISOString().split("T")[0],
+        expiryDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0],
+        profileImage: null,
       });
     }
     setSelectedFile(null);
     setIsFormModalOpen(true);
-    document.addEventListener('keydown', handleKeyDown);
   };
-
-  const closeModal = useCallback(() => {
-    setIsDetailsModalOpen(false);
-    setIsFormModalOpen(false);
-    setSelectedStudent(null);
-    document.removeEventListener('keydown', handleKeyDown);
-  }, []);
-
-  const handleKeyDown = useCallback((e) => {
-    if (e.key === 'Escape') {
-      closeModal();
-    }
-  }, [closeModal]);
 
   const handleOverlayClick = (e) => {
     if (e.target === e.currentTarget) {
@@ -203,9 +226,9 @@ export default function Students() {
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
-    setFormData(prev => ({
+    setFormData((prev) => ({
       ...prev,
-      [name]: value
+      [name]: value,
     }));
   };
 
@@ -219,40 +242,41 @@ export default function Students() {
 
     // Build form data
     const formDataToSend = new FormData();
-    formDataToSend.append('name', formData.name);
+    formDataToSend.append("name", formData.name);
 
     // Only send password when adding OR when user typed a new one in edit mode
-    if (!isEditMode || (formData.password && formData.password.trim() !== '')) {
-      formDataToSend.append('password', formData.password.trim());
+    if (!isEditMode || (formData.password && formData.password.trim() !== "")) {
+      formDataToSend.append("password", formData.password.trim());
     }
 
-    formDataToSend.append('courseName', formData.courseName);
-    formDataToSend.append('paidAmount', formData.paidAmount);
-    formDataToSend.append('remainingAmount', formData.remainingAmount);
-    formDataToSend.append('enrolledDate', formData.enrolledDate);
-    formDataToSend.append('expiryDate', formData.expiryDate);
+    formDataToSend.append("courseName", formData.courseName);
+    formDataToSend.append("paidAmount", formData.paidAmount);
+    formDataToSend.append("remainingAmount", formData.remainingAmount);
+    formDataToSend.append("enrolledDate", formData.enrolledDate);
+    formDataToSend.append("expiryDate", formData.expiryDate);
 
     if (selectedFile) {
-      formDataToSend.append('profileImage', selectedFile);
+      formDataToSend.append("profileImage", selectedFile);
     }
 
     try {
       if (isEditMode && formData.id) {
         // Edit existing student
         await axios.put(`${API_URL}/student/${formData.id}`, formDataToSend, {
-          headers: { 'Content-Type': 'multipart/form-data' }
+          headers: { "Content-Type": "multipart/form-data" },
         });
       } else {
         // Add new student
         await axios.post(`${API_URL}/add-student`, formDataToSend, {
-          headers: { 'Content-Type': 'multipart/form-data' }
+          headers: { "Content-Type": "multipart/form-data" },
         });
       }
-      fetchStudents();
+      // silent refresh (no page-wide spinner)
+      await fetchStudents(false);
       closeModal();
     } catch (err) {
       console.error("Error saving student:", err);
-      alert("Error saving student: " + err.message);
+      alert("Error saving student: " + (err?.response?.data?.message || err.message));
     } finally {
       setIsSubmitting(false);
     }
@@ -268,7 +292,6 @@ export default function Students() {
   // Function to format date and add expiry status
   const formatDateWithStatus = (dateString) => {
     if (!dateString) return "—";
-
     const date = new Date(dateString);
     const now = new Date();
     const isExpired = date < now;
@@ -294,11 +317,7 @@ export default function Students() {
 
       <div className="students-header">
         <h2>Students</h2>
-        <button 
-          onClick={() => openFormModal()} 
-          className="add-student-btn"
-          disabled={isDeleting}
-        >
+        <button onClick={() => openFormModal()} className="add-student-btn" disabled={isDeleting}>
           <FaPlus /> Add Student
         </button>
       </div>
@@ -323,40 +342,34 @@ export default function Students() {
           <tbody>
             {students.length > 0 ? (
               students.map((s) => {
-                const enrolledDate = s.enrolledDate
-                  ? new Date(s.enrolledDate).toLocaleDateString()
-                  : "—";
+                const enrolledDate = s.enrolledDate ? new Date(s.enrolledDate).toLocaleDateString() : "—";
 
-                return (  
-                  <tr key={s.id} className={`student-row ${isDeleting ? "disabled-row" : ""}`}>  
-                    <td>  
-                      {s.profileImage ? (  
-                        <img  
-                          src={s.profileImage}  
-                          alt={s.name}  
-                          className="profile-img"  
-                        />  
-                      ) : (  
-                        <img 
-                          src="https://res.cloudinary.com/dppiuypop/image/upload/v1755322490/uploads/hp2mrub5fgg5xdxugyy5.jpg" 
+                return (
+                  <tr key={s.id} className={`student-row ${isDeleting ? "disabled-row" : ""}`}>
+                    <td>
+                      {s.profileImage ? (
+                        <img src={s.profileImage} alt={s.name} className="profile-img" />
+                      ) : (
+                        <img
+                          src="https://res.cloudinary.com/dppiuypop/image/upload/v1755322490/uploads/hp2mrub5fgg5xdxugyy5.jpg"
                           alt="Profile"
                           className="profile-img"
                         />
-                      )}  
-                    </td>  
-                    <td className="student-name">{s.name}</td>  
-                    <td>{s.courseName || "—"}</td>  
+                      )}
+                    </td>
+                    <td className="student-name">{s.name}</td>
+                    <td>{s.courseName || "—"}</td>
                     <td>{enrolledDate}</td>
                     <td>{formatDateWithStatus(s.expiryDate)}</td>
-                    <td className="actions-cell">  
-                      <div className="actions-wrapper">  
-                        <button  
-                          onClick={() => openDetailsModal(s)}  
-                          className="details-btn"  
-                          title="View details"  
+                    <td className="actions-cell">
+                      <div className="actions-wrapper">
+                        <button
+                          onClick={() => openDetailsModal(s)}
+                          className="details-btn"
+                          title="View details"
                           disabled={isDeleting}
-                        >  
-                          <FaEllipsisV />  
+                        >
+                          <FaEllipsisV />
                         </button>
                         <button
                           onClick={() => openFormModal(s)}
@@ -366,10 +379,10 @@ export default function Students() {
                         >
                           <FaEdit />
                         </button>
-                      </div>  
-                    </td>  
-                  </tr>  
-                );  
+                      </div>
+                    </td>
+                  </tr>
+                );
               })
             ) : (
               <tr>
@@ -378,44 +391,57 @@ export default function Students() {
                 </td>
               </tr>
             )}
-          </tbody>  
+          </tbody>
         </table>
       )}
 
       {/* Details Modal */}
-      {isDetailsModalOpen && selectedStudent && (  
-        <div className="modal-overlay" onClick={handleOverlayClick}>  
-          <div className="modal">  
-            <div className="modal-header">  
-              <h3>{selectedStudent.name}'s Details</h3>  
-              <button onClick={closeModal} className="close-btn" disabled={isDeleting}>  
-                <FaTimes />  
-              </button>  
-            </div>  
-            <div className="modal-content">  
-              <div className="student-info">  
-                <div className="profile-section">  
-                  {selectedStudent.profileImage ? (  
-                    <img  
-                      src={selectedStudent.profileImage}  
-                      alt={selectedStudent.name}  
-                      className="modal-profile-img"  
-                    />  
-                  ) : (  
-                    <div className="modal-placeholder-profile">—</div>  
-                  )}  
-                </div>  
-                <div className="info-section">  
-                  <p><strong>Course:</strong> {selectedStudent.courseName || "—"}</p>  
-                  <p><strong>Enrolled Date:</strong> {selectedStudent.enrolledDate ? new Date(selectedStudent.enrolledDate).toLocaleDateString() : "—"}</p>  
-                  <p><strong>Expiry Date:</strong> {formatDateWithStatus(selectedStudent.expiryDate)}</p>
-                  <p><strong>Paid Amount:</strong> {selectedStudent.paidAmount ?? 0}</p>  
-                  <p><strong>Remaining Amount:</strong> {selectedStudent.remainingAmount ?? 0}</p>  
-                  <p><strong>Overall Progress:</strong> {selectedStudent.progress?.overallProgress ?? 0}%</p>  
-                  <p><strong>Total Correct:</strong> {selectedStudent.progress?.totalCorrect ?? 0}</p>  
-                  <p><strong>Total Wrong:</strong> {selectedStudent.progress?.totalWrong ?? 0}</p>  
-                </div>  
-              </div>  
+      {isDetailsModalOpen && selectedStudent && (
+        <div className="modal-overlay" onClick={handleOverlayClick}>
+          <div className="modal">
+            <div className="modal-header">
+              <h3>{selectedStudent.name}'s Details</h3>
+              <button onClick={closeModal} className="close-btn" disabled={isDeleting}>
+                <FaTimes />
+              </button>
+            </div>
+            <div className="modal-content">
+              <div className="student-info">
+                <div className="profile-section">
+                  {selectedStudent.profileImage ? (
+                    <img src={selectedStudent.profileImage} alt={selectedStudent.name} className="modal-profile-img" />
+                  ) : (
+                    <div className="modal-placeholder-profile">—</div>
+                  )}
+                </div>
+                <div className="info-section">
+                  <p>
+                    <strong>Course:</strong> {selectedStudent.courseName || "—"}
+                  </p>
+                  <p>
+                    <strong>Enrolled Date:</strong>{" "}
+                    {selectedStudent.enrolledDate ? new Date(selectedStudent.enrolledDate).toLocaleDateString() : "—"}
+                  </p>
+                  <p>
+                    <strong>Expiry Date:</strong> {formatDateWithStatus(selectedStudent.expiryDate)}
+                  </p>
+                  <p>
+                    <strong>Paid Amount:</strong> {selectedStudent.paidAmount ?? 0}
+                  </p>
+                  <p>
+                    <strong>Remaining Amount:</strong> {selectedStudent.remainingAmount ?? 0}
+                  </p>
+                  <p>
+                    <strong>Overall Progress:</strong> {selectedStudent.progress?.overallProgress ?? 0}%
+                  </p>
+                  <p>
+                    <strong>Total Correct:</strong> {selectedStudent.progress?.totalCorrect ?? 0}
+                  </p>
+                  <p>
+                    <strong>Total Wrong:</strong> {selectedStudent.progress?.totalWrong ?? 0}
+                  </p>
+                </div>
+              </div>
 
               {/* stats loader */}
               {isStatsLoading && (
@@ -425,61 +451,59 @@ export default function Students() {
                 </div>
               )}
 
-              <div className="assignments-sections">  
-                <div className="assignments-section">  
-                  <h4>Submitted Assignments ({selectedStudent.submittedCount || 0})</h4>  
-                  {Object.keys(groupByModule(selectedStudent.submittedAssignments || [])).length === 0 ? (  
-                    <p className="no-data">No submissions yet.</p>  
-                  ) : (  
-                    <>  
-                      {Object.entries(groupByModule(selectedStudent.submittedAssignments || [])).map(([moduleName, assignments]) => (  
-                        <div key={moduleName} className="module-group">  
-                          <h5>{moduleName}</h5>  
-                          <ul>  
-                            {assignments.map(({ _id, subModuleName, progressPercent, correctCount, wrongCount }) => (  
-                              <li key={_id}>  
-                                {subModuleName}   
-                                <span className="progress-details">  
-                                  (Progress: {progressPercent}%,   
-                                  Correct: {correctCount},   
-                                  Wrong: {wrongCount})  
-                                </span>  
-                              </li>  
-                            ))}  
-                          </ul>  
-                        </div>  
-                      ))}  
-                    </>  
-                  )}  
-                </div>  
+              <div className="assignments-sections">
+                <div className="assignments-section">
+                  <h4>Submitted Assignments ({selectedStudent.submittedCount || 0})</h4>
+                  {Object.keys(groupByModule(selectedStudent.submittedAssignments || [])).length === 0 ? (
+                    <p className="no-data">No submissions yet.</p>
+                  ) : (
+                    <>
+                      {Object.entries(groupByModule(selectedStudent.submittedAssignments || [])).map(
+                        ([moduleName, assignments]) => (
+                          <div key={moduleName} className="module-group">
+                            <h5>{moduleName}</h5>
+                            <ul>
+                              {assignments.map(({ _id, subModuleName, progressPercent, correctCount, wrongCount }) => (
+                                <li key={_id}>
+                                  {subModuleName}
+                                  <span className="progress-details">
+                                    (Progress: {progressPercent}%, Correct: {correctCount}, Wrong: {wrongCount})
+                                  </span>
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )
+                      )}
+                    </>
+                  )}
+                </div>
 
-                <div className="assignments-section">  
-                  <h4>Not Submitted Assignments ({selectedStudent.notSubmittedCount || 0})</h4>  
-                  {Object.keys(groupByModule(selectedStudent.notSubmittedAssignments || [])).length === 0 ? (  
-                    <p className="no-data">All assignments submitted.</p>  
-                  ) : (  
-                    <>  
-                      {Object.entries(groupByModule(selectedStudent.notSubmittedAssignments || [])).map(([moduleName, assignments]) => (  
-                        <div key={moduleName} className="module-group">  
-                          <h5>{moduleName}</h5>  
-                          <ul>  
-                            {assignments.map(({ _id, subModuleName }) => (  
-                              <li key={_id}>{subModuleName}</li>  
-                            ))}  
-                          </ul>  
-                        </div>  
-                      ))}  
-                    </>  
-                  )}  
-                </div>  
-              </div>  
+                <div className="assignments-section">
+                  <h4>Not Submitted Assignments ({selectedStudent.notSubmittedCount || 0})</h4>
+                  {Object.keys(groupByModule(selectedStudent.notSubmittedAssignments || [])).length === 0 ? (
+                    <p className="no-data">All assignments submitted.</p>
+                  ) : (
+                    <>
+                      {Object.entries(groupByModule(selectedStudent.notSubmittedAssignments || [])).map(
+                        ([moduleName, assignments]) => (
+                          <div key={moduleName} className="module-group">
+                            <h5>{moduleName}</h5>
+                            <ul>
+                              {assignments.map(({ _id, subModuleName }) => (
+                                <li key={_id}>{subModuleName}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        )
+                      )}
+                    </>
+                  )}
+                </div>
+              </div>
 
-              <div className="modal-footer">  
-                <button   
-                  onClick={() => handleDelete(selectedStudent.id)}   
-                  className="delete-btn"  
-                  disabled={isDeleting}
-                >  
+              <div className="modal-footer">
+                <button onClick={() => handleDelete(selectedStudent.id)} className="delete-btn" disabled={isDeleting}>
                   {isDeleting ? (
                     <>
                       <div className="button-spinner"></div> Deleting...
@@ -489,7 +513,7 @@ export default function Students() {
                       <FaTrash /> Delete Student
                     </>
                   )}
-                </button>  
+                </button>
                 <button
                   onClick={() => {
                     closeModal();
@@ -500,10 +524,10 @@ export default function Students() {
                 >
                   <FaEdit /> Edit Student
                 </button>
-              </div>  
-            </div>  
-          </div>  
-        </div>  
+              </div>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Add/Edit Form Modal */}
@@ -511,7 +535,7 @@ export default function Students() {
         <div className="modal-overlay" onClick={handleOverlayClick}>
           <div className="modal form-modal">
             <div className="modal-header">
-              <h3>{isEditMode ? 'Edit Student' : 'Add New Student'}</h3>
+              <h3>{isEditMode ? "Edit Student" : "Add New Student"}</h3>
               <button onClick={closeModal} className="close-btn" disabled={isDeleting}>
                 <FaTimes />
               </button>
@@ -612,20 +636,11 @@ export default function Students() {
 
                 <div className="form-group">
                   <label>Profile Image:</label>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={handleFileChange}
-                    disabled={isDeleting}
-                  />
+                  <input type="file" accept="image/*" onChange={handleFileChange} disabled={isDeleting} />
                   {formData.profileImage && !selectedFile && (
                     <div className="current-image-preview">
                       <p>Current Image:</p>
-                      <img 
-                        src={formData.profileImage} 
-                        alt="Current profile" 
-                        className="preview-img" 
-                      />
+                      <img src={formData.profileImage} alt="Current profile" className="preview-img" />
                     </div>
                   )}
                 </div>
@@ -637,13 +652,11 @@ export default function Students() {
                   <button type="submit" className="submit-btn" disabled={isSubmitting || isDeleting}>
                     {isSubmitting ? (
                       <>
-                        <div className="button-spinner"></div> 
-                        {isEditMode ? 'Updating...' : 'Adding...'}
+                        <div className="button-spinner"></div>
+                        {isEditMode ? "Updating..." : "Adding..."}
                       </>
                     ) : (
-                      <>
-                        {isEditMode ? 'Update Student' : 'Add Student'}
-                      </>
+                      <>{isEditMode ? "Update Student" : "Add Student"}</>
                     )}
                   </button>
                 </div>
