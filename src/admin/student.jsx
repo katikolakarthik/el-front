@@ -1,11 +1,13 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { FaChevronDown, FaTrash, FaTimes, FaEllipsisV, FaPlus, FaEdit } from "react-icons/fa";
+import { useSearchParams } from "react-router-dom";
 import axios from "axios";
 import "./student.css";
 
 const API_URL = "https://el-backend-ashen.vercel.app/admin";
 
 export default function Students() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [students, setStudents] = useState([]);
   const [selectedStudent, setSelectedStudent] = useState(null);
   const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
@@ -35,7 +37,30 @@ export default function Students() {
 
   useEffect(() => {
     fetchStudents();
-  }, []);
+    
+    // Check if there's an edit parameter in the URL
+    const editId = searchParams.get('edit');
+    if (editId) {
+      // Find the student with the given ID and open edit mode
+      const studentToEdit = students.find(s => s._id === editId);
+      if (studentToEdit) {
+        handleEditStudent(studentToEdit);
+      }
+    }
+  }, [students]);
+
+  // Also check for edit parameter when students are loaded
+  useEffect(() => {
+    const editId = searchParams.get('edit');
+    if (editId && students.length > 0) {
+      const studentToEdit = students.find(s => s._id === editId);
+      if (studentToEdit) {
+        handleEditStudent(studentToEdit);
+        // Clear the edit parameter from URL
+        setSearchParams({});
+      }
+    }
+  }, [students, searchParams, setSearchParams]);
 
   const fetchStudents = async () => {
     setIsLoading(true);
@@ -148,12 +173,16 @@ export default function Students() {
     fetchAndInjectStudentStats(student);
   };
 
+  const handleEditStudent = (student) => {
+    openFormModal(student);
+  };
+
   const openFormModal = (student = null) => {
     if (student) {
       // Edit mode
       setIsEditMode(true);
       setFormData({
-        id: student.id,
+        id: student._id || student.id,
         name: student.name,
         password: '', // Password is not retrieved from backend for security
         courseName: student.courseName || "",

@@ -214,7 +214,7 @@ export default function Dashboard() {
     }
 
     try {
-      const response = await axios.delete(`https://el-backend-ashen.vercel.app/admin/students/${studentId}`);
+      const response = await axios.delete(`https://el-backend-ashen.vercel.app/admin/student/${studentId}`);
       
       if (response.data.success) {
         alert('Student deleted successfully!');
@@ -466,9 +466,9 @@ export default function Dashboard() {
                       className="action-btn add-btn"
                       onClick={() => {
                         closeCategory();
-                        navigate('/admin/student/add');
+                        navigate('/admin/student');
                       }}
-                      title="Add new student"
+                      title="Manage students"
                     >+ Add Student</button>
                   </div>
                 </div>
@@ -493,7 +493,7 @@ export default function Dashboard() {
                             onClick={(e) => {
                               e.stopPropagation();
                               closeCategory();
-                              navigate(`/admin/student/edit/${s._id}`);
+                              navigate(`/admin/student?edit=${s._id}`);
                             }}
                             title="Edit student"
                           >Edit</button>
@@ -516,7 +516,7 @@ export default function Dashboard() {
                       className="action-btn add-btn" 
                       onClick={() => {
                         closeCategory();
-                        navigate('/admin/student/add');
+                        navigate('/admin/student');
                       }}
                     >
                       + Add First Student
