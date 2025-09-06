@@ -503,6 +503,7 @@ export default function AssignmentsManager() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [deleting, setDeleting] = useState({});
+  const [searchTerm, setSearchTerm] = useState("");
 
   // Submissions Modal state
   const [activeModule, setActiveModule] = useState(null);
@@ -639,6 +640,22 @@ export default function AssignmentsManager() {
   };
 
   // =======================
+  // Search functionality
+  // =======================
+  const filteredAssignments = assignments.filter(assignment => {
+    if (!searchTerm.trim()) return true;
+    
+    const searchLower = searchTerm.toLowerCase();
+    return (
+      assignment.moduleName?.toLowerCase().includes(searchLower) ||
+      assignment.category?.toLowerCase().includes(searchLower) ||
+      assignment.subAssignments?.some(sub => 
+        sub.subModuleName?.toLowerCase().includes(searchLower)
+      )
+    );
+  });
+
+  // =======================
   // Render
   // =======================
   if (loading) return <p className="loading-text">Loading assignments...</p>;
@@ -653,12 +670,49 @@ export default function AssignmentsManager() {
         </Button>
       </div>
 
+      {/* Search Bar */}
+      <div className="search-container">
+        <div className="search-input-wrapper">
+          <input
+            type="text"
+            placeholder="Search assignments by name, category, or sub-assignment..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="search-input"
+          />
+          <div className="search-icon">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <circle cx="11" cy="11" r="8"></circle>
+              <path d="m21 21-4.35-4.35"></path>
+            </svg>
+          </div>
+        </div>
+        {searchTerm && (
+          <div className="search-results-info">
+            {filteredAssignments.length} assignment(s) found
+          </div>
+        )}
+      </div>
+
       {assignments.length === 0 && (
         <p className="no-data-text">No assignments found.</p>
       )}
 
+      {assignments.length > 0 && filteredAssignments.length === 0 && searchTerm && (
+        <div className="no-search-results">
+          <p className="no-data-text">No assignments found matching "{searchTerm}"</p>
+          <Button 
+            onClick={() => setSearchTerm("")} 
+            variant="secondary" 
+            className="clear-search-btn"
+          >
+            Clear Search
+          </Button>
+        </div>
+      )}
+
       <div className="cards-grid">
-        {assignments.map((assignment) => (
+        {filteredAssignments.map((assignment) => (
           <AssignmentCard
             key={assignment._id}
             assignment={assignment}

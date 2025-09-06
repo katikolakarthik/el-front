@@ -22,6 +22,66 @@
   margin: 0;
 }
 
+/* ===== SEARCH BAR ===== */
+.search-container {
+  margin-bottom: 2rem;
+}
+
+.search-input-wrapper {
+  position: relative;
+  max-width: 500px;
+}
+
+.search-input {
+  width: 100%;
+  padding: 0.75rem 1rem 0.75rem 3rem;
+  border: 2px solid #e5e7eb;
+  border-radius: 0.5rem;
+  font-size: 1rem;
+  transition: all 0.2s ease;
+  background: white;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.search-input:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.search-input::placeholder {
+  color: #9ca3af;
+}
+
+.search-icon {
+  position: absolute;
+  left: 1rem;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #6b7280;
+  pointer-events: none;
+}
+
+.search-results-info {
+  margin-top: 0.5rem;
+  font-size: 0.875rem;
+  color: #6b7280;
+  font-weight: 500;
+}
+
+.no-search-results {
+  text-align: center;
+  padding: 2rem;
+  background: #f9fafb;
+  border-radius: 0.5rem;
+  border: 2px dashed #e5e7eb;
+  margin-bottom: 2rem;
+}
+
+.clear-search-btn {
+  margin-top: 1rem;
+}
+
 /* ===== CARDS ===== */
 .card {
   background: white;
