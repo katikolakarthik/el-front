@@ -9,6 +9,7 @@ import {
   FaTimes,
 } from "react-icons/fa";
 import { MdAssignment, MdPictureAsPdf } from "react-icons/md";
+import { useNavigate } from "react-router-dom";
 import axios from "axios";
 import "./dashboard.css";
 
@@ -92,6 +93,7 @@ function Section({ title, children, tight }) {
 /** ----------------------------- main ----------------------------- */
 
 export default function Dashboard() {
+  const navigate = useNavigate();
   const [stats, setStats] = useState(null);
   const [recentStudents, setRecentStudents] = useState([]);
   const [recentAssignments, setRecentAssignments] = useState([]);
@@ -105,6 +107,11 @@ export default function Dashboard() {
   const [catData, setCatData] = useState(null); // API result
   const [catSection, setCatSection] = useState(null); // null | 'assignments' | 'students'
   const [detailView, setDetailView] = useState(null); // {type: 'assignment'|'student', data: {...}}
+
+  // Submitted students modal state
+  const [submittedModalOpen, setSubmittedModalOpen] = useState(false);
+  const [submittedStudents, setSubmittedStudents] = useState([]);
+  const [submittedLoading, setSubmittedLoading] = useState(false);
 
   /** DASHBOARD DATA */
   useEffect(() => {
@@ -184,6 +191,34 @@ export default function Dashboard() {
   const backToOptions = () => { setDetailView(null); setCatSection(null); };
   const backToList = () => setDetailView(null);
 
+  // Card click handlers
+  const handleTotalStudentsClick = () => {
+    navigate('/admin/students');
+  };
+
+  const handleTotalAssignmentsClick = () => {
+    navigate('/admin/assignments');
+  };
+
+  const handleStudentsSubmittedClick = async () => {
+    setSubmittedModalOpen(true);
+    setSubmittedLoading(true);
+    try {
+      const response = await axios.get("https://el-backend-ashen.vercel.app/admin/students-submitted", { timeout: 15000 });
+      setSubmittedStudents(Array.isArray(response.data) ? response.data : []);
+    } catch (error) {
+      console.error('Error fetching submitted students:', error);
+      setSubmittedStudents([]);
+    } finally {
+      setSubmittedLoading(false);
+    }
+  };
+
+  const closeSubmittedModal = () => {
+    setSubmittedModalOpen(false);
+    setSubmittedStudents([]);
+  };
+
   /** Formatters */
   const fmtDate = (iso, withTime = false) => {
     if (!iso) return "-";
@@ -226,7 +261,7 @@ export default function Dashboard() {
 
       {/* Summary Cards */}
       <div className="stats-grid">
-        <div className="stat-card">
+        <div className="stat-card clickable-card" onClick={handleTotalStudentsClick} title="Click to view all students">
           <FaUsers className="stat-icon" />
           <div>
             <p>Total Students</p>
@@ -234,7 +269,7 @@ export default function Dashboard() {
           </div>
         </div>
 
-        <div className="stat-card">
+        <div className="stat-card clickable-card" onClick={handleTotalAssignmentsClick} title="Click to view all assignments">
           <FaClipboardList className="stat-icon pink" />
           <div>
             <p>Total Assignments</p>
@@ -242,7 +277,7 @@ export default function Dashboard() {
           </div>
         </div>
 
-        <div className="stat-card">
+        <div className="stat-card clickable-card" onClick={handleStudentsSubmittedClick} title="Click to view submitted students">
           <FaCheckCircle className="stat-icon green" />
           <div>
             <p>Students Submitted</p>
@@ -538,6 +573,50 @@ export default function Dashboard() {
               </div>
             )}
           </>
+        )}
+      </Modal>
+
+      {/* Submitted Students Modal */}
+      <Modal open={submittedModalOpen} onClose={closeSubmittedModal}>
+        <div className="cat-header">
+          <h3>Students Who Submitted Assignments</h3>
+        </div>
+
+        {submittedLoading && (
+          <div className="cat-loading">
+            <div className="spinner"></div>
+            <p>Loading submitted students...</p>
+          </div>
+        )}
+
+        {!submittedLoading && submittedStudents.length > 0 && (
+          <div className="submitted-students-list">
+            {submittedStudents.map((student) => (
+              <div key={student._id || student.studentId} className="submitted-student-item">
+                <div className="student-info">
+                  <FaUserCircle className="student-avatar" />
+                  <div className="student-details">
+                    <h4>{student.name || student.studentName || 'Unknown Student'}</h4>
+                    <p className="student-course">{student.courseName || 'No Course'}</p>
+                    <p className="submission-count">
+                      Submitted: {student.submittedCount || student.assignmentsSubmitted || 0} assignments
+                    </p>
+                    {student.lastSubmissionDate && (
+                      <p className="last-submission">
+                        Last submission: {fmtDate(student.lastSubmissionDate)}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {!submittedLoading && submittedStudents.length === 0 && (
+          <div className="no-submissions">
+            <p>No students have submitted assignments yet.</p>
+          </div>
         )}
       </Modal>
     </div>
