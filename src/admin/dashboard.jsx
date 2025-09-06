@@ -7,6 +7,7 @@ import {
   FaTimes,
 } from "react-icons/fa";
 import { MdAssignment, MdPictureAsPdf } from "react-icons/md";
+import { useNavigate } from "react-router-dom";
 import axios from "axios";
 import "./dashboard.css";
 
@@ -90,6 +91,7 @@ function Section({ title, children, tight }) {
 /** ----------------------------- main ----------------------------- */
 
 export default function Dashboard() {
+  const navigate = useNavigate();
   const [stats, setStats] = useState(null);
   const [recentStudents, setRecentStudents] = useState([]);
   const [recentAssignments, setRecentAssignments] = useState([]);
@@ -366,7 +368,10 @@ export default function Dashboard() {
                   <div className="assignment-actions">
                     <button 
                       className="action-btn add-btn" 
-                      onClick={() => window.open(`/admin/add-assignment?category=${selectedCategory}`, '_blank')}
+                      onClick={() => {
+                        closeCategory();
+                        navigate(`/admin/add-assignment?category=${selectedCategory}`);
+                      }}
                       title="Add new assignment"
                     >
                       + Add Assignment
@@ -390,7 +395,8 @@ export default function Dashboard() {
                             className="control-btn edit-btn" 
                             onClick={(e) => {
                               e.stopPropagation();
-                              window.open(`/admin/edit-assignment/${a._id}`, '_blank');
+                              closeCategory();
+                              navigate(`/admin/assignments/edit/${a._id}`);
                             }}
                             title="Edit assignment"
                           >
@@ -415,7 +421,10 @@ export default function Dashboard() {
                     <p className="muted">No assignments found</p>
                     <button 
                       className="action-btn add-btn" 
-                      onClick={() => window.open(`/admin/add-assignment?category=${selectedCategory}`, '_blank')}
+                      onClick={() => {
+                        closeCategory();
+                        navigate(`/admin/add-assignment?category=${selectedCategory}`);
+                      }}
                     >
                       + Add First Assignment
                     </button>
