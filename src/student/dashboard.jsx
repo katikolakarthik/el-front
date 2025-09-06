@@ -109,6 +109,12 @@ const StudentDashboard = () => {
       fetchAllAssignments(userId, courseName),
     ]);
 
+    console.log('Dashboard data fetched:');
+    console.log('Stats:', stats);
+    console.log('Course Info:', courseInfo);
+    console.log('Submissions from API:', submissions);
+    console.log('All Assignments from API:', allAssignments);
+
     const avgScoreRaw =
       (stats && stats.stats && stats.stats.averageScore) ??
       stats?.averageScore;
@@ -179,10 +185,20 @@ const StudentDashboard = () => {
 
   // Build submissions list from new API
   const submissions = useMemo(() => {
-    if (!Array.isArray(assignments)) return [];
+    if (!Array.isArray(assignments)) {
+      console.log('Assignments not array:', assignments);
+      return [];
+    }
 
-    return assignments.map((a) => {
-      if (!a.assignmentId) return null;
+    console.log('Building submissions from assignments:', assignments);
+
+    const result = assignments.map((a) => {
+      // Handle both _id and assignmentId for compatibility
+      const assignmentId = a._id || a.assignmentId;
+      if (!assignmentId) {
+        console.log('Assignment missing ID:', a);
+        return null;
+      }
 
       const totalSub = a.subAssignments?.length ?? 0;
       const doneSub = a.subAssignments?.filter((s) => s.isCompleted)?.length ?? 0;
@@ -194,16 +210,24 @@ const StudentDashboard = () => {
           ? 100
           : 0;
 
-      return {
-        assignmentId: a.assignmentId,
-        moduleName: (a.assignmentName || '').trim(),
-        isCompleted: a.isCompleted === true,
-        submissionDate: a.assignedDate,
+      const submission = {
+        assignmentId: assignmentId,
+        moduleName: (a.moduleName || a.assignmentName || 'Untitled Assignment').trim(),
+        isCompleted: a.isCompleted === true || (totalSub > 0 && doneSub === totalSub),
+        submissionDate: a.assignedDate || a.submissionDate,
         totalCorrect: a.totalCorrect ?? 0,
         totalWrong: a.totalWrong ?? 0,
         overallProgress: a.progressPercent ?? fallbackProgress,
+        // Add assignment data for reference
+        assignmentData: a,
       };
+
+      console.log('Created submission:', submission);
+      return submission;
     }).filter(Boolean);
+
+    console.log('Final submissions array:', result);
+    return result;
   }, [assignments]);
 
   // --- Assignment Filtering Logic ---
@@ -768,7 +792,7 @@ const StudentDashboard = () => {
                     <div className="submission-header">
                       <FiAward className="submission-icon" />
                       <h3>
-                        {submission.moduleName || ' '}
+                        {submission.moduleName || 'Untitled Assignment'}
                       </h3>
                       <span
                         className={`status-badge ${
@@ -787,14 +811,22 @@ const StudentDashboard = () => {
                         {completed ? 'Completed' : 'Pending'}
                       </span>
                     </div>
-                    <div className="submission-details"></div>
+                    <div className="submission-details">
+                      <span>Progress: {submission.overallProgress}%</span>
+                      {submission.submissionDate && (
+                        <span>Assigned: {formatDate(submission.submissionDate)}</span>
+                      )}
+                    </div>
                   </div>
                 );
               })
             ) : (
               <div className="no-submissions">
                 <FiClock size={32} />
-                <p>No submissions yet. Start working on your assignments!</p>
+                <p>No assignments found. Check back later for new assignments!</p>
+                <p style={{ fontSize: '0.875rem', color: '#6b7280', marginTop: '0.5rem' }}>
+                  Debug: {assignments.length} assignments loaded
+                </p>
               </div>
             )}
           </div>
