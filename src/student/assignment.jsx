@@ -10,6 +10,7 @@ const API_BASE = 'https://el-backend-ashen.vercel.app';
 
 const PdfReader = ({ url, height = '60vh', watermark = '' }) => {
   const [blobUrl, setBlobUrl] = useState('');
+  the
   const [err, setErr] = useState('');
   const [viewKey, setViewKey] = useState(0);
   const currentBlob = useRef('');
@@ -86,6 +87,7 @@ const showField = (category, field) => {
   return true;
 };
 
+// ---- time limit helpers ----
 const getTimeLimitMinutes = (assignment, sub) => {
   if (sub && Number.isFinite(Number(sub.timeLimitMinutes))) return Number(sub.timeLimitMinutes);
   if (Number.isFinite(Number(assignment?.timeLimitMinutes))) return Number(assignment.timeLimitMinutes);
@@ -108,6 +110,29 @@ const getOrStartTimerEnd = (userId, assignment, sub) => {
 const clearTimerKey = (userId, assignmentId, subId) => {
   const key = makeTimerKey(userId, assignmentId, subId);
   localStorage.removeItem(key);
+};
+
+// ---- FROZEN ANSWERS (persist when time is up) ----
+const makeAnsKey = (userId, assignmentId, subId) => `asgFrozen:${userId}:${assignmentId}:${subId || 'parent'}`;
+const saveFrozenAnswers = (userId, assignmentId, subId, answers) => {
+  try {
+    const key = makeAnsKey(userId, assignmentId, subId);
+    localStorage.setItem(key, JSON.stringify({ answers, timeUp: true, savedAt: Date.now() }));
+  } catch {}
+};
+const loadFrozenAnswers = (userId, assignmentId, subId) => {
+  try {
+    const key = makeAnsKey(userId, assignmentId, subId);
+    const raw = localStorage.getItem(key);
+    if (!raw) return null;
+    return JSON.parse(raw);
+  } catch { return null; }
+};
+const clearFrozenAnswers = (userId, assignmentId, subId) => {
+  try {
+    const key = makeAnsKey(userId, assignmentId, subId);
+    localStorage.removeItem(key);
+  } catch {}
 };
 
 const arrEq = (a = [], b = []) =>
@@ -238,21 +263,31 @@ const NewAssignments = () => {
         setActiveSubAssignment(null);
       }
 
-      // reset answers & results & time-up state
-      setAnswers({});
+      // reset results state; DON'T clear persisted frozen answers here
       setViewResult(null); setResultError(''); setResultLoading(false);
-      setTimeUp(false);
-      timeUpAlertShownRef.current = false;
 
       const userId = localStorage.getItem('userId');
       const isAlreadyDone = selectedSub ? selectedSub.isCompleted : assignmentData.isCompleted;
 
-      if (!isAlreadyDone) {
-        const endMs = getOrStartTimerEnd(userId, assignmentData, selectedSub);
-        if (endMs) initCountdown(endMs); else clearCountdown();
-      } else {
+      // If we have frozen answers (from time-up earlier), load them & keep frozen
+      const frozen = loadFrozenAnswers(userId, assignmentData._id, selectedSub?._id : null);
+
+      if (frozen?.timeUp) {
+        setAnswers(frozen.answers || {});
+        setTimeUp(true);
         clearCountdown();
-        await fetchResultForView(userId, assignmentData._id);
+      } else {
+        setAnswers({});
+        setTimeUp(false);
+        timeUpAlertShownRef.current = false;
+
+        if (!isAlreadyDone) {
+          const endMs = getOrStartTimerEnd(userId, assignmentData, selectedSub);
+          if (endMs) initCountdown(endMs); else clearCountdown();
+        } else {
+          clearCountdown();
+          await fetchResultForView(userId, assignmentData._id);
+        }
       }
 
       setTimeout(() => { questionsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 100);
@@ -266,7 +301,7 @@ const NewAssignments = () => {
     setCountdown(null); setTimerEndMs(null);
   };
 
-  // UPDATED: when time ends, lock inputs (timeUp=true) and show ONE alert; do NOT auto-submit
+  // When time ends: lock inputs, persist answers, and show ONE alert; do NOT auto-submit
   const initCountdown = (endMs) => {
     clearCountdown(); if (!endMs) return;
     setTimerEndMs(endMs);
@@ -276,6 +311,15 @@ const NewAssignments = () => {
         setCountdown(0);
         clearInterval(timerRef.current); timerRef.current = null;
         setTimeUp(true);
+
+        // persist the current answers snapshot as FROZEN
+        try {
+          const userId = localStorage.getItem('userId');
+          const aId = activeAssignment?._id;
+          const sId = activeSubAssignment?._id || null;
+          if (userId && aId) saveFrozenAnswers(userId, aId, sId, answers);
+        } catch {}
+
         if (!timeUpAlertShownRef.current) {
           timeUpAlertShownRef.current = true;
           alert('⏰ Time is up. Please click “Submit Assignment” to finalize your attempt.');
@@ -330,6 +374,7 @@ const NewAssignments = () => {
       const res = await axios.post(`${API_BASE}/student/submit-assignment`, payload);
       if (!res.data?.success) { alert(res.data?.message || 'Failed to submit assignment'); return; }
 
+      // mark completed in UI
       if (activeSubAssignment) {
         setActiveAssignment((prev) => {
           if (!prev) return prev;
@@ -339,9 +384,11 @@ const NewAssignments = () => {
         });
         setActiveSubAssignment((prev) => (prev ? { ...prev, isCompleted: true } : prev));
         clearTimerKey(userId, activeAssignment._id, activeSubAssignment._id);
+        clearFrozenAnswers(userId, activeAssignment._id, activeSubAssignment._id);
       } else {
         setActiveAssignment((prev) => (prev ? { ...prev, isCompleted: true } : prev));
         clearTimerKey(userId, activeAssignment._id, null);
+        clearFrozenAnswers(userId, activeAssignment._id, null);
       }
 
       // refresh list quietly
@@ -360,13 +407,12 @@ const NewAssignments = () => {
         }
       } catch {}
 
-      // Success message — single consistent message
       alert('Assignment submitted successfully!');
 
       const userId3 = localStorage.getItem('userId');
       await fetchResultForView(userId3, activeAssignment._id);
 
-      // reset inputs / time-up state for view mode
+      // reset local state (now in view mode)
       setAnswers({});
       setTimeUp(false);
       timeUpAlertShownRef.current = false;
@@ -592,8 +638,7 @@ const NewAssignments = () => {
         </div>
       );
     }
-
-    return <p className="muted">No questions available for this assignment.</p>;
+return <p className="muted">No questions available for this assignment.</p>;
   };
 
   if (loading) {
@@ -626,7 +671,7 @@ const NewAssignments = () => {
       return (
         <div className="container">
           <div className="page-header">
-            <button className="btn btn-ghost" onClick={() => { setActiveAssignment(null); clearCountdown(); setTimeUp(false); timeUpAlertShownRef.current = false; }} disabled={submitting}>Back</button>
+            <button className="btn btn-ghost" onClick={() => { setActiveAssignment(null); clearCountdown(); /* keep frozen in LS */ }} disabled={submitting}>Back</button>
             <h3 className="title-sm">{activeAssignment.moduleName}</h3>
             <div style={{ marginLeft: 'auto' }}>{timerBadge(activeAssignment)}</div>
           </div>
@@ -668,7 +713,11 @@ const NewAssignments = () => {
         <div className="page-header">
           <button
             className="btn btn-ghost"
-            onClick={() => { activeSubAssignment ? setActiveSubAssignment(null) : setActiveAssignment(null); clearCountdown(); setViewResult(null); setResultError(''); setResultLoading(false); setTimeUp(false); timeUpAlertShownRef.current = false; }}
+            onClick={() => {
+              if (activeSubAssignment) setActiveSubAssignment(null); else setActiveAssignment(null);
+              clearCountdown(); setViewResult(null); setResultError(''); setResultLoading(false);
+              /* don't clear frozen answers here — they live in localStorage */
+            }}
             disabled={submitting}
           >
             Back
