@@ -207,42 +207,6 @@ export default function Dashboard() {
     }
   };
 
-  // Delete student functionality
-  const handleDeleteStudent = async (studentId, studentName) => {
-    if (!window.confirm(`Are you sure you want to delete student "${studentName}"? This action cannot be undone.`)) {
-      return;
-    }
-
-    try {
-      const response = await axios.delete(`https://el-backend-ashen.vercel.app/admin/student/${studentId}`);
-      
-      if (response.data.success) {
-        alert('Student deleted successfully!');
-        // Refresh the category data
-        if (selectedCategory) {
-          openCategory(selectedCategory);
-        }
-      } else {
-        alert('Failed to delete student. Please try again.');
-      }
-    } catch (error) {
-      console.error('Error deleting student:', error);
-      alert('Error deleting student. Please try again.');
-    }
-  };
-
-  // Add student functionality - open student management page
-  const handleAddStudent = () => {
-    closeCategory();
-    navigate('/admin/student');
-  };
-
-  // Edit student functionality - open student management page with edit parameter
-  const handleEditStudent = (studentId) => {
-    closeCategory();
-    navigate(`/admin/student?edit=${studentId}`);
-  };
-
   /** Formatters */
   const fmtDate = (iso, withTime = false) => {
     if (!iso) return "-";
@@ -473,60 +437,25 @@ export default function Dashboard() {
                 <div className="section-top">
                   <button className="back-btn" onClick={backToOptions}>← Back</button>
                   <h4>Students</h4>
-                  <div className="student-actions">
-                    <button
-                      className="action-btn add-btn"
-                      onClick={handleAddStudent}
-                      title="Add new student"
-                    >+ Add Student</button>
-                  </div>
                 </div>
                 {isNonEmptyArray(catData.students) ? (
                   <ul className="click-list">
                     {catData.students.map((s) => (
-                      <li key={s._id} className="student-item">
-                        <div className="student-content" onClick={() => showStudent(s)}>
-                          <div className="row">
-                            <div className="left">
-                              <FaUserCircle /> <span className="title">{s.name}</span>
-                            </div>
-                            <div className="right">
-                              <small>{s.courseName || "—"}</small>
-                            </div>
+                      <li key={s._id} onClick={() => showStudent(s)}>
+                        <div className="row">
+                          <div className="left">
+                            <FaUserCircle /> <span className="title">{s.name}</span>
                           </div>
-                          <small className="muted">Enrolled: {fmtDate(s.enrolledDate)}</small>
+                          <div className="right">
+                            <small>{s.courseName || "—"}</small>
+                          </div>
                         </div>
-                        <div className="student-controls">
-                          <button
-                            className="control-btn edit-btn"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleEditStudent(s._id);
-                            }}
-                            title="Edit student"
-                          >Edit</button>
-                          <button
-                            className="control-btn delete-btn"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleDeleteStudent(s._id, s.name);
-                            }}
-                            title="Delete student"
-                          >Delete</button>
-                        </div>
+                        <small className="muted">Enrolled: {fmtDate(s.enrolledDate)}</small>
                       </li>
                     ))}
                   </ul>
                 ) : (
-                  <div className="empty-state">
-                    <p className="muted">No students found</p>
-                    <button 
-                      className="action-btn add-btn" 
-                      onClick={handleAddStudent}
-                    >
-                      + Add First Student
-                    </button>
-                  </div>
+                  <p className="muted">No students</p>
                 )}
               </div>
             )}
