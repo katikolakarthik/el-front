@@ -182,6 +182,30 @@ export default function Dashboard() {
   const backToOptions = () => { setDetailView(null); setCatSection(null); };
   const backToList = () => setDetailView(null);
 
+  // Delete assignment functionality
+  const handleDeleteAssignment = async (assignmentId, assignmentName) => {
+    if (!window.confirm(`Are you sure you want to delete "${assignmentName}"? This action cannot be undone.`)) {
+      return;
+    }
+
+    try {
+      const response = await axios.delete(`https://el-backend-ashen.vercel.app/admin/assignments/${assignmentId}`);
+      
+      if (response.data.success) {
+        alert('Assignment deleted successfully!');
+        // Refresh the category data
+        if (selectedCategory) {
+          openCategory(selectedCategory);
+        }
+      } else {
+        alert('Failed to delete assignment. Please try again.');
+      }
+    } catch (error) {
+      console.error('Error deleting assignment:', error);
+      alert('Error deleting assignment. Please try again.');
+    }
+  };
+
   /** Formatters */
   const fmtDate = (iso, withTime = false) => {
     if (!iso) return "-";
@@ -339,23 +363,63 @@ export default function Dashboard() {
                 <div className="section-top">
                   <button className="back-btn" onClick={backToOptions}>← Back</button>
                   <h4>Assignments</h4>
+                  <div className="assignment-actions">
+                    <button 
+                      className="action-btn add-btn" 
+                      onClick={() => window.open(`/admin/add-assignment?category=${selectedCategory}`, '_blank')}
+                      title="Add new assignment"
+                    >
+                      + Add Assignment
+                    </button>
+                  </div>
                 </div>
                 {isNonEmptyArray(catData.assignments) ? (
                   <ul className="click-list">
                     {catData.assignments.map((a) => (
-                      <li key={a._id} onClick={() => showAssignment(a)}>
-                        <div className="row">
-                          <div className="left">
-                            <MdAssignment /> <span className="title">{a.moduleName}</span>
+                      <li key={a._id} className="assignment-item">
+                        <div className="assignment-content" onClick={() => showAssignment(a)}>
+                          <div className="row">
+                            <div className="left">
+                              <MdAssignment /> <span className="title">{a.moduleName}</span>
+                            </div>
                           </div>
-                          {/* REMOVED the “subs” count per your request */}
+                          <small className="muted">{fmtDate(a.assignedDate)}</small>
                         </div>
-                        <small className="muted">{fmtDate(a.assignedDate)}</small>
+                        <div className="assignment-controls">
+                          <button 
+                            className="control-btn edit-btn" 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              window.open(`/admin/edit-assignment/${a._id}`, '_blank');
+                            }}
+                            title="Edit assignment"
+                          >
+                            Edit
+                          </button>
+                          <button 
+                            className="control-btn delete-btn" 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDeleteAssignment(a._id, a.moduleName);
+                            }}
+                            title="Delete assignment"
+                          >
+                            Delete
+                          </button>
+                        </div>
                       </li>
                     ))}
                   </ul>
                 ) : (
-                  <p className="muted">No assignments</p>
+                  <div className="empty-state">
+                    <p className="muted">No assignments found</p>
+                    <button 
+                      className="action-btn add-btn" 
+                      onClick={() => window.open(`/admin/add-assignment?category=${selectedCategory}`, '_blank')}
+                    >
+                      + Add First Assignment
+                    </button>
+                  </div>
                 )}
               </div>
             )}
