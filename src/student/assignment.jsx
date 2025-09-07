@@ -146,7 +146,6 @@ const NewAssignments = () => {
   const [countdown, setCountdown] = useState(null);
   const [timerEndMs, setTimerEndMs] = useState(null);
   const timerRef = useRef(null);
-  const autoSubmittingRef = useRef(false);
   const questionsRef = useRef(null);
 
   const [resultLoading, setResultLoading] = useState(false);
@@ -260,41 +259,30 @@ const NewAssignments = () => {
     setCountdown(null); setTimerEndMs(null);
   };
 
-  // AUTO-SUBMIT when time finishes (no alert, no freezing)
-  const triggerAutoSubmit = async () => {
-    if (autoSubmittingRef.current) return;
-    autoSubmittingRef.current = true;
-    try {
-      const src = activeSubAssignment || activeAssignment;
-      if (!src || src.isCompleted) return;
-      await handleSubmit(true); // pass true to indicate auto
-    } finally {
-      autoSubmittingRef.current = false;
-    }
-  };
-
+  // ✅ Auto submit EXACTLY like manual: call handleSubmit() when time ends
   const initCountdown = (endMs) => {
-  clearCountdown(); if (!endMs) return;
-  setTimerEndMs(endMs);
-  const tick = () => {
-    const left = endMs - Date.now();
-    if (left <= 0) {
-      setCountdown(0);
-      clearInterval(timerRef.current); timerRef.current = null;
-      handleSubmit(false);   // ✅ normal submit call
-    } else {
-      setCountdown(left);
-    }
+    clearCountdown(); if (!endMs) return;
+    setTimerEndMs(endMs);
+    const tick = () => {
+      const left = endMs - Date.now();
+      if (left <= 0) {
+        setCountdown(0);
+        clearInterval(timerRef.current); timerRef.current = null;
+        handleSubmit(); // same behavior as manual submit
+      } else {
+        setCountdown(left);
+      }
+    };
+    tick(); timerRef.current = setInterval(tick, 500);
   };
-  tick(); timerRef.current = setInterval(tick, 500);
-};
 
   useEffect(() => () => clearCountdown(), []);
 
   const csvToArray = (str = '') => str.split(',').map((s) => s.trim()).filter(Boolean);
 
-  const handleSubmit = async (isAuto = false) => {
+  const handleSubmit = async () => {
     try {
+      if (submitting) return; // guard against double-click/race at time-up
       setSubmitting(true);
       const userId = localStorage.getItem('userId');
       if (!userId) throw new Error('User ID not found');
@@ -362,7 +350,7 @@ const NewAssignments = () => {
         }
       } catch {}
 
-      // Success message always (both manual & auto)
+      // normal success UX (same as manual flow)
       alert('Assignment submitted successfully!');
 
       const userId3 = localStorage.getItem('userId');
@@ -512,7 +500,7 @@ const NewAssignments = () => {
       return hasDyn ? renderDynamicViewOnly(block) : renderPredefinedViewOnly(category, block);
     }
 
-    // Only disable while submitting (no time-up freezing)
+    // Only disable while submitting
     const readOnly = submitting;
 
     if (dynamicQs.length > 0) {
@@ -538,8 +526,7 @@ const NewAssignments = () => {
         );
       });
     }
-
-    const predefined = qs.find((q) => q.type === 'predefined');
+const predefined = qs.find((q) => q.type === 'predefined');
     if (predefined && predefined.answerKey) {
       return (
         <div className="form-grid">
@@ -591,7 +578,7 @@ const NewAssignments = () => {
               <input className="input" type="text" value={answers.modifiers || ''} onChange={(e) => handleAnswerChange('modifiers', e.target.value)} placeholder="Comma separated (e.g. 26, 59, LT)" disabled={readOnly} />
             </div>
           )}
-   <div className="form-item">
+          <div className="form-item">
             <label className="label">Adx</label>
             <input className="input" type="text" value={answers.adx || ''} onChange={(e) => handleAnswerChange('adx', e.target.value)} placeholder="Adx (e.g., principal diagnosis / free text)" disabled={readOnly} />
           </div>
@@ -691,7 +678,7 @@ const NewAssignments = () => {
           </div>
         </div>
 
-        {/* Note banner (clarifies auto-submit behavior) */}
+        {/* Optional info banner */}
         {hasTimeLimit && !isCompleted && (
           <div style={{
             margin: '8px 0 12px', padding: '10px 12px', borderRadius: 8,
@@ -729,7 +716,7 @@ const NewAssignments = () => {
             {isCompleted ? (
               <button className="btn" disabled>View Only</button>
             ) : (
-              <button className="btn btn-primary" onClick={() => handleSubmit(false)} disabled={submitting}>
+              <button className="btn btn-primary" onClick={handleSubmit} disabled={submitting}>
                 {submitting ? 'Submitting…' : 'Submit Assignment'}
               </button>
             )}
@@ -812,7 +799,6 @@ const NewAssignments = () => {
     </div>
   );
 };
-
 const LoadingOverlay = () => (
   <div style={{ position: 'fixed', inset: 0, background: 'rgba(255,255,255,0.7)', backdropFilter: 'blur(2px)', display: 'grid', placeItems: 'center', zIndex: 9999 }}>
     <div style={{ padding: 16, borderRadius: 12, border: '1px solid #ddd', background: '#fff', minWidth: 220, textAlign: 'center' }}>
