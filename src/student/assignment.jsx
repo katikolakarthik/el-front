@@ -10,7 +10,6 @@ const API_BASE = 'https://el-backend-ashen.vercel.app';
 
 const PdfReader = ({ url, height = '60vh', watermark = '' }) => {
   const [blobUrl, setBlobUrl] = useState('');
-
   const [err, setErr] = useState('');
   const [viewKey, setViewKey] = useState(0);
   const currentBlob = useRef('');
@@ -87,7 +86,6 @@ const showField = (category, field) => {
   return true;
 };
 
-// ---- time limit helpers ----
 const getTimeLimitMinutes = (assignment, sub) => {
   if (sub && Number.isFinite(Number(sub.timeLimitMinutes))) return Number(sub.timeLimitMinutes);
   if (Number.isFinite(Number(assignment?.timeLimitMinutes))) return Number(assignment.timeLimitMinutes);
@@ -148,15 +146,12 @@ const NewAssignments = () => {
   const [countdown, setCountdown] = useState(null);
   const [timerEndMs, setTimerEndMs] = useState(null);
   const timerRef = useRef(null);
+  const autoSubmittingRef = useRef(false);
   const questionsRef = useRef(null);
 
   const [resultLoading, setResultLoading] = useState(false);
   const [resultError, setResultError] = useState('');
   const [viewResult, setViewResult] = useState(null); // entire /result payload
-
-  // NEW: time-up state
-  const [timeUp, setTimeUp] = useState(false);
-  const timeUpAlertShownRef = useRef(false);
 
   useEffect(() => {
     const fetchAssignments = async () => {
@@ -240,15 +235,11 @@ const NewAssignments = () => {
         setActiveSubAssignment(null);
       }
 
-      // reset results state
+      setAnswers({});
       setViewResult(null); setResultError(''); setResultLoading(false);
 
       const userId = localStorage.getItem('userId');
       const isAlreadyDone = selectedSub ? selectedSub.isCompleted : assignmentData.isCompleted;
-
-      setAnswers({});
-      setTimeUp(false);
-      timeUpAlertShownRef.current = false;
 
       if (!isAlreadyDone) {
         const endMs = getOrStartTimerEnd(userId, assignmentData, selectedSub);
@@ -269,7 +260,19 @@ const NewAssignments = () => {
     setCountdown(null); setTimerEndMs(null);
   };
 
-  // When time ends: auto-submit the assignment
+  // AUTO-SUBMIT when time finishes (no alert, no freezing)
+  const triggerAutoSubmit = async () => {
+    if (autoSubmittingRef.current) return;
+    autoSubmittingRef.current = true;
+    try {
+      const src = activeSubAssignment || activeAssignment;
+      if (!src || src.isCompleted) return;
+      await handleSubmit(true); // pass true to indicate auto
+    } finally {
+      autoSubmittingRef.current = false;
+    }
+  };
+
   const initCountdown = (endMs) => {
     clearCountdown(); if (!endMs) return;
     setTimerEndMs(endMs);
@@ -278,13 +281,7 @@ const NewAssignments = () => {
       if (left <= 0) {
         setCountdown(0);
         clearInterval(timerRef.current); timerRef.current = null;
-        setTimeUp(true);
-        
-        // Auto-submit when time is up
-        if (!timeUpAlertShownRef.current) {
-          timeUpAlertShownRef.current = true;
-          handleSubmit();
-        }
+        triggerAutoSubmit(); // <-- auto submit on time up
       } else {
         setCountdown(left);
       }
@@ -296,7 +293,7 @@ const NewAssignments = () => {
 
   const csvToArray = (str = '') => str.split(',').map((s) => s.trim()).filter(Boolean);
 
-  const handleSubmit = async () => {
+  const handleSubmit = async (isAuto = false) => {
     try {
       setSubmitting(true);
       const userId = localStorage.getItem('userId');
@@ -335,7 +332,6 @@ const NewAssignments = () => {
       const res = await axios.post(`${API_BASE}/student/submit-assignment`, payload);
       if (!res.data?.success) { alert(res.data?.message || 'Failed to submit assignment'); return; }
 
-      // mark completed in UI
       if (activeSubAssignment) {
         setActiveAssignment((prev) => {
           if (!prev) return prev;
@@ -366,16 +362,25 @@ const NewAssignments = () => {
         }
       } catch {}
 
+      // Success message always (both manual & auto)
       alert('Assignment submitted successfully!');
 
       const userId3 = localStorage.getItem('userId');
       await fetchResultForView(userId3, activeAssignment._id);
 
-      // reset local state (now in view mode)
       setAnswers({});
-      setTimeUp(false);
-      timeUpAlertShownRef.current = false;
       clearCountdown();
+
+      // If sub-assignments exist, move or close
+      if (activeSubAssignment && (activeAssignment.subAssignments || []).length > 0) {
+        const idx = activeAssignment.subAssignments.findIndex((sub) => String(sub._id) === String(activeSubAssignment._id));
+        if (idx < activeAssignment.subAssignments.length - 1) {
+          setActiveSubAssignment({ ...activeAssignment.subAssignments[idx + 1], isCompleted: false });
+          setTimeout(() => { questionsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 150);
+        } else {
+          setActiveSubAssignment(null); setActiveAssignment(null);
+        }
+      }
 
     } catch (err) {
       alert('Error: ' + err.message);
@@ -383,6 +388,13 @@ const NewAssignments = () => {
   };
 
   const handleAnswerChange = (key, value) => setAnswers((p) => ({ ...p, [key]: value }));
+
+  const timerBadge = (a) => {
+    const minutes = getTimeLimitMinutes(a, null);
+    if (!minutes) return null;
+    if (countdown === 0) return <span className="badge badge-neutral">Time up</span>;
+    return <span className="badge badge-pending">Timed ({minutes}m)</span>;
+  };
 
   // ----- pick the correct block for current view (single vs multi) -----
   const pickResultBlock = (target) => {
@@ -396,7 +408,7 @@ const NewAssignments = () => {
     return blk || null;
   };
 
-   // ---------- RESULTS RENDERERS ----------
+  // ---------- RESULTS RENDERERS ----------
   const renderDynamicViewOnly = (resultBlock) => {
     if (!resultBlock) return null;
     const submittedDyn = resultBlock.submitted?.dynamicQuestions || [];
@@ -500,8 +512,8 @@ const NewAssignments = () => {
       return hasDyn ? renderDynamicViewOnly(block) : renderPredefinedViewOnly(category, block);
     }
 
-    // DISABLE inputs if submitting OR time is up
-    const readOnly = submitting || timeUp;
+    // Only disable while submitting (no time-up freezing)
+    const readOnly = submitting;
 
     if (dynamicQs.length > 0) {
       return dynamicQs.map((q, idx) => {
@@ -579,7 +591,7 @@ const NewAssignments = () => {
               <input className="input" type="text" value={answers.modifiers || ''} onChange={(e) => handleAnswerChange('modifiers', e.target.value)} placeholder="Comma separated (e.g. 26, 59, LT)" disabled={readOnly} />
             </div>
           )}
-          <div className="form-item">
+   <div className="form-item">
             <label className="label">Adx</label>
             <input className="input" type="text" value={answers.adx || ''} onChange={(e) => handleAnswerChange('adx', e.target.value)} placeholder="Adx (e.g., principal diagnosis / free text)" disabled={readOnly} />
           </div>
@@ -590,7 +602,8 @@ const NewAssignments = () => {
         </div>
       );
     }
-return <p className="muted">No questions available for this assignment.</p>;
+
+    return <p className="muted">No questions available for this assignment.</p>;
   };
 
   if (loading) {
@@ -625,6 +638,7 @@ return <p className="muted">No questions available for this assignment.</p>;
           <div className="page-header">
             <button className="btn btn-ghost" onClick={() => { setActiveAssignment(null); clearCountdown(); }} disabled={submitting}>Back</button>
             <h3 className="title-sm">{activeAssignment.moduleName}</h3>
+            <div style={{ marginLeft: 'auto' }}>{timerBadge(activeAssignment)}</div>
           </div>
 
           <div className="grid">
@@ -651,7 +665,8 @@ return <p className="muted">No questions available for this assignment.</p>;
         </div>
       );
     }
-const pdfUrl = activeSubAssignment?.assignmentPdf || activeAssignment.assignmentPdf;
+
+    const pdfUrl = activeSubAssignment?.assignmentPdf || activeAssignment.assignmentPdf;
     const questionSource = activeSubAssignment || activeAssignment;
     const isCompleted = questionSource.isCompleted;
     const showCountdown = Number.isFinite(timerEndMs);
@@ -663,30 +678,27 @@ const pdfUrl = activeSubAssignment?.assignmentPdf || activeAssignment.assignment
         <div className="page-header">
           <button
             className="btn btn-ghost"
-            onClick={() => {
-              if (activeSubAssignment) setActiveSubAssignment(null); else setActiveAssignment(null);
-              clearCountdown(); setViewResult(null); setResultError(''); setResultLoading(false);
-            }}
+            onClick={() => { activeSubAssignment ? setActiveSubAssignment(null) : setActiveAssignment(null); clearCountdown(); setViewResult(null); setResultError(''); setResultLoading(false); }}
             disabled={submitting}
           >
             Back
           </button>
           <h3 className="title-sm">{activeSubAssignment?.subModuleName || activeAssignment.moduleName}</h3>
           <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 10 }}>
+            {timerBadge(activeAssignment)}
             {showCountdown && <div className="countdown-chip"><FiClock /> <span>{fmtCountdown(timeLeft ?? countdown ?? 0)}</span></div>}
             {isCompleted && <span className="badge badge-success">Completed (View Only)</span>}
           </div>
         </div>
 
-        {/* NOTE banner */}
+        {/* Note banner (clarifies auto-submit behavior) */}
         {hasTimeLimit && !isCompleted && (
           <div style={{
             margin: '8px 0 12px', padding: '10px 12px', borderRadius: 8,
             background: '#fff8e1', border: '1px solid #f6d365', color: '#7a4d00',
             display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, fontWeight: 600
           }}>
-            <FiClock aria-hidden /> Note: This is a timed assignment. Please submit before the time ends.
-            {timeUp && <span style={{ marginLeft: 'auto', fontWeight: 700 }}>Time up — auto-submitting...</span>}
+            <FiClock aria-hidden /> Note: This is a timed assignment. It will auto-submit when time ends.
           </div>
         )}
 
@@ -717,8 +729,8 @@ const pdfUrl = activeSubAssignment?.assignmentPdf || activeAssignment.assignment
             {isCompleted ? (
               <button className="btn" disabled>View Only</button>
             ) : (
-              <button className="btn btn-primary" onClick={handleSubmit} disabled={submitting || timeUp}>
-                {submitting ? 'Submitting…' : timeUp ? 'Auto-Submitting...' : 'Submit Assignment'}
+              <button className="btn btn-primary" onClick={() => handleSubmit(false)} disabled={submitting}>
+                {submitting ? 'Submitting…' : 'Submit Assignment'}
               </button>
             )}
           </div>
@@ -728,7 +740,6 @@ const pdfUrl = activeSubAssignment?.assignmentPdf || activeAssignment.assignment
       </div>
     );
   }
-
 
   return (
     <div className="container">
@@ -769,6 +780,8 @@ const pdfUrl = activeSubAssignment?.assignmentPdf || activeAssignment.assignment
                   <span className={`badge ${allSubsCompleted ? 'badge-success' : 'badge-pending'}`}>{allSubsCompleted ? 'Completed' : 'Assigned'}</span>
                 </div>
 
+                {/* Removed the 'Status: Timed' meta block as requested */}
+
                 {assignment.subAssignments?.length > 0 && (
                   <div className="meta">
                     <span className="meta-key">Progress</span>
@@ -803,7 +816,7 @@ const pdfUrl = activeSubAssignment?.assignmentPdf || activeAssignment.assignment
 const LoadingOverlay = () => (
   <div style={{ position: 'fixed', inset: 0, background: 'rgba(255,255,255,0.7)', backdropFilter: 'blur(2px)', display: 'grid', placeItems: 'center', zIndex: 9999 }}>
     <div style={{ padding: 16, borderRadius: 12, border: '1px solid #ddd', background: '#fff', minWidth: 220, textAlign: 'center' }}>
-      <div className="spinner" style={{ width: 28, height: 28, margin: '0 auto 10px', border: '3px solid #ddd', borderTopColor: '#333', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+      <div className="spinner" style={{ width: 28, height: 28, margin: '0 auto 10px', border: '3px solid '#ddd', borderTopColor: '#333', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
       <div style={{ fontWeight: 600 }}>Submitting…</div>
       <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>Please wait</div>
       <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
