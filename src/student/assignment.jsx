@@ -13,39 +13,26 @@ const PdfReader = ({ url, height = '60vh', watermark = '' }) => {
   const [err, setErr] = useState('');
   const [viewKey, setViewKey] = useState(0);
   const currentBlob = useRef('');
-  
   useEffect(() => {
     let abort = false;
     const ctrl = new AbortController();
-    
     (async () => {
       try {
-        setErr(''); 
-        setBlobUrl(''); 
-        setViewKey((k) => k + 1);
+        setErr(''); setBlobUrl(''); setViewKey((k) => k + 1);
         const res = await fetch(url, { signal: ctrl.signal, cache: 'no-store' });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const buf = await res.arrayBuffer();
         if (abort) return;
         const blob = new Blob([buf], { type: 'application/pdf' });
         const bUrl = URL.createObjectURL(blob);
-        currentBlob.current = bUrl; 
-        setBlobUrl(bUrl);
-      } catch (e) { 
-        if (e.name !== 'AbortError') setErr('Unable to load PDF'); 
-      }
+        currentBlob.current = bUrl; setBlobUrl(bUrl);
+      } catch (e) { if (e.name !== 'AbortError') setErr('Unable to load PDF'); }
     })();
-    
     return () => {
-      abort = true; 
-      ctrl.abort();
-      if (currentBlob.current) { 
-        URL.revokeObjectURL(currentBlob.current); 
-        currentBlob.current = ''; 
-      }
+      abort = true; ctrl.abort();
+      if (currentBlob.current) { URL.revokeObjectURL(currentBlob.current); currentBlob.current = ''; }
     };
   }, [url]);
-  
   return (
     <div style={{ position: 'relative', height, border: '1px solid #eee', borderRadius: 8, overflow: 'hidden', userSelect: 'none', WebkitTouchCallout: 'none', background: '#fff' }} onContextMenu={(e) => e.preventDefault()}>
       {watermark && (
@@ -83,68 +70,11 @@ const normalizeAssignment = (raw) => {
 };
 
 const ms = (d) => (d ? new Date(d).getTime() : 0);
-const fmtCountdown = (msLeft) => {
-  if (msLeft < 0) msLeft = 0;
-  const totalSec = Math.floor(msLeft / 1000);
-  const h = Math.floor(totalSec / 3600);
-  const m = Math.floor((totalSec % 3600) / 60);
-  const s = totalSec % 60;
-  const pad = (n) => String(n).padStart(2, '0');
-  return h > 0 ? `${pad(h)}:${pad(m)}:${pad(s)}` : `${pad(m)}:${pad(s)}`;
-};
 
 const showField = (category, field) => {
   if (category === 'IP-DRG' && ['cptCodes', 'hcpcsCodes', 'modifiers'].includes(field)) return false;
   if (category === 'CPC' && ['pcsCodes', 'patientName', 'ageOrDob', 'drgValue'].includes(field)) return false;
   return true;
-};
-
-// ---- time limit helpers ----
-const getTimeLimitMinutes = (assignment, sub) => {
-  if (sub && Number.isFinite(Number(sub.timeLimitMinutes))) return Number(sub.timeLimitMinutes);
-  if (Number.isFinite(Number(assignment?.timeLimitMinutes))) return Number(assignment.timeLimitMinutes);
-  return null;
-};
-const makeTimerKey = (userId, assignmentId, subId) => `asgTimer:${userId}:${assignmentId}:${subId || 'parent'}`;
-const getOrStartTimerEnd = (userId, assignment, sub) => {
-  const minutes = getTimeLimitMinutes(assignment, sub);
-  if (!minutes || minutes <= 0) return null;
-  const key = makeTimerKey(userId, assignment._id, sub?._id);
-  const stored = localStorage.getItem(key);
-  if (stored) {
-    const endMs = Number(stored);
-    if (Number.isFinite(endMs) && endMs > 0) return endMs;
-  }
-  const end = Date.now() + minutes * 60 * 1000;
-  localStorage.setItem(key, String(end));
-  return end;
-};
-const clearTimerKey = (userId, assignmentId, subId) => {
-  const key = makeTimerKey(userId, assignmentId, subId);
-  localStorage.removeItem(key);
-};
-
-// ---- FROZEN ANSWERS (persist when time is up) ----
-const makeAnsKey = (userId, assignmentId, subId) => `asgFrozen:${userId}:${assignmentId}:${subId || 'parent'}`;
-const saveFrozenAnswers = (userId, assignmentId, subId, answers) => {
-  try {
-    const key = makeAnsKey(userId, assignmentId, subId);
-    localStorage.setItem(key, JSON.stringify({ answers, timeUp: true, savedAt: Date.now() }));
-  } catch {}
-};
-const loadFrozenAnswers = (userId, assignmentId, subId) => {
-  try {
-    const key = makeAnsKey(userId, assignmentId, subId);
-    const raw = localStorage.getItem(key);
-    if (!raw) return null;
-    return JSON.parse(raw);
-  } catch { return null; }
-};
-const clearFrozenAnswers = (userId, assignmentId, subId) => {
-  try {
-    const key = makeAnsKey(userId, assignmentId, subId);
-    localStorage.removeItem(key);
-  } catch {}
 };
 
 const arrEq = (a = [], b = []) =>
@@ -180,25 +110,16 @@ const NewAssignments = () => {
   const [search, setSearch] = useState('');
   const [sortOrder, setSortOrder] = useState('newest');
 
-  const [countdown, setCountdown] = useState(null);
-  const [timerEndMs, setTimerEndMs] = useState(null);
-  const timerRef = useRef(null);
   const questionsRef = useRef(null);
 
   const [resultLoading, setResultLoading] = useState(false);
   const [resultError, setResultError] = useState('');
   const [viewResult, setViewResult] = useState(null); // entire /result payload
 
-  // NEW: time-up state + one-time alert guard
-  const [timeUp, setTimeUp] = useState(false);
-  const timeUpAlertShownRef = useRef(false);
-  const autoSubmittedRef = useRef(false); // NEW: Track if we've already auto-submitted
-
   useEffect(() => {
     const fetchAssignments = async () => {
       try {
-        setLoading(true); 
-        setError(null);
+        setLoading(true); setError(null);
         const userId = localStorage.getItem('userId');
         if (!userId) throw new Error('User ID not found');
         const courseResp = await axios.get(`${API_BASE}/student/${userId}/course`);
@@ -243,9 +164,7 @@ const NewAssignments = () => {
   };
 
   const fetchResultForView = async (studentId, assignmentId) => {
-    setResultLoading(true); 
-    setResultError(''); 
-    setViewResult(null);
+    setResultLoading(true); setResultError(''); setViewResult(null);
     try {
       const { data } = await axios.post(`${API_BASE}/result`, { studentId, assignmentId });
       if (!data) throw new Error('No result data');
@@ -257,8 +176,7 @@ const NewAssignments = () => {
 
   const handleStart = async (assignmentId, subAssignmentId = null) => {
     try {
-      setStartingId(`${assignmentId}:${subAssignmentId || 'parent'}`); 
-      setError('');
+      setStartingId(`${assignmentId}:${subAssignmentId || 'parent'}`); setError('');
       const fromList = assignments.find((a) => String(a._id) === String(assignmentId));
       if (!fromList) throw new Error('Assignment not found in list');
       const assignmentData = normalizeAssignment(fromList);
@@ -280,33 +198,14 @@ const NewAssignments = () => {
         setActiveSubAssignment(null);
       }
 
-      // reset results state; DON'T clear persisted frozen answers here
-      setViewResult(null); 
-      setResultError(''); 
-      setResultLoading(false);
+      setAnswers({});
+      setViewResult(null); setResultError(''); setResultLoading(false);
 
       const userId = localStorage.getItem('userId');
       const isAlreadyDone = selectedSub ? selectedSub.isCompleted : assignmentData.isCompleted;
 
-      // If we have frozen answers (from time-up earlier), load them & keep frozen
-      const frozen = loadFrozenAnswers(userId, assignmentData._id, selectedSub?._id);
-      if (frozen?.timeUp) {
-        setAnswers(frozen.answers || {});
-        setTimeUp(true);
-        clearCountdown();
-      } else {
-        setAnswers({});
-        setTimeUp(false);
-        timeUpAlertShownRef.current = false;
-        autoSubmittedRef.current = false; // Reset auto-submit flag
-
-        if (!isAlreadyDone) {
-          const endMs = getOrStartTimerEnd(userId, assignmentData, selectedSub);
-          if (endMs) initCountdown(endMs); else clearCountdown();
-        } else {
-          clearCountdown();
-          await fetchResultForView(userId, assignmentData._id);
-        }
+      if (isAlreadyDone) {
+        await fetchResultForView(userId, assignmentData._id);
       }
 
       setTimeout(() => { questionsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 100);
@@ -314,48 +213,6 @@ const NewAssignments = () => {
       setError(err.message);
     } finally { setStartingId(null); }
   };
-
-  const clearCountdown = () => {
-    if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
-    setCountdown(null); 
-    setTimerEndMs(null);
-  };
-
-  // When time ends: lock inputs, persist answers, and AUTO-SUBMIT
-  const initCountdown = (endMs) => {
-    clearCountdown(); 
-    if (!endMs) return;
-    setTimerEndMs(endMs);
-    const tick = () => {
-      const left = endMs - Date.now();
-      if (left <= 0) {
-        setCountdown(0);
-        clearInterval(timerRef.current); 
-        timerRef.current = null;
-        setTimeUp(true);
-
-        // persist the current answers snapshot as FROZEN
-        try {
-          const userId = localStorage.getItem('userId');
-          const aId = activeAssignment?._id;
-          const sId = activeSubAssignment?._id || null;
-          if (userId && aId) saveFrozenAnswers(userId, aId, sId, answers);
-        } catch {}
-
-        // AUTO-SUBMIT when time is up (only once)
-        if (!autoSubmittedRef.current) {
-          autoSubmittedRef.current = true;
-          handleSubmit(); // This will automatically submit the assignment
-        }
-      } else {
-        setCountdown(left);
-      }
-    };
-    tick(); 
-    timerRef.current = setInterval(tick, 500);
-  };
-
-  useEffect(() => () => clearCountdown(), []);
 
   const csvToArray = (str = '') => str.split(',').map((s) => s.trim()).filter(Boolean);
 
@@ -370,16 +227,11 @@ const NewAssignments = () => {
       const buildPredefinedPayload = () => {
         const category = activeAssignment?.category;
         const base = {
-          patientName: answers.patientName || '', 
-          ageOrDob: answers.ageOrDob || '',
-          icdCodes: csvToArray(answers.icdCodes || ''), 
-          cptCodes: csvToArray(answers.cptCodes || ''),
-          pcsCodes: csvToArray(answers.pcsCodes || ''), 
-          hcpcsCodes: csvToArray(answers.hcpcsCodes || ''),
-          drgValue: answers.drgValue || '', 
-          modifiers: csvToArray(answers.modifiers || ''),
-          notes: answers.notes || '', 
-          adx: answers.adx || '',
+          patientName: answers.patientName || '', ageOrDob: answers.ageOrDob || '',
+          icdCodes: csvToArray(answers.icdCodes || ''), cptCodes: csvToArray(answers.cptCodes || ''),
+          pcsCodes: csvToArray(answers.pcsCodes || ''), hcpcsCodes: csvToArray(answers.hcpcsCodes || ''),
+          drgValue: answers.drgValue || '', modifiers: csvToArray(answers.modifiers || ''),
+          notes: answers.notes || '', adx: answers.adx || '',
         };
         const filtered = {};
         Object.entries(base).forEach(([k, v]) => { if (showField(category, k) || k === 'notes' || k === 'adx') filtered[k] = v; });
@@ -401,15 +253,8 @@ const NewAssignments = () => {
       }
 
       const res = await axios.post(`${API_BASE}/student/submit-assignment`, payload);
-      if (!res.data?.success) { 
-        // Don't alert on auto-submit to avoid extra alerts
-        if (!timeUp) {
-          alert(res.data?.message || 'Failed to submit assignment');
-        }
-        return; 
-      }
+      if (!res.data?.success) { alert(res.data?.message || 'Failed to submit assignment'); return; }
 
-      // mark completed in UI
       if (activeSubAssignment) {
         setActiveAssignment((prev) => {
           if (!prev) return prev;
@@ -418,12 +263,8 @@ const NewAssignments = () => {
           return { ...prev, subAssignments: updatedSubs, isCompleted: parentCompleted || prev.isCompleted };
         });
         setActiveSubAssignment((prev) => (prev ? { ...prev, isCompleted: true } : prev));
-        clearTimerKey(userId, activeAssignment._id, activeSubAssignment._id);
-        clearFrozenAnswers(userId, activeAssignment._id, activeSubAssignment._id);
       } else {
         setActiveAssignment((prev) => (prev ? { ...prev, isCompleted: true } : prev));
-        clearTimerKey(userId, activeAssignment._id, null);
-        clearFrozenAnswers(userId, activeAssignment._id, null);
       }
 
       // refresh list quietly
@@ -442,37 +283,30 @@ const NewAssignments = () => {
         }
       } catch {}
 
-      // Only show success alert for manual submissions, not auto-submits
-      if (!timeUp) {
-        alert('Assignment submitted successfully!');
-      }
+      alert('Assignment submitted successfully!');
 
       const userId3 = localStorage.getItem('userId');
       await fetchResultForView(userId3, activeAssignment._id);
 
-      // reset local state (now in view mode)
       setAnswers({});
-      setTimeUp(false);
-      timeUpAlertShownRef.current = false;
-      clearCountdown();
-      autoSubmittedRef.current = false; // Reset for next time
+
+      // If sub-assignments exist, move or close
+      if (activeSubAssignment && (activeAssignment.subAssignments || []).length > 0) {
+        const idx = activeAssignment.subAssignments.findIndex((sub) => String(sub._id) === String(activeSubAssignment._id));
+        if (idx < activeAssignment.subAssignments.length - 1) {
+          setActiveSubAssignment({ ...activeAssignment.subAssignments[idx + 1], isCompleted: false });
+          setTimeout(() => { questionsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 150);
+        } else {
+          setActiveSubAssignment(null); setActiveAssignment(null);
+        }
+      }
 
     } catch (err) {
-      // Don't alert on auto-submit errors to avoid extra alerts
-      if (!timeUp) {
-        alert('Error: ' + err.message);
-      }
+      alert('Error: ' + err.message);
     } finally { setSubmitting(false); }
   };
 
   const handleAnswerChange = (key, value) => setAnswers((p) => ({ ...p, [key]: value }));
-
-  const timerBadge = (a) => {
-    const minutes = getTimeLimitMinutes(a, null);
-    if (!minutes) return null;
-    if (countdown === 0 || timeUp) return null; // REMOVED: Don't show "Time up" badge
-    return <span className="badge badge-pending">Timed ({minutes}m)</span>;
-  };
 
   // ----- pick the correct block for current view (single vs multi) -----
   const pickResultBlock = (target) => {
@@ -590,8 +424,7 @@ const NewAssignments = () => {
       return hasDyn ? renderDynamicViewOnly(block) : renderPredefinedViewOnly(category, block);
     }
 
-    // DISABLE inputs if submitting OR time is up
-    const readOnly = submitting || timeUp;
+    const readOnly = submitting;
 
     if (dynamicQs.length > 0) {
       return dynamicQs.map((q, idx) => {
@@ -616,7 +449,8 @@ const NewAssignments = () => {
         );
       });
     }
-const predefined = qs.find((q) => q.type === 'predefined');
+
+    const predefined = qs.find((q) => q.type === 'predefined');
     if (predefined && predefined.answerKey) {
       return (
         <div className="form-grid">
@@ -679,6 +513,7 @@ const predefined = qs.find((q) => q.type === 'predefined');
         </div>
       );
     }
+
     return <p className="muted">No questions available for this assignment.</p>;
   };
 
@@ -712,9 +547,8 @@ const predefined = qs.find((q) => q.type === 'predefined');
       return (
         <div className="container">
           <div className="page-header">
-            <button className="btn btn-ghost" onClick={() => { setActiveAssignment(null); clearCountdown(); /* keep frozen in LS */ }} disabled={submitting}>Back</button>
+            <button className="btn btn-ghost" onClick={() => { setActiveAssignment(null); }} disabled={submitting}>Back</button>
             <h3 className="title-sm">{activeAssignment.moduleName}</h3>
-            <div style={{ marginLeft: 'auto' }}>{timerBadge(activeAssignment)}</div>
           </div>
 
           <div className="grid">
@@ -742,31 +576,22 @@ const predefined = qs.find((q) => q.type === 'predefined');
       );
     }
 
-    const pdfUrl = activeSubAssignment?.assignmentPdf || activeAssignment.assignmentPdf;
+const pdfUrl = activeSubAssignment?.assignmentPdf || activeAssignment.assignmentPdf;
     const questionSource = activeSubAssignment || activeAssignment;
     const isCompleted = questionSource.isCompleted;
-    const showCountdown = Number.isFinite(timerEndMs);
-    const timeLeft = showCountdown ? Math.max(0, timerEndMs - Date.now()) : null;
-    const hasTimeLimit = Number.isFinite(getTimeLimitMinutes(activeAssignment, activeSubAssignment || null));
 
     return (
       <div className="container">
         <div className="page-header">
           <button
             className="btn btn-ghost"
-            onClick={() => {
-              if (activeSubAssignment) setActiveSubAssignment(null); else setActiveAssignment(null);
-              clearCountdown(); setViewResult(null); setResultError(''); setResultLoading(false);
-              /* don't clear frozen answers here — they live in localStorage */
-            }}
+            onClick={() => { activeSubAssignment ? setActiveSubAssignment(null) : setActiveAssignment(null); setViewResult(null); setResultError(''); setResultLoading(false); }}
             disabled={submitting}
           >
             Back
           </button>
-          <h3 className="title-sm">{activeSubAssignment?.subModuleName || activeAssignment.moduleName}</h3>
+        <h3 className="title-sm">{activeSubAssignment?.subModuleName || activeAssignment.moduleName}</h3>
           <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 10 }}>
-            {timerBadge(activeAssignment)}
-            {showCountdown && <div className="countdown-chip"><FiClock /> <span>{fmtCountdown(timeLeft ?? countdown ?? 0)}</span></div>}
             {isCompleted && <span className="badge badge-success">Completed (View Only)</span>}
           </div>
         </div>
@@ -798,7 +623,7 @@ const predefined = qs.find((q) => q.type === 'predefined');
             {isCompleted ? (
               <button className="btn" disabled>View Only</button>
             ) : (
-              <button className="btn btn-primary" onClick={handleSubmit} disabled={submitting || timeUp}>
+              <button className="btn btn-primary" onClick={handleSubmit} disabled={submitting}>
                 {submitting ? 'Submitting…' : 'Submit Assignment'}
               </button>
             )}
@@ -841,7 +666,6 @@ const predefined = qs.find((q) => q.type === 'predefined');
           {sorted.map((assignment) => {
             const allSubsCompleted = areAllSubAssignmentsCompleted(assignment);
             const isStarting = startingId === `${assignment._id}:parent`;
-            const hasTime = Number.isFinite(Number(assignment?.timeLimitMinutes));
             const btnLabel = allSubsCompleted ? (assignment.subAssignments?.length > 0 ? 'View Sections' : 'View') : (assignment.subAssignments?.length > 0 ? 'View Sections' : 'Start');
             return (
               <div key={assignment._id} className="card">
@@ -849,13 +673,6 @@ const predefined = qs.find((q) => q.type === 'predefined');
                   <h3 className="card-title">{assignment.moduleName}</h3>
                   <span className={`badge ${allSubsCompleted ? 'badge-success' : 'badge-pending'}`}>{allSubsCompleted ? 'Completed' : 'Assigned'}</span>
                 </div>
-
-                {hasTime && (
-                  <div className="meta">
-                    <span className="meta-key">Status</span>
-                    <span className="meta-val">Timed ({Number(assignment.timeLimitMinutes)}m)</span>
-                  </div>
-                )}
 
                 {assignment.subAssignments?.length > 0 && (
                   <div className="meta">
@@ -891,7 +708,7 @@ const predefined = qs.find((q) => q.type === 'predefined');
 const LoadingOverlay = () => (
   <div style={{ position: 'fixed', inset: 0, background: 'rgba(255,255,255,0.7)', backdropFilter: 'blur(2px)', display: 'grid', placeItems: 'center', zIndex: 9999 }}>
     <div style={{ padding: 16, borderRadius: 12, border: '1px solid #ddd', background: '#fff', minWidth: 220, textAlign: 'center' }}>
-      <div className="spinner" style={{ width: 28, height: 28, margin: '0 auto 10px', border: '3px solid #ddd', borderTopColor: '#333', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+      <div className="spinner" style={{ width: 28, height: 28, margin: '0 auto 10px', border: '3px solid #ddd', borderTopColor: '#333', borderRadius: '50%', animation: '1s linear infinite spin' }} />
       <div style={{ fontWeight: 600 }}>Submitting…</div>
       <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>Please wait</div>
       <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
