@@ -10,7 +10,7 @@ const API_BASE = 'https://el-backend-ashen.vercel.app';
 
 const PdfReader = ({ url, height = '60vh', watermark = '' }) => {
   const [blobUrl, setBlobUrl] = useState('');
- 
+
   const [err, setErr] = useState('');
   const [viewKey, setViewKey] = useState(0);
   const currentBlob = useRef('');
@@ -112,29 +112,6 @@ const clearTimerKey = (userId, assignmentId, subId) => {
   localStorage.removeItem(key);
 };
 
-// ---- FROZEN ANSWERS (persist when time is up) ----
-const makeAnsKey = (userId, assignmentId, subId) => `asgFrozen:${userId}:${assignmentId}:${subId || 'parent'}`;
-const saveFrozenAnswers = (userId, assignmentId, subId, answers) => {
-  try {
-    const key = makeAnsKey(userId, assignmentId, subId);
-    localStorage.setItem(key, JSON.stringify({ answers, timeUp: true, savedAt: Date.now() }));
-  } catch {}
-};
-const loadFrozenAnswers = (userId, assignmentId, subId) => {
-  try {
-    const key = makeAnsKey(userId, assignmentId, subId);
-    const raw = localStorage.getItem(key);
-    if (!raw) return null;
-    return JSON.parse(raw);
-  } catch { return null; }
-};
-const clearFrozenAnswers = (userId, assignmentId, subId) => {
-  try {
-    const key = makeAnsKey(userId, assignmentId, subId);
-    localStorage.removeItem(key);
-  } catch {}
-};
-
 const arrEq = (a = [], b = []) =>
   Array.isArray(a) && Array.isArray(b) && a.length === b.length && a.every((x, i) => String(x).trim() === String(b[i]).trim());
 const asArray = (v) => {
@@ -177,7 +154,7 @@ const NewAssignments = () => {
   const [resultError, setResultError] = useState('');
   const [viewResult, setViewResult] = useState(null); // entire /result payload
 
-  // NEW: time-up state + one-time alert guard
+  // NEW: time-up state
   const [timeUp, setTimeUp] = useState(false);
   const timeUpAlertShownRef = useRef(false);
 
@@ -263,30 +240,22 @@ const NewAssignments = () => {
         setActiveSubAssignment(null);
       }
 
-      // reset results state; DON'T clear persisted frozen answers here
+      // reset results state
       setViewResult(null); setResultError(''); setResultLoading(false);
 
       const userId = localStorage.getItem('userId');
       const isAlreadyDone = selectedSub ? selectedSub.isCompleted : assignmentData.isCompleted;
 
-      // If we have frozen answers (from time-up earlier), load them & keep frozen
-      const frozen = loadFrozenAnswers(userId, assignmentData._id, selectedSub?._id);
-      if (frozen?.timeUp) {
-        setAnswers(frozen.answers || {});
-        setTimeUp(true);
-        clearCountdown();
-      } else {
-        setAnswers({});
-        setTimeUp(false);
-        timeUpAlertShownRef.current = false;
+      setAnswers({});
+      setTimeUp(false);
+      timeUpAlertShownRef.current = false;
 
-        if (!isAlreadyDone) {
-          const endMs = getOrStartTimerEnd(userId, assignmentData, selectedSub);
-          if (endMs) initCountdown(endMs); else clearCountdown();
-        } else {
-          clearCountdown();
-          await fetchResultForView(userId, assignmentData._id);
-        }
+      if (!isAlreadyDone) {
+        const endMs = getOrStartTimerEnd(userId, assignmentData, selectedSub);
+        if (endMs) initCountdown(endMs); else clearCountdown();
+      } else {
+        clearCountdown();
+        await fetchResultForView(userId, assignmentData._id);
       }
 
       setTimeout(() => { questionsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 100);
@@ -300,7 +269,7 @@ const NewAssignments = () => {
     setCountdown(null); setTimerEndMs(null);
   };
 
-  // When time ends: lock inputs, persist answers, and show ONE alert; do NOT auto-submit
+  // When time ends: auto-submit the assignment
   const initCountdown = (endMs) => {
     clearCountdown(); if (!endMs) return;
     setTimerEndMs(endMs);
@@ -310,18 +279,11 @@ const NewAssignments = () => {
         setCountdown(0);
         clearInterval(timerRef.current); timerRef.current = null;
         setTimeUp(true);
-
-        // persist the current answers snapshot as FROZEN
-        try {
-          const userId = localStorage.getItem('userId');
-          const aId = activeAssignment?._id;
-          const sId = activeSubAssignment?._id || null;
-          if (userId && aId) saveFrozenAnswers(userId, aId, sId, answers);
-        } catch {}
-
+        
+        // Auto-submit when time is up
         if (!timeUpAlertShownRef.current) {
           timeUpAlertShownRef.current = true;
-          alert('⏰ Time is up. Please click “Submit Assignment” to finalize your attempt.');
+          handleSubmit();
         }
       } else {
         setCountdown(left);
@@ -383,11 +345,9 @@ const NewAssignments = () => {
         });
         setActiveSubAssignment((prev) => (prev ? { ...prev, isCompleted: true } : prev));
         clearTimerKey(userId, activeAssignment._id, activeSubAssignment._id);
-        clearFrozenAnswers(userId, activeAssignment._id, activeSubAssignment._id);
       } else {
         setActiveAssignment((prev) => (prev ? { ...prev, isCompleted: true } : prev));
         clearTimerKey(userId, activeAssignment._id, null);
-        clearFrozenAnswers(userId, activeAssignment._id, null);
       }
 
       // refresh list quietly
@@ -424,13 +384,6 @@ const NewAssignments = () => {
 
   const handleAnswerChange = (key, value) => setAnswers((p) => ({ ...p, [key]: value }));
 
-  const timerBadge = (a) => {
-    const minutes = getTimeLimitMinutes(a, null);
-    if (!minutes) return null;
-    if (countdown === 0 || timeUp) return <span className="badge badge-neutral">Time up</span>;
-    return <span className="badge badge-pending">Timed ({minutes}m)</span>;
-  };
-
   // ----- pick the correct block for current view (single vs multi) -----
   const pickResultBlock = (target) => {
     if (!viewResult || !viewResult.data) return null;
@@ -443,7 +396,7 @@ const NewAssignments = () => {
     return blk || null;
   };
 
-  // ---------- RESULTS RENDERERS ----------
+   // ---------- RESULTS RENDERERS ----------
   const renderDynamicViewOnly = (resultBlock) => {
     if (!resultBlock) return null;
     const submittedDyn = resultBlock.submitted?.dynamicQuestions || [];
@@ -670,9 +623,8 @@ return <p className="muted">No questions available for this assignment.</p>;
       return (
         <div className="container">
           <div className="page-header">
-            <button className="btn btn-ghost" onClick={() => { setActiveAssignment(null); clearCountdown(); /* keep frozen in LS */ }} disabled={submitting}>Back</button>
+            <button className="btn btn-ghost" onClick={() => { setActiveAssignment(null); clearCountdown(); }} disabled={submitting}>Back</button>
             <h3 className="title-sm">{activeAssignment.moduleName}</h3>
-            <div style={{ marginLeft: 'auto' }}>{timerBadge(activeAssignment)}</div>
           </div>
 
           <div className="grid">
@@ -699,8 +651,7 @@ return <p className="muted">No questions available for this assignment.</p>;
         </div>
       );
     }
-
-    const pdfUrl = activeSubAssignment?.assignmentPdf || activeAssignment.assignmentPdf;
+const pdfUrl = activeSubAssignment?.assignmentPdf || activeAssignment.assignmentPdf;
     const questionSource = activeSubAssignment || activeAssignment;
     const isCompleted = questionSource.isCompleted;
     const showCountdown = Number.isFinite(timerEndMs);
@@ -715,7 +666,6 @@ return <p className="muted">No questions available for this assignment.</p>;
             onClick={() => {
               if (activeSubAssignment) setActiveSubAssignment(null); else setActiveAssignment(null);
               clearCountdown(); setViewResult(null); setResultError(''); setResultLoading(false);
-              /* don't clear frozen answers here — they live in localStorage */
             }}
             disabled={submitting}
           >
@@ -723,7 +673,6 @@ return <p className="muted">No questions available for this assignment.</p>;
           </button>
           <h3 className="title-sm">{activeSubAssignment?.subModuleName || activeAssignment.moduleName}</h3>
           <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 10 }}>
-            {timerBadge(activeAssignment)}
             {showCountdown && <div className="countdown-chip"><FiClock /> <span>{fmtCountdown(timeLeft ?? countdown ?? 0)}</span></div>}
             {isCompleted && <span className="badge badge-success">Completed (View Only)</span>}
           </div>
@@ -737,7 +686,7 @@ return <p className="muted">No questions available for this assignment.</p>;
             display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, fontWeight: 600
           }}>
             <FiClock aria-hidden /> Note: This is a timed assignment. Please submit before the time ends.
-            {timeUp && <span style={{ marginLeft: 'auto', fontWeight: 700 }}>Time up — inputs are locked.</span>}
+            {timeUp && <span style={{ marginLeft: 'auto', fontWeight: 700 }}>Time up — auto-submitting...</span>}
           </div>
         )}
 
@@ -768,8 +717,8 @@ return <p className="muted">No questions available for this assignment.</p>;
             {isCompleted ? (
               <button className="btn" disabled>View Only</button>
             ) : (
-              <button className="btn btn-primary" onClick={handleSubmit} disabled={submitting}>
-                {submitting ? 'Submitting…' : 'Submit Assignment'}
+              <button className="btn btn-primary" onClick={handleSubmit} disabled={submitting || timeUp}>
+                {submitting ? 'Submitting…' : timeUp ? 'Auto-Submitting...' : 'Submit Assignment'}
               </button>
             )}
           </div>
@@ -779,6 +728,7 @@ return <p className="muted">No questions available for this assignment.</p>;
       </div>
     );
   }
+
 
   return (
     <div className="container">
@@ -811,7 +761,6 @@ return <p className="muted">No questions available for this assignment.</p>;
           {sorted.map((assignment) => {
             const allSubsCompleted = areAllSubAssignmentsCompleted(assignment);
             const isStarting = startingId === `${assignment._id}:parent`;
-            const hasTime = Number.isFinite(Number(assignment?.timeLimitMinutes));
             const btnLabel = allSubsCompleted ? (assignment.subAssignments?.length > 0 ? 'View Sections' : 'View') : (assignment.subAssignments?.length > 0 ? 'View Sections' : 'Start');
             return (
               <div key={assignment._id} className="card">
@@ -819,13 +768,6 @@ return <p className="muted">No questions available for this assignment.</p>;
                   <h3 className="card-title">{assignment.moduleName}</h3>
                   <span className={`badge ${allSubsCompleted ? 'badge-success' : 'badge-pending'}`}>{allSubsCompleted ? 'Completed' : 'Assigned'}</span>
                 </div>
-
-                {hasTime && (
-                  <div className="meta">
-                    <span className="meta-key">Status</span>
-                    <span className="meta-val">Timed ({Number(assignment.timeLimitMinutes)}m)</span>
-                  </div>
-                )}
 
                 {assignment.subAssignments?.length > 0 && (
                   <div className="meta">
