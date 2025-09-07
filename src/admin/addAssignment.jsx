@@ -283,23 +283,7 @@ export default function AddAssignment() {
             />
           </div>
 
-          {/* ---------- Time limit (minutes, optional) ---------- */}
-          <div className="form-group">
-            <label htmlFor="timeLimitMinutes">Time Limit (minutes, optional)</label>
-            <input
-              id="timeLimitMinutes"
-              type="number"
-              min="1"
-              step="1"
-              inputMode="numeric"
-              placeholder="e.g., 10 or 200"
-              value={timeLimitMinutes}
-              onChange={(e) => setTimeLimitMinutes(e.target.value)}
-            />
-            <small>
-              Leave empty for no limit. Example: enter <b>10</b> for 10 minutes or <b>200</b> for 200 minutes.
-            </small>
-          </div>
+          
 
           <h3>Sub-Assignments</h3>
           {subAssignments.map((sub, idx) => (
