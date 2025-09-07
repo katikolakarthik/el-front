@@ -501,9 +501,9 @@ const NewAssignments = () => {
   const renderQuestions = (target) => {
     if (!target) return null;
     const isCompleted = target.isCompleted;
-    const qs = target.questions || [];
-    theconst dynamicQs = qs.filter((q) => q.type === 'dynamic');
-    const category = activeAssignment?.category;
+const qs = target.questions || [];
+const dynamicQs = qs.filter((q) => q.type === 'dynamic');
+const category = activeAssignment?.category;
 
     if (isCompleted && viewResult) {
       const block = pickResultBlock(target);
