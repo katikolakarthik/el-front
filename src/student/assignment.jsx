@@ -274,20 +274,20 @@ const NewAssignments = () => {
   };
 
   const initCountdown = (endMs) => {
-    clearCountdown(); if (!endMs) return;
-    setTimerEndMs(endMs);
-    const tick = () => {
-      const left = endMs - Date.now();
-      if (left <= 0) {
-        setCountdown(0);
-        clearInterval(timerRef.current); timerRef.current = null;
-        triggerAutoSubmit(); // <-- auto submit on time up
-      } else {
-        setCountdown(left);
-      }
-    };
-    tick(); timerRef.current = setInterval(tick, 500);
+  clearCountdown(); if (!endMs) return;
+  setTimerEndMs(endMs);
+  const tick = () => {
+    const left = endMs - Date.now();
+    if (left <= 0) {
+      setCountdown(0);
+      clearInterval(timerRef.current); timerRef.current = null;
+      handleSubmit(false);   // ✅ normal submit call
+    } else {
+      setCountdown(left);
+    }
   };
+  tick(); timerRef.current = setInterval(tick, 500);
+};
 
   useEffect(() => () => clearCountdown(), []);
 
