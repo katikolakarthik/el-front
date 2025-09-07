@@ -260,14 +260,14 @@ const NewAssignments = () => {
     setCountdown(null); setTimerEndMs(null);
   };
 
-  // Auto-submit when time finishes (behaves same as user click)
+  // Auto-submit exactly like manual click (no extra alerts, no freezes)
   const triggerAutoSubmit = async () => {
     if (autoSubmittingRef.current) return;
     autoSubmittingRef.current = true;
     try {
       const src = activeSubAssignment || activeAssignment;
       if (!src || src.isCompleted) return;
-      await handleSubmit(); // EXACTLY like manual click
+      await handleSubmit(false); // behave like manual click
     } finally {
       autoSubmittingRef.current = false;
     }
@@ -281,7 +281,7 @@ const NewAssignments = () => {
       if (left <= 0) {
         setCountdown(0);
         clearInterval(timerRef.current); timerRef.current = null;
-        triggerAutoSubmit(); // just submit like manual
+        triggerAutoSubmit(); // submit when time ends
       } else {
         setCountdown(left);
       }
@@ -293,7 +293,7 @@ const NewAssignments = () => {
 
   const csvToArray = (str = '') => str.split(',').map((s) => s.trim()).filter(Boolean);
 
-  const handleSubmit = async () => {
+  const handleSubmit = async (/* isManualOrAutoAlwaysSame */) => {
     try {
       setSubmitting(true);
       const userId = localStorage.getItem('userId');
@@ -362,6 +362,7 @@ const NewAssignments = () => {
         }
       } catch {}
 
+      // success alert same for manual & auto (acts like user clicked)
       alert('Assignment submitted successfully!');
 
       const userId3 = localStorage.getItem('userId');
@@ -393,6 +394,215 @@ const NewAssignments = () => {
     if (!minutes) return null;
     if (countdown === 0) return <span className="badge badge-neutral">Time up</span>;
     return <span className="badge badge-pending">Timed ({minutes}m)</span>;
+  };
+
+  // ----- pick the correct block for current view (single vs multi) -----
+  const pickResultBlock = (target) => {
+    if (!viewResult || !viewResult.data) return null;
+    const type = viewResult.assignmentType || 'single';
+    if (type === 'single') return viewResult.data;
+    if (!activeSubAssignment) return null;
+    const arr = Array.isArray(viewResult.data) ? viewResult.data : [];
+    let blk = arr.find(b => String(b?.submitted?.subAssignmentId) === String(activeSubAssignment._id));
+    if (!blk) blk = arr.find(b => (b?.subModuleName || '').toLowerCase() === (activeSubAssignment?.subModuleName || '').toLowerCase());
+    return blk || null;
+  };
+
+  // ---------- RESULTS RENDERERS ----------
+  const renderDynamicViewOnly = (resultBlock) => {
+    if (!resultBlock) return null;
+    const submittedDyn = resultBlock.submitted?.dynamicQuestions || [];
+    const corrList = resultBlock.correctDynamicQuestions || [];
+    const correctMap = new Map(corrList.map(q => [q.questionText, q.answer]));
+
+    const toRender = submittedDyn.length ? submittedDyn : [];
+    return toRender.map((q, idx) => {
+      const qText = q.questionText;
+      const options = q.options || [];
+      const submittedAnswer = q.submittedAnswer ?? '';
+      const correctAnswer = correctMap.get(qText) ?? q.correctAnswer ?? '';
+      const isCorrect = String(submittedAnswer) === String(correctAnswer);
+      return (
+        <div key={idx} className="q-block">
+          <p className="q-title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            {qText}
+            {isCorrect ? chip('Correct', 'good', 'Your answer is correct') : chip('Wrong', 'bad', 'Your answer is wrong')}
+          </p>
+          <div className="q-options">
+            {options.map((opt, i) => {
+              const selected = String(opt) === String(submittedAnswer);
+              const isTheCorrect = String(opt) === String(correctAnswer);
+              let outline = '#d1d5db';
+              let title = '';
+              let icon = null;
+              if (isTheCorrect) { outline = '#10b981'; title = 'Correct answer'; icon = <FiCheck aria-hidden />; }
+              if (selected && !isTheCorrect) { outline = '#ef4444'; title = 'Your selected (incorrect)'; icon = <FiX aria-hidden />; }
+              if (selected && isTheCorrect) { title = 'You selected (correct)'; }
+              return (
+                <label key={i} className="q-option" title={title} style={{ borderColor: outline }}>
+                  <input type="radio" name={`q${idx}`} value={opt} checked={selected} readOnly disabled />
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>{opt} {icon}</span>
+                </label>
+              );
+            })}
+            {!options.length && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <input className="input" type="text" value={submittedAnswer || ''} readOnly disabled placeholder="Your answer" title={isCorrect ? 'Your answer is correct' : 'Your answer is wrong'} style={{ borderColor: isCorrect ? '#10b981' : '#ef4444' }} />
+                <div style={{ fontSize: 12 }}>{chip(`Correct: ${correctAnswer || '—'}`, isCorrect ? 'good' : 'neutral', 'Correct answer')}</div>
+              </div>
+            )}
+          </div>
+        </div>
+      );
+    });
+  };
+
+  const renderPredefinedViewOnly = (category, resultBlock) => {
+    if (!resultBlock) return null;
+    const submitted = resultBlock.submitted || {};
+    const key = resultBlock.correctAnswerKey || {};
+    const field = (label, yourVal, correctVal, isList = false) => {
+      const yourArr = isList ? asArray(yourVal) : (yourVal ? [yourVal] : []);
+      const correctArr = isList ? asArray(correctVal) : (correctVal ? [correctVal] : []);
+      const ok = arrEq(yourArr, correctArr);
+      return (
+        <div className="form-item">
+          <label className="label">{label}</label>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <div title="Your answer">
+              {chip('Your:', 'neutral')}
+              {yourArr.length ? yourArr.map((v, i) => chip(v, ok ? 'good' : 'neutral')) : chip('—', 'neutral')}
+            </div>
+            <div title="Correct answer">
+              {chip('Correct:', 'neutral')}
+              {correctArr.length ? correctArr.map((v, i) => chip(v, 'good')) : chip('—', 'neutral')}
+            </div>
+          </div>
+        </div>
+      );
+    };
+    const show = (f) => showField(category, f) || f === 'notes' || f === 'adx';
+    return (
+      <div className="form-grid">
+        {show('patientName') && field('Patient Name', submitted.patientName, key.patientName, false)}
+        {show('ageOrDob') && field('Age / DOB', submitted.ageOrDob, key.ageOrDob, false)}
+        {show('icdCodes') && field('ICD (Pdx)', submitted.icdCodes, key.icdCodes, true)}
+        {show('cptCodes') && field('CPT Codes', submitted.cptCodes, key.cptCodes, true)}
+        {show('pcsCodes') && field('PCS Codes', submitted.pcsCodes, key.pcsCodes, true)}
+        {show('hcpcsCodes') && field('HCPCS Codes', submitted.hcpcsCodes, key.hcpcsCodes, true)}
+        {show('drgValue') && field('DRG Value', submitted.drgValue, key.drgValue, false)}
+        {show('modifiers') && field('Modifiers', submitted.modifiers, key.modifiers, true)}
+        {field('Adx', submitted.adx, key.adx, false)}
+        {field('Notes', submitted.notes, key.notes, false)}
+      </div>
+    );
+  };
+
+  const renderQuestions = (target) => {
+    if (!target) return null;
+    const isCompleted = target.isCompleted;
+    const qs = target.questions || [];
+    theconst dynamicQs = qs.filter((q) => q.type === 'dynamic');
+    const category = activeAssignment?.category;
+
+    if (isCompleted && viewResult) {
+      const block = pickResultBlock(target);
+      if (!block) return <p className="muted">No results for this section.</p>;
+      const hasDyn = (block.submitted?.dynamicQuestions || []).length > 0 || (block.correctDynamicQuestions || []).length > 0 || dynamicQs.length > 0;
+      return hasDyn ? renderDynamicViewOnly(block) : renderPredefinedViewOnly(category, block);
+    }
+
+    // Disable only while submitting (no time-up freeze)
+    const readOnly = submitting;
+
+    if (dynamicQs.length > 0) {
+      return dynamicQs.map((q, idx) => {
+        const key = `dynamic-${idx}`;
+        const options = q.options || [];
+        return (
+          <div key={idx} className="q-block">
+            <p className="q-title">{q.questionText}</p>
+            {options.length > 0 ? (
+              <div className="q-options">
+                {options.map((opt, i) => (
+                  <label key={i} className="q-option">
+                    <input type="radio" name={`q${idx}`} value={opt} checked={answers[key] === opt} onChange={(e) => handleAnswerChange(key, e.target.value)} disabled={readOnly} />
+                    <span>{opt}</span>
+                  </label>
+                ))}
+              </div>
+            ) : (
+              <input className="input" type="text" placeholder="Type your answer" value={answers[key] || ''} onChange={(e) => handleAnswerChange(key, e.target.value)} disabled={readOnly} />
+            )}
+          </div>
+        );
+      });
+    }
+
+    const predefined = qs.find((q) => q.type === 'predefined');
+    if (predefined && predefined.answerKey) {
+      return (
+        <div className="form-grid">
+          {showField(category, 'patientName') && (
+            <div className="form-item">
+              <label className="label">Patient Name</label>
+              <input className="input" type="text" value={answers.patientName || ''} onChange={(e) => handleAnswerChange('patientName', e.target.value)} disabled={readOnly} />
+            </div>
+          )}
+          {showField(category, 'ageOrDob') && (
+            <div className="form-item">
+              <label className="label">Age / DOB</label>
+              <input className="input" type="text" value={answers.ageOrDob || ''} onChange={(e) => handleAnswerChange('ageOrDob', e.target.value)} disabled={readOnly} />
+            </div>
+          )}
+          {showField(category, 'icdCodes') && (
+            <div className="form-item">
+              <label className="label">ICD (Pdx)</label>
+              <input className="input" type="text" value={answers.icdCodes || ''} onChange={(e) => handleAnswerChange('icdCodes', e.target.value)} placeholder="Comma separated" disabled={readOnly} />
+            </div>
+          )}
+          {showField(category, 'cptCodes') && (
+            <div className="form-item">
+              <label className="label">CPT Codes</label>
+              <input className="input" type="text" value={answers.cptCodes || ''} onChange={(e) => handleAnswerChange('cptCodes', e.target.value)} placeholder="Comma separated" disabled={readOnly} />
+            </div>
+          )}
+          {showField(category, 'pcsCodes') && (
+            <div className="form-item">
+              <label className="label">PCS Codes</label>
+              <input className="input" type="text" value={answers.pcsCodes || ''} onChange={(e) => handleAnswerChange('pcsCodes', e.target.value)} placeholder="Comma separated" disabled={readOnly} />
+            </div>
+          )}
+          {showField(category, 'hcpcsCodes') && (
+            <div className="form-item">
+              <label className="label">HCPCS Codes</label>
+              <input className="input" type="text" value={answers.hcpcsCodes || ''} onChange={(e) => handleAnswerChange('hcpcsCodes', e.target.value)} placeholder="Comma separated" disabled={readOnly} />
+            </div>
+          )}
+          {showField(category, 'drgValue') && (
+            <div className="form-item">
+              <label className="label">DRG Value</label>
+              <input className="input" type="text" value={answers.drgValue || ''} onChange={(e) => handleAnswerChange('drgValue', e.target.value)} placeholder="e.g. 470 or 470-xx" disabled={readOnly} />
+            </div>
+          )}
+          {showField(category, 'modifiers') && (
+            <div className="form-item">
+              <label className="label">Modifiers</label>
+              <input className="input" type="text" value={answers.modifiers || ''} onChange={(e) => handleAnswerChange('modifiers', e.target.value)} placeholder="Comma separated (e.g. 26, 59, LT)" disabled={readOnly} />
+            </div>
+          )}
+          <div className="form-item">
+            <label className="label">Adx</label>
+            <input className="input" type="text" value={answers.adx || ''} onChange={(e) => handleAnswerChange('adx', e.target.value)} placeholder="Adx (e.g., principal diagnosis / free text)" disabled={readOnly} />
+          </div>
+          <div className="form-item form-item--full">
+            <label className="label">Notes</label>
+            <textarea className="textarea" value={answers.notes || ''} onChange={(e) => handleAnswerChange('notes', e.target.value)} rows={4} disabled={readOnly} />
+          </div>
+        </div>
+      );
+    }
+return <p className="muted">No questions available for this assignment.</p>;
   };
 
   if (loading) {
@@ -472,7 +682,7 @@ const NewAssignments = () => {
           >
             Back
           </button>
-        <h3 className="title-sm">{activeSubAssignment?.subModuleName || activeAssignment.moduleName}</h3>
+          <h3 className="title-sm">{activeSubAssignment?.subModuleName || activeAssignment.moduleName}</h3>
           <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 10 }}>
             {timerBadge(activeAssignment)}
             {showCountdown && <div className="countdown-chip"><FiClock /> <span>{fmtCountdown(timeLeft ?? countdown ?? 0)}</span></div>}
@@ -480,7 +690,7 @@ const NewAssignments = () => {
           </div>
         </div>
 
-        {/* (Optional) Note banner — harmless, not an alert/freeze/silent thing */}
+        {/* Informational note; no alerts, no freezes, auto-submit on time end */}
         {hasTimeLimit && !isCompleted && (
           <div style={{
             margin: '8px 0 12px', padding: '10px 12px', borderRadius: 8,
@@ -518,7 +728,7 @@ const NewAssignments = () => {
             {isCompleted ? (
               <button className="btn" disabled>View Only</button>
             ) : (
-              <button className="btn btn-primary" onClick={handleSubmit} disabled={submitting}>
+              <button className="btn btn-primary" onClick={() => handleSubmit(false)} disabled={submitting}>
                 {submitting ? 'Submitting…' : 'Submit Assignment'}
               </button>
             )}
@@ -569,7 +779,7 @@ const NewAssignments = () => {
                   <span className={`badge ${allSubsCompleted ? 'badge-success' : 'badge-pending'}`}>{allSubsCompleted ? 'Completed' : 'Assigned'}</span>
                 </div>
 
-                {/* As requested: NO 'Status: Timed' meta here */}
+                {/* Timed status removed from the card list as requested */}
 
                 {assignment.subAssignments?.length > 0 && (
                   <div className="meta">
@@ -601,6 +811,7 @@ const NewAssignments = () => {
     </div>
   );
 };
+
 const LoadingOverlay = () => (
   <div style={{ position: 'fixed', inset: 0, background: 'rgba(255,255,255,0.7)', backdropFilter: 'blur(2px)', display: 'grid', placeItems: 'center', zIndex: 9999 }}>
     <div style={{ padding: 16, borderRadius: 12, border: '1px solid #ddd', background: '#fff', minWidth: 220, textAlign: 'center' }}>
