@@ -234,18 +234,35 @@ const NewAssignments = () => {
         setActiveSubAssignment(null);
       }
 
+      // reset view/answers
       setAnswers({});
       setViewResult(null); setResultError(''); setResultLoading(false);
 
       const userId = localStorage.getItem('userId');
       const isAlreadyDone = selectedSub ? selectedSub.isCompleted : assignmentData.isCompleted;
 
-      if (!isAlreadyDone) {
-        const endMs = getOrStartTimerEnd(userId, assignmentData, selectedSub);
-        if (endMs) initCountdown(endMs); else clearCountdown();
-      } else {
+      // IMPORTANT: only start timer on a QUESTION screen (single or specific sub)
+      if (selectedSub) {
+        if (!isAlreadyDone) {
+          const endMs = getOrStartTimerEnd(userId, assignmentData, selectedSub);
+          if (endMs) initCountdown(endMs); else clearCountdown();
+        } else {
+          clearCountdown();
+          await fetchResultForView(userId, assignmentData._id);
+        }
+      } else if (assignmentData.subAssignments?.length > 0) {
+        // We are on the sections list screen → ensure NO parent timer exists
         clearCountdown();
-        await fetchResultForView(userId, assignmentData._id);
+        clearTimerKey(userId, assignmentData._id, null); // remove any stale parent timer
+      } else {
+        // Single-assignment (no subs) → timer applies at parent
+        if (!isAlreadyDone) {
+          const endMs = getOrStartTimerEnd(userId, assignmentData, null);
+          if (endMs) initCountdown(endMs); else clearCountdown();
+        } else {
+          clearCountdown();
+          await fetchResultForView(userId, assignmentData._id);
+        }
       }
 
       setTimeout(() => { questionsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 100);
@@ -259,7 +276,7 @@ const NewAssignments = () => {
     setCountdown(null); setTimerEndMs(null);
   };
 
-  // ✅ Auto submit EXACTLY like manual: call handleSubmit() when time ends
+  // Auto-submit EXACTLY like manual (but only when a question screen is open)
   const initCountdown = (endMs) => {
     clearCountdown(); if (!endMs) return;
     setTimerEndMs(endMs);
@@ -268,7 +285,14 @@ const NewAssignments = () => {
       if (left <= 0) {
         setCountdown(0);
         clearInterval(timerRef.current); timerRef.current = null;
-        handleSubmit(); // same behavior as manual submit
+
+        // Guard: submit only if we're on a screen that actually has questions
+        const onSubQuestion = Boolean(activeSubAssignment);
+        const onSingleQuestion = !activeSubAssignment && !(activeAssignment?.subAssignments?.length > 0);
+
+        if ((onSubQuestion || onSingleQuestion) && !submitting) {
+          handleSubmit(); // normal submit path
+        }
       } else {
         setCountdown(left);
       }
@@ -282,7 +306,7 @@ const NewAssignments = () => {
 
   const handleSubmit = async () => {
     try {
-      if (submitting) return; // guard against double-click/race at time-up
+      if (submitting) return; // avoid double-submit
       setSubmitting(true);
       const userId = localStorage.getItem('userId');
       if (!userId) throw new Error('User ID not found');
@@ -303,13 +327,24 @@ const NewAssignments = () => {
         return filtered;
       };
 
+      // Build payload correctly for the current context
       if (activeSubAssignment) {
         if ((activeSubAssignment.questions || []).some((q) => q.type === 'dynamic')) {
-          payload.submittedAnswers.push({ subAssignmentId: activeSubAssignment._id, dynamicQuestions: buildDynamic(activeSubAssignment.questions, 'dynamic') });
+          payload.submittedAnswers.push({
+            subAssignmentId: activeSubAssignment._id,
+            dynamicQuestions: buildDynamic(activeSubAssignment.questions, 'dynamic'),
+          });
         } else {
-          payload.submittedAnswers.push({ subAssignmentId: activeSubAssignment._id, ...buildPredefinedPayload() });
+          payload.submittedAnswers.push({
+            subAssignmentId: activeSubAssignment._id,
+            ...buildPredefinedPayload(),
+          });
         }
       } else {
+        // Only valid if there are NO sub-assignments (single-assignment)
+        if (activeAssignment?.subAssignments?.length > 0) {
+          throw new Error('Cannot submit at parent level — open a section to submit.');
+        }
         if ((activeAssignment.questions || []).some((q) => q.type === 'dynamic')) {
           payload.submittedAnswers.push({ dynamicQuestions: buildDynamic(activeAssignment.questions, 'dynamic') });
         } else {
@@ -350,7 +385,7 @@ const NewAssignments = () => {
         }
       } catch {}
 
-      // normal success UX (same as manual flow)
+      // success UX same as manual
       alert('Assignment submitted successfully!');
 
       const userId3 = localStorage.getItem('userId');
@@ -377,8 +412,12 @@ const NewAssignments = () => {
 
   const handleAnswerChange = (key, value) => setAnswers((p) => ({ ...p, [key]: value }));
 
-  const timerBadge = (a) => {
-    const minutes = getTimeLimitMinutes(a, null);
+  // Badge only when we are on a question page
+  const timerBadge = (assignment) => {
+    const minutes = getTimeLimitMinutes(assignment, activeSubAssignment || null);
+    const onSubQuestion = Boolean(activeSubAssignment);
+    const onSingleQuestion = !activeSubAssignment && !(assignment?.subAssignments?.length > 0);
+    if (!(onSubQuestion || onSingleQuestion)) return null; // no badge on sections list
     if (!minutes) return null;
     if (countdown === 0) return <span className="badge badge-neutral">Time up</span>;
     return <span className="badge badge-pending">Timed ({minutes}m)</span>;
@@ -526,7 +565,8 @@ const NewAssignments = () => {
         );
       });
     }
-const predefined = qs.find((q) => q.type === 'predefined');
+
+    const predefined = qs.find((q) => q.type === 'predefined');
     if (predefined && predefined.answerKey) {
       return (
         <div className="form-grid">
@@ -620,12 +660,13 @@ const predefined = qs.find((q) => q.type === 'predefined');
 
   if (activeAssignment) {
     if (!activeSubAssignment && activeAssignment.subAssignments?.length > 0) {
+      // Sections list screen — no countdown here
       return (
         <div className="container">
           <div className="page-header">
             <button className="btn btn-ghost" onClick={() => { setActiveAssignment(null); clearCountdown(); }} disabled={submitting}>Back</button>
             <h3 className="title-sm">{activeAssignment.moduleName}</h3>
-            <div style={{ marginLeft: 'auto' }}>{timerBadge(activeAssignment)}</div>
+            <div style={{ marginLeft: 'auto' }}>{/* no timer badge on sections list */}</div>
           </div>
 
           <div className="grid">
@@ -652,13 +693,11 @@ const predefined = qs.find((q) => q.type === 'predefined');
         </div>
       );
     }
-
-    const pdfUrl = activeSubAssignment?.assignmentPdf || activeAssignment.assignmentPdf;
+const pdfUrl = activeSubAssignment?.assignmentPdf || activeAssignment.assignmentPdf;
     const questionSource = activeSubAssignment || activeAssignment;
     const isCompleted = questionSource.isCompleted;
     const showCountdown = Number.isFinite(timerEndMs);
     const timeLeft = showCountdown ? Math.max(0, timerEndMs - Date.now()) : null;
-    const hasTimeLimit = Number.isFinite(getTimeLimitMinutes(activeAssignment, activeSubAssignment || null));
 
     return (
       <div className="container">
@@ -678,8 +717,8 @@ const predefined = qs.find((q) => q.type === 'predefined');
           </div>
         </div>
 
-        {/* Optional info banner */}
-        {hasTimeLimit && !isCompleted && (
+        {/* Optional banner */}
+        {!isCompleted && (
           <div style={{
             margin: '8px 0 12px', padding: '10px 12px', borderRadius: 8,
             background: '#fff8e1', border: '1px solid #f6d365', color: '#7a4d00',
@@ -767,7 +806,7 @@ const predefined = qs.find((q) => q.type === 'predefined');
                   <span className={`badge ${allSubsCompleted ? 'badge-success' : 'badge-pending'}`}>{allSubsCompleted ? 'Completed' : 'Assigned'}</span>
                 </div>
 
-                {/* Removed the 'Status: Timed' meta block as requested */}
+                {/* Removed the 'Status: Timed' meta block */}
 
                 {assignment.subAssignments?.length > 0 && (
                   <div className="meta">
@@ -799,6 +838,7 @@ const predefined = qs.find((q) => q.type === 'predefined');
     </div>
   );
 };
+
 const LoadingOverlay = () => (
   <div style={{ position: 'fixed', inset: 0, background: 'rgba(255,255,255,0.7)', backdropFilter: 'blur(2px)', display: 'grid', placeItems: 'center', zIndex: 9999 }}>
     <div style={{ padding: 16, borderRadius: 12, border: '1px solid #ddd', background: '#fff', minWidth: 220, textAlign: 'center' }}>
