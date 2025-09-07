@@ -13,26 +13,39 @@ const PdfReader = ({ url, height = '60vh', watermark = '' }) => {
   const [err, setErr] = useState('');
   const [viewKey, setViewKey] = useState(0);
   const currentBlob = useRef('');
+  
   useEffect(() => {
     let abort = false;
     const ctrl = new AbortController();
+    
     (async () => {
       try {
-        setErr(''); setBlobUrl(''); setViewKey((k) => k + 1);
+        setErr(''); 
+        setBlobUrl(''); 
+        setViewKey((k) => k + 1);
         const res = await fetch(url, { signal: ctrl.signal, cache: 'no-store' });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const buf = await res.arrayBuffer();
         if (abort) return;
         const blob = new Blob([buf], { type: 'application/pdf' });
         const bUrl = URL.createObjectURL(blob);
-        currentBlob.current = bUrl; setBlobUrl(bUrl);
-      } catch (e) { if (e.name !== 'AbortError') setErr('Unable to load PDF'); }
+        currentBlob.current = bUrl; 
+        setBlobUrl(bUrl);
+      } catch (e) { 
+        if (e.name !== 'AbortError') setErr('Unable to load PDF'); 
+      }
     })();
+    
     return () => {
-      abort = true; ctrl.abort();
-      if (currentBlob.current) { URL.revokeObjectURL(currentBlob.current); currentBlob.current = ''; }
+      abort = true; 
+      ctrl.abort();
+      if (currentBlob.current) { 
+        URL.revokeObjectURL(currentBlob.current); 
+        currentBlob.current = ''; 
+      }
     };
   }, [url]);
+  
   return (
     <div style={{ position: 'relative', height, border: '1px solid #eee', borderRadius: 8, overflow: 'hidden', userSelect: 'none', WebkitTouchCallout: 'none', background: '#fff' }} onContextMenu={(e) => e.preventDefault()}>
       {watermark && (
@@ -86,6 +99,7 @@ const showField = (category, field) => {
   return true;
 };
 
+// ---- time limit helpers ----
 const getTimeLimitMinutes = (assignment, sub) => {
   if (sub && Number.isFinite(Number(sub.timeLimitMinutes))) return Number(sub.timeLimitMinutes);
   if (Number.isFinite(Number(assignment?.timeLimitMinutes))) return Number(assignment.timeLimitMinutes);
@@ -108,6 +122,29 @@ const getOrStartTimerEnd = (userId, assignment, sub) => {
 const clearTimerKey = (userId, assignmentId, subId) => {
   const key = makeTimerKey(userId, assignmentId, subId);
   localStorage.removeItem(key);
+};
+
+// ---- FROZEN ANSWERS (persist when time is up) ----
+const makeAnsKey = (userId, assignmentId, subId) => `asgFrozen:${userId}:${assignmentId}:${subId || 'parent'}`;
+const saveFrozenAnswers = (userId, assignmentId, subId, answers) => {
+  try {
+    const key = makeAnsKey(userId, assignmentId, subId);
+    localStorage.setItem(key, JSON.stringify({ answers, timeUp: true, savedAt: Date.now() }));
+  } catch {}
+};
+const loadFrozenAnswers = (userId, assignmentId, subId) => {
+  try {
+    const key = makeAnsKey(userId, assignmentId, subId);
+    const raw = localStorage.getItem(key);
+    if (!raw) return null;
+    return JSON.parse(raw);
+  } catch { return null; }
+};
+const clearFrozenAnswers = (userId, assignmentId, subId) => {
+  try {
+    const key = makeAnsKey(userId, assignmentId, subId);
+    localStorage.removeItem(key);
+  } catch {}
 };
 
 const arrEq = (a = [], b = []) =>
@@ -146,17 +183,22 @@ const NewAssignments = () => {
   const [countdown, setCountdown] = useState(null);
   const [timerEndMs, setTimerEndMs] = useState(null);
   const timerRef = useRef(null);
-  const autoSubmittingRef = useRef(false);
   const questionsRef = useRef(null);
 
   const [resultLoading, setResultLoading] = useState(false);
   const [resultError, setResultError] = useState('');
   const [viewResult, setViewResult] = useState(null); // entire /result payload
 
+  // NEW: time-up state + one-time alert guard
+  const [timeUp, setTimeUp] = useState(false);
+  const timeUpAlertShownRef = useRef(false);
+  const autoSubmittedRef = useRef(false); // NEW: Track if we've already auto-submitted
+
   useEffect(() => {
     const fetchAssignments = async () => {
       try {
-        setLoading(true); setError(null);
+        setLoading(true); 
+        setError(null);
         const userId = localStorage.getItem('userId');
         if (!userId) throw new Error('User ID not found');
         const courseResp = await axios.get(`${API_BASE}/student/${userId}/course`);
@@ -201,7 +243,9 @@ const NewAssignments = () => {
   };
 
   const fetchResultForView = async (studentId, assignmentId) => {
-    setResultLoading(true); setResultError(''); setViewResult(null);
+    setResultLoading(true); 
+    setResultError(''); 
+    setViewResult(null);
     try {
       const { data } = await axios.post(`${API_BASE}/result`, { studentId, assignmentId });
       if (!data) throw new Error('No result data');
@@ -213,7 +257,8 @@ const NewAssignments = () => {
 
   const handleStart = async (assignmentId, subAssignmentId = null) => {
     try {
-      setStartingId(`${assignmentId}:${subAssignmentId || 'parent'}`); setError('');
+      setStartingId(`${assignmentId}:${subAssignmentId || 'parent'}`); 
+      setError('');
       const fromList = assignments.find((a) => String(a._id) === String(assignmentId));
       if (!fromList) throw new Error('Assignment not found in list');
       const assignmentData = normalizeAssignment(fromList);
@@ -235,18 +280,33 @@ const NewAssignments = () => {
         setActiveSubAssignment(null);
       }
 
-      setAnswers({});
-      setViewResult(null); setResultError(''); setResultLoading(false);
+      // reset results state; DON'T clear persisted frozen answers here
+      setViewResult(null); 
+      setResultError(''); 
+      setResultLoading(false);
 
       const userId = localStorage.getItem('userId');
       const isAlreadyDone = selectedSub ? selectedSub.isCompleted : assignmentData.isCompleted;
 
-      if (!isAlreadyDone) {
-        const endMs = getOrStartTimerEnd(userId, assignmentData, selectedSub);
-        if (endMs) initCountdown(endMs); else clearCountdown();
-      } else {
+      // If we have frozen answers (from time-up earlier), load them & keep frozen
+      const frozen = loadFrozenAnswers(userId, assignmentData._id, selectedSub?._id);
+      if (frozen?.timeUp) {
+        setAnswers(frozen.answers || {});
+        setTimeUp(true);
         clearCountdown();
-        await fetchResultForView(userId, assignmentData._id);
+      } else {
+        setAnswers({});
+        setTimeUp(false);
+        timeUpAlertShownRef.current = false;
+        autoSubmittedRef.current = false; // Reset auto-submit flag
+
+        if (!isAlreadyDone) {
+          const endMs = getOrStartTimerEnd(userId, assignmentData, selectedSub);
+          if (endMs) initCountdown(endMs); else clearCountdown();
+        } else {
+          clearCountdown();
+          await fetchResultForView(userId, assignmentData._id);
+        }
       }
 
       setTimeout(() => { questionsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 100);
@@ -257,43 +317,49 @@ const NewAssignments = () => {
 
   const clearCountdown = () => {
     if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
-    setCountdown(null); setTimerEndMs(null);
+    setCountdown(null); 
+    setTimerEndMs(null);
   };
 
-  // Auto-submit exactly like manual click (no extra alerts, no freezes)
-  const triggerAutoSubmit = async () => {
-    if (autoSubmittingRef.current) return;
-    autoSubmittingRef.current = true;
-    try {
-      const src = activeSubAssignment || activeAssignment;
-      if (!src || src.isCompleted) return;
-      await handleSubmit(false); // behave like manual click
-    } finally {
-      autoSubmittingRef.current = false;
-    }
-  };
-
+  // When time ends: lock inputs, persist answers, and AUTO-SUBMIT
   const initCountdown = (endMs) => {
-    clearCountdown(); if (!endMs) return;
+    clearCountdown(); 
+    if (!endMs) return;
     setTimerEndMs(endMs);
     const tick = () => {
       const left = endMs - Date.now();
       if (left <= 0) {
         setCountdown(0);
-        clearInterval(timerRef.current); timerRef.current = null;
-        triggerAutoSubmit(); // submit when time ends
+        clearInterval(timerRef.current); 
+        timerRef.current = null;
+        setTimeUp(true);
+
+        // persist the current answers snapshot as FROZEN
+        try {
+          const userId = localStorage.getItem('userId');
+          const aId = activeAssignment?._id;
+          const sId = activeSubAssignment?._id || null;
+          if (userId && aId) saveFrozenAnswers(userId, aId, sId, answers);
+        } catch {}
+
+        // AUTO-SUBMIT when time is up (only once)
+        if (!autoSubmittedRef.current) {
+          autoSubmittedRef.current = true;
+          handleSubmit(); // This will automatically submit the assignment
+        }
       } else {
         setCountdown(left);
       }
     };
-    tick(); timerRef.current = setInterval(tick, 500);
+    tick(); 
+    timerRef.current = setInterval(tick, 500);
   };
 
   useEffect(() => () => clearCountdown(), []);
 
   const csvToArray = (str = '') => str.split(',').map((s) => s.trim()).filter(Boolean);
 
-  const handleSubmit = async (/* isManualOrAutoAlwaysSame */) => {
+  const handleSubmit = async () => {
     try {
       setSubmitting(true);
       const userId = localStorage.getItem('userId');
@@ -304,11 +370,16 @@ const NewAssignments = () => {
       const buildPredefinedPayload = () => {
         const category = activeAssignment?.category;
         const base = {
-          patientName: answers.patientName || '', ageOrDob: answers.ageOrDob || '',
-          icdCodes: csvToArray(answers.icdCodes || ''), cptCodes: csvToArray(answers.cptCodes || ''),
-          pcsCodes: csvToArray(answers.pcsCodes || ''), hcpcsCodes: csvToArray(answers.hcpcsCodes || ''),
-          drgValue: answers.drgValue || '', modifiers: csvToArray(answers.modifiers || ''),
-          notes: answers.notes || '', adx: answers.adx || '',
+          patientName: answers.patientName || '', 
+          ageOrDob: answers.ageOrDob || '',
+          icdCodes: csvToArray(answers.icdCodes || ''), 
+          cptCodes: csvToArray(answers.cptCodes || ''),
+          pcsCodes: csvToArray(answers.pcsCodes || ''), 
+          hcpcsCodes: csvToArray(answers.hcpcsCodes || ''),
+          drgValue: answers.drgValue || '', 
+          modifiers: csvToArray(answers.modifiers || ''),
+          notes: answers.notes || '', 
+          adx: answers.adx || '',
         };
         const filtered = {};
         Object.entries(base).forEach(([k, v]) => { if (showField(category, k) || k === 'notes' || k === 'adx') filtered[k] = v; });
@@ -330,8 +401,15 @@ const NewAssignments = () => {
       }
 
       const res = await axios.post(`${API_BASE}/student/submit-assignment`, payload);
-      if (!res.data?.success) { alert(res.data?.message || 'Failed to submit assignment'); return; }
+      if (!res.data?.success) { 
+        // Don't alert on auto-submit to avoid extra alerts
+        if (!timeUp) {
+          alert(res.data?.message || 'Failed to submit assignment');
+        }
+        return; 
+      }
 
+      // mark completed in UI
       if (activeSubAssignment) {
         setActiveAssignment((prev) => {
           if (!prev) return prev;
@@ -341,9 +419,11 @@ const NewAssignments = () => {
         });
         setActiveSubAssignment((prev) => (prev ? { ...prev, isCompleted: true } : prev));
         clearTimerKey(userId, activeAssignment._id, activeSubAssignment._id);
+        clearFrozenAnswers(userId, activeAssignment._id, activeSubAssignment._id);
       } else {
         setActiveAssignment((prev) => (prev ? { ...prev, isCompleted: true } : prev));
         clearTimerKey(userId, activeAssignment._id, null);
+        clearFrozenAnswers(userId, activeAssignment._id, null);
       }
 
       // refresh list quietly
@@ -362,28 +442,26 @@ const NewAssignments = () => {
         }
       } catch {}
 
-      // success alert same for manual & auto (acts like user clicked)
-      alert('Assignment submitted successfully!');
+      // Only show success alert for manual submissions, not auto-submits
+      if (!timeUp) {
+        alert('Assignment submitted successfully!');
+      }
 
       const userId3 = localStorage.getItem('userId');
       await fetchResultForView(userId3, activeAssignment._id);
 
+      // reset local state (now in view mode)
       setAnswers({});
+      setTimeUp(false);
+      timeUpAlertShownRef.current = false;
       clearCountdown();
-
-      // If sub-assignments exist, move or close
-      if (activeSubAssignment && (activeAssignment.subAssignments || []).length > 0) {
-        const idx = activeAssignment.subAssignments.findIndex((sub) => String(sub._id) === String(activeSubAssignment._id));
-        if (idx < activeAssignment.subAssignments.length - 1) {
-          setActiveSubAssignment({ ...activeAssignment.subAssignments[idx + 1], isCompleted: false });
-          setTimeout(() => { questionsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 150);
-        } else {
-          setActiveSubAssignment(null); setActiveAssignment(null);
-        }
-      }
+      autoSubmittedRef.current = false; // Reset for next time
 
     } catch (err) {
-      alert('Error: ' + err.message);
+      // Don't alert on auto-submit errors to avoid extra alerts
+      if (!timeUp) {
+        alert('Error: ' + err.message);
+      }
     } finally { setSubmitting(false); }
   };
 
@@ -392,7 +470,7 @@ const NewAssignments = () => {
   const timerBadge = (a) => {
     const minutes = getTimeLimitMinutes(a, null);
     if (!minutes) return null;
-    if (countdown === 0) return <span className="badge badge-neutral">Time up</span>;
+    if (countdown === 0 || timeUp) return null; // REMOVED: Don't show "Time up" badge
     return <span className="badge badge-pending">Timed ({minutes}m)</span>;
   };
 
@@ -501,9 +579,9 @@ const NewAssignments = () => {
   const renderQuestions = (target) => {
     if (!target) return null;
     const isCompleted = target.isCompleted;
-const qs = target.questions || [];
-const dynamicQs = qs.filter((q) => q.type === 'dynamic');
-const category = activeAssignment?.category;
+    const qs = target.questions || [];
+    const dynamicQs = qs.filter((q) => q.type === 'dynamic');
+    const category = activeAssignment?.category;
 
     if (isCompleted && viewResult) {
       const block = pickResultBlock(target);
@@ -512,8 +590,8 @@ const category = activeAssignment?.category;
       return hasDyn ? renderDynamicViewOnly(block) : renderPredefinedViewOnly(category, block);
     }
 
-    // Disable only while submitting (no time-up freeze)
-    const readOnly = submitting;
+    // DISABLE inputs if submitting OR time is up
+    const readOnly = submitting || timeUp;
 
     if (dynamicQs.length > 0) {
       return dynamicQs.map((q, idx) => {
@@ -538,8 +616,7 @@ const category = activeAssignment?.category;
         );
       });
     }
-
-    const predefined = qs.find((q) => q.type === 'predefined');
+const predefined = qs.find((q) => q.type === 'predefined');
     if (predefined && predefined.answerKey) {
       return (
         <div className="form-grid">
@@ -602,7 +679,7 @@ const category = activeAssignment?.category;
         </div>
       );
     }
-return <p className="muted">No questions available for this assignment.</p>;
+    return <p className="muted">No questions available for this assignment.</p>;
   };
 
   if (loading) {
@@ -635,7 +712,7 @@ return <p className="muted">No questions available for this assignment.</p>;
       return (
         <div className="container">
           <div className="page-header">
-            <button className="btn btn-ghost" onClick={() => { setActiveAssignment(null); clearCountdown(); }} disabled={submitting}>Back</button>
+            <button className="btn btn-ghost" onClick={() => { setActiveAssignment(null); clearCountdown(); /* keep frozen in LS */ }} disabled={submitting}>Back</button>
             <h3 className="title-sm">{activeAssignment.moduleName}</h3>
             <div style={{ marginLeft: 'auto' }}>{timerBadge(activeAssignment)}</div>
           </div>
@@ -677,7 +754,11 @@ return <p className="muted">No questions available for this assignment.</p>;
         <div className="page-header">
           <button
             className="btn btn-ghost"
-            onClick={() => { activeSubAssignment ? setActiveSubAssignment(null) : setActiveAssignment(null); clearCountdown(); setViewResult(null); setResultError(''); setResultLoading(false); }}
+            onClick={() => {
+              if (activeSubAssignment) setActiveSubAssignment(null); else setActiveAssignment(null);
+              clearCountdown(); setViewResult(null); setResultError(''); setResultLoading(false);
+              /* don't clear frozen answers here — they live in localStorage */
+            }}
             disabled={submitting}
           >
             Back
@@ -689,17 +770,6 @@ return <p className="muted">No questions available for this assignment.</p>;
             {isCompleted && <span className="badge badge-success">Completed (View Only)</span>}
           </div>
         </div>
-
-        {/* Informational note; no alerts, no freezes, auto-submit on time end */}
-        {hasTimeLimit && !isCompleted && (
-          <div style={{
-            margin: '8px 0 12px', padding: '10px 12px', borderRadius: 8,
-            background: '#fff8e1', border: '1px solid #f6d365', color: '#7a4d00',
-            display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, fontWeight: 600
-          }}>
-            <FiClock aria-hidden /> Note: This is a timed assignment. It will auto-submit when time ends.
-          </div>
-        )}
 
         {pdfUrl && <PdfReader url={pdfUrl} height="60vh" watermark="" />}
 
@@ -728,7 +798,7 @@ return <p className="muted">No questions available for this assignment.</p>;
             {isCompleted ? (
               <button className="btn" disabled>View Only</button>
             ) : (
-              <button className="btn btn-primary" onClick={() => handleSubmit(false)} disabled={submitting}>
+              <button className="btn btn-primary" onClick={handleSubmit} disabled={submitting || timeUp}>
                 {submitting ? 'Submitting…' : 'Submit Assignment'}
               </button>
             )}
@@ -771,6 +841,7 @@ return <p className="muted">No questions available for this assignment.</p>;
           {sorted.map((assignment) => {
             const allSubsCompleted = areAllSubAssignmentsCompleted(assignment);
             const isStarting = startingId === `${assignment._id}:parent`;
+            const hasTime = Number.isFinite(Number(assignment?.timeLimitMinutes));
             const btnLabel = allSubsCompleted ? (assignment.subAssignments?.length > 0 ? 'View Sections' : 'View') : (assignment.subAssignments?.length > 0 ? 'View Sections' : 'Start');
             return (
               <div key={assignment._id} className="card">
@@ -779,7 +850,12 @@ return <p className="muted">No questions available for this assignment.</p>;
                   <span className={`badge ${allSubsCompleted ? 'badge-success' : 'badge-pending'}`}>{allSubsCompleted ? 'Completed' : 'Assigned'}</span>
                 </div>
 
-                {/* Timed status removed from the card list as requested */}
+                {hasTime && (
+                  <div className="meta">
+                    <span className="meta-key">Status</span>
+                    <span className="meta-val">Timed ({Number(assignment.timeLimitMinutes)}m)</span>
+                  </div>
+                )}
 
                 {assignment.subAssignments?.length > 0 && (
                   <div className="meta">
