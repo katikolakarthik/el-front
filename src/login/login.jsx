@@ -89,29 +89,7 @@ const Login = () => {
         </button>
       </form>
 
-      {/* Optional: small spinner below the button */}
-      {loading && (
-        <div style={styles.loading}>
-          <svg width="28" height="28" viewBox="0 0 38 38" aria-label="Loading">
-            <g fill="none" fillRule="evenodd">
-              <g transform="translate(1 1)" strokeWidth="2">
-                <circle stroke="#ddd" cx="18" cy="18" r="18" />
-                <path d="M36 18c0-9.94-8.06-18-18-18">
-                  <animateTransform
-                    attributeName="transform"
-                    type="rotate"
-                    from="0 18 18"
-                    to="360 18 18"
-                    dur="0.8s"
-                    repeatCount="indefinite"
-                  />
-                </path>
-              </g>
-            </g>
-          </svg>
-          <span style={{ marginTop: 6, fontSize: 13, color: "#555" }}>Processing…</span>
-        </div>
-      )}
+      
     </div>
   );
 };
