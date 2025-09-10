@@ -6,11 +6,13 @@ const Login = () => {
   const [name, setName] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false); // NEW
   const navigate = useNavigate();
 
   const handleLogin = async (e) => {
     e.preventDefault();
     setError("");
+    setLoading(true); // show "Processing..."
 
     try {
       const res = await axios.post("https://el-backend-ashen.vercel.app/login", {
@@ -23,25 +25,22 @@ const Login = () => {
         const role = user.role || "user";
         const sessionId = res.data.sessionId || "";
 
-        // Robust IDs and fields
         const userId = user.id || user._id || "";
-        const courseName = user.courseName || ""; // <-- dashboard expects this in localStorage
+        const courseName = user.courseName || "";
         const enrolledDate = user.enrolledDate || "";
         const profileImage = Array.isArray(user.profileImage)
           ? (user.profileImage[0] || "")
           : (user.profileImage || "");
 
-        // Persist everything we need for the dashboard
         localStorage.setItem("user", JSON.stringify(user));
         localStorage.setItem("sessionId", sessionId);
         localStorage.setItem("userId", userId);
-        localStorage.setItem("courseName", courseName); // IMPORTANT
+        localStorage.setItem("courseName", courseName);
         localStorage.setItem("name", user.name || "");
         localStorage.setItem("role", role);
         localStorage.setItem("enrolledDate", enrolledDate);
         localStorage.setItem("profileImage", profileImage);
 
-        // Route by role
         if (role === "admin" || role === "subadmin") {
           navigate("/admin/dashboard");
         } else if (role === "user") {
@@ -54,11 +53,13 @@ const Login = () => {
       }
     } catch (err) {
       setError(err.response?.data?.message || "Server error");
+    } finally {
+      setLoading(false); // hide "Processing..."
     }
   };
 
   return (
-    <div style={styles.container}>
+    <div style={styles.container} aria-busy={loading}>
       <h2 style={styles.heading}>Wellmed Medical Coding Login</h2>
       {error && <p style={styles.error}>{error}</p>}
 
@@ -70,6 +71,7 @@ const Login = () => {
           onChange={(e) => setName(e.target.value)}
           style={styles.input}
           required
+          disabled={loading}
         />
 
         <input
@@ -79,12 +81,37 @@ const Login = () => {
           onChange={(e) => setPassword(e.target.value)}
           style={styles.input}
           required
+          disabled={loading}
         />
 
-        <button type="submit" style={styles.button}>
-          Login
+        <button type="submit" style={{...styles.button, opacity: loading ? 0.7 : 1}} disabled={loading}>
+          {loading ? "Processing..." : "Login"}
         </button>
       </form>
+
+      {/* Optional: small spinner below the button */}
+      {loading && (
+        <div style={styles.loading}>
+          <svg width="28" height="28" viewBox="0 0 38 38" aria-label="Loading">
+            <g fill="none" fillRule="evenodd">
+              <g transform="translate(1 1)" strokeWidth="2">
+                <circle stroke="#ddd" cx="18" cy="18" r="18" />
+                <path d="M36 18c0-9.94-8.06-18-18-18">
+                  <animateTransform
+                    attributeName="transform"
+                    type="rotate"
+                    from="0 18 18"
+                    to="360 18 18"
+                    dur="0.8s"
+                    repeatCount="indefinite"
+                  />
+                </path>
+              </g>
+            </g>
+          </svg>
+          <span style={{ marginTop: 6, fontSize: 13, color: "#555" }}>Processing…</span>
+        </div>
+      )}
     </div>
   );
 };
@@ -126,6 +153,13 @@ const styles = {
     color: "red",
     fontSize: "14px",
     marginBottom: "10px",
+  },
+  loading: {
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    flexDirection: "column",
+    marginTop: 12,
   },
 };
 
