@@ -1,160 +1,719 @@
-import React, { useEffect, useState } from "react";
+// NewAssignments.jsx
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import axios from 'axios';
+import { FiBook, FiClock, FiSearch, FiFilter, FiCheck, FiX } from 'react-icons/fi';
+import { Worker, Viewer, SpecialZoomLevel } from '@react-pdf-viewer/core';
+import '@react-pdf-viewer/core/lib/styles/index.css';
+import './AssignmentFlow.css';
 
-export default function Assignments() {
-  const [assignments, setAssignments] = useState([]);
-  const [selectedSub, setSelectedSub] = useState(null);
+const API_BASE = 'https://el-backend-ashen.vercel.app';
 
+const PdfReader = ({ url, height = '60vh', watermark = '' }) => {
+  const [blobUrl, setBlobUrl] = useState('');
+  const [err, setErr] = useState('');
+  const [viewKey, setViewKey] = useState(0);
+  const currentBlob = useRef('');
   useEffect(() => {
-            fetch("https://el-backend-ashen.vercel.app/admin/assignments")
-      .then((res) => res.json())
-      .then((data) => {
-        if (Array.isArray(data)) {
-          setAssignments(data);
-        } else {
-          setAssignments([data]);
-        }
-      })
-      .catch((err) => console.error("Error fetching assignments:", err));
-  }, []);
-
-  const handleSelectSubmodule = (sub) => {
-    setSelectedSub(sub);
-  };
-
+    let abort = false;
+    const ctrl = new AbortController();
+    (async () => {
+      try {
+        setErr(''); setBlobUrl(''); setViewKey((k) => k + 1);
+        const res = await fetch(url, { signal: ctrl.signal, cache: 'no-store' });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const buf = await res.arrayBuffer();
+        if (abort) return;
+        const blob = new Blob([buf], { type: 'application/pdf' });
+        const bUrl = URL.createObjectURL(blob);
+        currentBlob.current = bUrl; setBlobUrl(bUrl);
+      } catch (e) { if (e.name !== 'AbortError') setErr('Unable to load PDF'); }
+    })();
+    return () => {
+      abort = true; ctrl.abort();
+      if (currentBlob.current) { URL.revokeObjectURL(currentBlob.current); currentBlob.current = ''; }
+    };
+  }, [url]);
   return (
-    <div style={{ display: "flex", height: "100vh", fontFamily: "sans-serif" }}>
-      {/* Sidebar */}
-      <div
-        style={{
-          width: "220px",
-          borderRight: "1px solid #ddd",
-          padding: "10px",
-          background: "#f8f8f8",
-        }}
-      >
-        <h3>Submodules</h3>
-        {assignments.flatMap((module) =>
-          module.subAssignments.map((sub) => (
-            <div
-              key={sub._id}
-              style={{
-                padding: "8px",
-                margin: "5px 0",
-                cursor: "pointer",
-                background:
-                  selectedSub && selectedSub._id === sub._id
-                    ? "#e0e0e0"
-                    : "#fff",
-                borderRadius: "4px",
-                border: "1px solid #ccc",
-              }}
-              onClick={() => handleSelectSubmodule(sub)}
-            >
-              {sub.subModuleName}
-            </div>
-          ))
-        )}
-      </div>
-
-      {/* Main Content */}
-      <div style={{ flex: 1, padding: "20px" }}>
-        {selectedSub ? (
-          <div style={{ display: "flex", gap: "20px" }}>
-            {/* PDF Viewer in a Card */}
-            <div style={{ flex: 2 }}>
-              <h3>PDF Viewer</h3>
-              <div
-                style={{
-                  border: "1px solid #ccc",
-                  borderRadius: "8px",
-                  overflow: "hidden",
-                  height: "500px", // fixed height
-                  display: "flex",
-                  flexDirection: "column",
-                }}
-              >
-                <iframe
-                  src={`https://docs.google.com/viewer?url=${encodeURIComponent(
-                    selectedSub.assignmentPdf
-                  )}&embedded=true`}
-                  title="Assignment PDF"
-                  style={{
-                    border: "none",
-                    flex: 1,
-                  }}
-                ></iframe>
-              </div>
-            </div>
-
-            {/* Form */}
-            <div style={{ flex: 1 }}>
-              <h3>Patient Details</h3>
-              <div style={{ marginBottom: "10px" }}>
-                <label>Age / DOB</label>
-                <input
-                  type="text"
-                  style={{ width: "100%", padding: "6px", marginTop: "4px" }}
-                />
-              </div>
-              <div style={{ marginBottom: "10px" }}>
-                <label>ICD-10 Codes</label>
-                <input
-                  type="text"
-                  style={{ width: "100%", padding: "6px", marginTop: "4px" }}
-                />
-              </div>
-              <div style={{ marginBottom: "10px" }}>
-                <label>CPT Codes</label>
-                <input
-                  type="text"
-                  style={{ width: "100%", padding: "6px", marginTop: "4px" }}
-                />
-              </div>
-              <div style={{ marginBottom: "10px" }}>
-                <label>Notes</label>
-                <textarea
-                  style={{
-                    width: "100%",
-                    padding: "6px",
-                    marginTop: "4px",
-                    height: "80px",
-                  }}
-                ></textarea>
-              </div>
-              <div style={{ display: "flex", gap: "10px" }}>
-                <button
-                  style={{
-                    flex: 1,
-                    padding: "8px",
-                    background: "#007bff",
-                    color: "#fff",
-                    border: "none",
-                    borderRadius: "4px",
-                    cursor: "pointer",
-                  }}
-                >
-                  Submit
-                </button>
-                <button
-                  style={{
-                    flex: 1,
-                    padding: "8px",
-                    background: "#6c757d",
-                    color: "#fff",
-                    border: "none",
-                    borderRadius: "4px",
-                    cursor: "pointer",
-                  }}
-                >
-                  Send to Audit
-                </button>
-              </div>
-            </div>
-          </div>
-        ) : (
-          <p>Select a submodule to view details</p>
-        )}
-      </div>
+    <div style={{ position: 'relative', height, border: '1px solid #eee', borderRadius: 8, overflow: 'hidden', userSelect: 'none', WebkitTouchCallout: 'none', background: '#fff' }} onContextMenu={(e) => e.preventDefault()}>
+      {watermark && (
+        <div style={{ pointerEvents: 'none', position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', opacity: 0.08, fontSize: 28, fontWeight: 700, textAlign: 'center' }}>
+          {watermark}
+        </div>
+      )}
+      <Worker workerUrl="https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.worker.min.js">
+        {err && <div style={{ padding: 16, color: '#b00020' }}>{err} {url && (<a href={url} target="_blank" rel="noreferrer" style={{ textDecoration: 'underline' }}>Open PDF in new tab</a>)}</div>}
+        {!err && !blobUrl && <div style={{ padding: 16 }}>Loading PDF…</div>}
+        {!err && blobUrl && <Viewer key={viewKey} fileUrl={blobUrl} defaultScale={SpecialZoomLevel.PageWidth} onDocumentLoadFail={() => setErr('Failed to render PDF')} />}
+      </Worker>
     </div>
   );
-}
+};
+
+const normalizeAssignment = (raw) => {
+  const norm = { ...raw };
+  if (Array.isArray(norm.dynamicQuestions) && norm.dynamicQuestions.length > 0) {
+    norm.questions = norm.dynamicQuestions.map((q) => ({ ...q, type: 'dynamic' }));
+  } else if (norm.answerKey) {
+    norm.questions = [{ type: 'predefined', answerKey: norm.answerKey }];
+  } else {
+    norm.questions = norm.questions || [];
+  }
+  norm.subAssignments = (norm.subAssignments || []).map((sub) => {
+    if (Array.isArray(sub.dynamicQuestions) && sub.dynamicQuestions.length > 0) {
+      return { ...sub, questions: sub.dynamicQuestions.map((q) => ({ ...q, type: 'dynamic' })) };
+    } else if (sub.answerKey) {
+      return { ...sub, questions: [{ type: 'predefined', answerKey: sub.answerKey }] };
+    }
+    return { ...sub, questions: sub.questions || [] };
+  });
+  return norm;
+};
+
+const ms = (d) => (d ? new Date(d).getTime() : 0);
+
+const showField = (category, field) => {
+  if (category === 'IP-DRG' && ['cptCodes', 'hcpcsCodes', 'modifiers'].includes(field)) return false;
+  if (category === 'CPC' && ['pcsCodes', 'patientName', 'ageOrDob', 'drgValue'].includes(field)) return false;
+  return true;
+};
+
+const arrEq = (a = [], b = []) =>
+  Array.isArray(a) && Array.isArray(b) && a.length === b.length && a.every((x, i) => String(x).trim() === String(b[i]).trim());
+const asArray = (v) => {
+  if (!v) return [];
+  if (Array.isArray(v)) return v;
+  return String(v).split(',').map((s) => s.trim()).filter(Boolean);
+};
+const chip = (text, tone = 'neutral', title = '') => {
+  const bg = tone === 'good' ? '#eaf7ed' : tone === 'bad' ? '#fdeceb' : '#f3f4f6';
+  const bd = tone === 'good' ? '#bfe6c7' : tone === 'bad' ? '#f3c1bf' : '#e5e7eb';
+  const col = tone === 'good' ? '#1b5e20' : tone === 'bad' ? '#7f1d1d' : '#374151';
+  return (
+    <span title={title} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 8px', borderRadius: 999, fontSize: 12, background: bg, border: `1px solid ${bd}`, color: col, lineHeight: 1, marginRight: 6, marginBottom: 6 }}>
+      {text}
+    </span>
+  );
+};
+
+const NewAssignments = () => {
+  const [assignments, setAssignments] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  const [activeAssignment, setActiveAssignment] = useState(null);
+  const [activeSubAssignment, setActiveSubAssignment] = useState(null);
+
+  const [answers, setAnswers] = useState({});
+  const [submitting, setSubmitting] = useState(false);
+
+  const [startingId, setStartingId] = useState(null);
+  const [search, setSearch] = useState('');
+  const [sortOrder, setSortOrder] = useState('newest');
+
+  const questionsRef = useRef(null);
+
+  const [resultLoading, setResultLoading] = useState(false);
+  const [resultError, setResultError] = useState('');
+  const [viewResult, setViewResult] = useState(null); // entire /result payload
+
+  useEffect(() => {
+    const fetchAssignments = async () => {
+      try {
+        setLoading(true); setError(null);
+        const userId = localStorage.getItem('userId');
+        if (!userId) throw new Error('User ID not found');
+        const courseResp = await axios.get(`${API_BASE}/student/${userId}/course`);
+        const courseName = courseResp?.data?.courseName || courseResp?.data?.course?.name || courseResp?.data?.course?.courseName || null;
+        if (!courseName) throw new Error('Course name not found for this student');
+        const asgResp = await axios.get(`${API_BASE}/category/${encodeURIComponent(courseName)}?studentId=${userId}`);
+        let assignmentsData = [];
+        if (asgResp?.data?.success && Array.isArray(asgResp.data.assignments)) assignmentsData = asgResp.data.assignments;
+        else if (Array.isArray(asgResp?.data)) assignmentsData = asgResp.data;
+        else if (Array.isArray(asgResp?.data?.data)) assignmentsData = asgResp.data.data;
+        else if (asgResp?.data?.assignment) assignmentsData = [asgResp.data.assignment];
+        setAssignments(assignmentsData);
+      } catch (err) {
+        if (err.response?.status === 404) setAssignments([]);
+        else setError(err?.message || 'Failed to fetch assignments');
+      } finally { setLoading(false); }
+    };
+    fetchAssignments();
+  }, []);
+
+  const searchLower = search.trim().toLowerCase();
+  const filtered = useMemo(() => {
+    if (!searchLower) return assignments;
+    return assignments.filter((a) => {
+      const mod = (a.moduleName || '').toLowerCase();
+      const subMatch = (a.subAssignments || []).some((s) => (s.subModuleName || '').toLowerCase().includes(searchLower));
+      return mod.includes(searchLower) || subMatch;
+    });
+  }, [assignments, searchLower]);
+  const sorted = useMemo(() => {
+    const list = [...filtered];
+    list.sort((a, b) => {
+      const da = ms(a.assignedDate), db = ms(b.assignedDate);
+      return sortOrder === 'newest' ? db - da : da - db;
+    });
+    return list;
+  }, [filtered, sortOrder]);
+
+  const areAllSubAssignmentsCompleted = (assignment) => {
+    if (!assignment?.subAssignments?.length) return Boolean(assignment?.isCompleted);
+    return assignment.subAssignments.every((sub) => sub.isCompleted);
+  };
+
+  const fetchResultForView = async (studentId, assignmentId) => {
+    setResultLoading(true); setResultError(''); setViewResult(null);
+    try {
+      const { data } = await axios.post(`${API_BASE}/result`, { studentId, assignmentId });
+      if (!data) throw new Error('No result data');
+      setViewResult(data);
+    } catch (e) {
+      setResultError(e?.response?.data?.message || e.message);
+    } finally { setResultLoading(false); }
+  };
+
+  const handleStart = async (assignmentId, subAssignmentId = null) => {
+    try {
+      setStartingId(`${assignmentId}:${subAssignmentId || 'parent'}`); setError('');
+      const fromList = assignments.find((a) => String(a._id) === String(assignmentId));
+      if (!fromList) throw new Error('Assignment not found in list');
+      const assignmentData = normalizeAssignment(fromList);
+      assignmentData.isCompleted = Boolean(fromList.isCompleted);
+      if (fromList?.subAssignments?.length) {
+        assignmentData.subAssignments = (assignmentData.subAssignments || []).map((sub) => {
+          const originalSub = fromList.subAssignments.find((s) => String(s._id) === String(sub._id));
+          return { ...sub, isCompleted: originalSub ? originalSub.isCompleted : false };
+        });
+      }
+      setActiveAssignment(assignmentData);
+
+      let selectedSub = null;
+      if (subAssignmentId) {
+        const idx = assignmentData.subAssignments.findIndex((s) => String(s._id) === String(subAssignmentId));
+        selectedSub = assignmentData.subAssignments[idx] || null;
+        setActiveSubAssignment(selectedSub);
+      } else {
+        setActiveSubAssignment(null);
+      }
+
+      setAnswers({});
+      setViewResult(null); setResultError(''); setResultLoading(false);
+
+      const userId = localStorage.getItem('userId');
+      const isAlreadyDone = selectedSub ? selectedSub.isCompleted : assignmentData.isCompleted;
+
+      if (isAlreadyDone) {
+        await fetchResultForView(userId, assignmentData._id);
+      }
+
+      setTimeout(() => { questionsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 100);
+    } catch (err) {
+      setError(err.message);
+    } finally { setStartingId(null); }
+  };
+
+  const csvToArray = (str = '') => str.split(',').map((s) => s.trim()).filter(Boolean);
+
+  const handleSubmit = async () => {
+    try {
+      setSubmitting(true);
+      const userId = localStorage.getItem('userId');
+      if (!userId) throw new Error('User ID not found');
+
+      const payload = { studentId: userId, assignmentId: activeAssignment._id, submittedAnswers: [] };
+      const buildDynamic = (qs, prefix = 'dynamic') => qs.map((q, idx) => ({ questionText: q.questionText, submittedAnswer: answers[`${prefix}-${idx}`] || '' }));
+      const buildPredefinedPayload = () => {
+        const category = activeAssignment?.category;
+        const base = {
+          patientName: answers.patientName || '', ageOrDob: answers.ageOrDob || '',
+          icdCodes: csvToArray(answers.icdCodes || ''), cptCodes: csvToArray(answers.cptCodes || ''),
+          pcsCodes: csvToArray(answers.pcsCodes || ''), hcpcsCodes: csvToArray(answers.hcpcsCodes || ''),
+          drgValue: answers.drgValue || '', modifiers: csvToArray(answers.modifiers || ''),
+          notes: answers.notes || '', adx: answers.adx || '',
+        };
+        const filtered = {};
+        Object.entries(base).forEach(([k, v]) => { if (showField(category, k) || k === 'notes' || k === 'adx') filtered[k] = v; });
+        return filtered;
+      };
+
+      if (activeSubAssignment) {
+        if ((activeSubAssignment.questions || []).some((q) => q.type === 'dynamic')) {
+          payload.submittedAnswers.push({ subAssignmentId: activeSubAssignment._id, dynamicQuestions: buildDynamic(activeSubAssignment.questions, 'dynamic') });
+        } else {
+          payload.submittedAnswers.push({ subAssignmentId: activeSubAssignment._id, ...buildPredefinedPayload() });
+        }
+      } else {
+        if ((activeAssignment.questions || []).some((q) => q.type === 'dynamic')) {
+          payload.submittedAnswers.push({ dynamicQuestions: buildDynamic(activeAssignment.questions, 'dynamic') });
+        } else {
+          payload.submittedAnswers.push({ ...buildPredefinedPayload() });
+        }
+      }
+
+      const res = await axios.post(`${API_BASE}/student/submit-assignment`, payload);
+      if (!res.data?.success) { alert(res.data?.message || 'Failed to submit assignment'); return; }
+
+      if (activeSubAssignment) {
+        setActiveAssignment((prev) => {
+          if (!prev) return prev;
+          const updatedSubs = (prev.subAssignments || []).map((s) => String(s._id) === String(activeSubAssignment._id) ? { ...s, isCompleted: true } : s);
+          const parentCompleted = updatedSubs.every((s) => s.isCompleted);
+          return { ...prev, subAssignments: updatedSubs, isCompleted: parentCompleted || prev.isCompleted };
+        });
+        setActiveSubAssignment((prev) => (prev ? { ...prev, isCompleted: true } : prev));
+      } else {
+        setActiveAssignment((prev) => (prev ? { ...prev, isCompleted: true } : prev));
+      }
+
+      // refresh list quietly
+      try {
+        const userId2 = localStorage.getItem('userId');
+        const courseResp2 = await axios.get(`${API_BASE}/student/${userId2}/course`);
+        const courseName2 = courseResp2?.data?.courseName || courseResp2?.data?.course?.name || courseResp2?.data?.course?.courseName;
+        if (courseName2) {
+          const asgResp2 = await axios.get(`${API_BASE}/category/${encodeURIComponent(courseName2)}?studentId=${userId2}`);
+          let refreshed = [];
+          if (asgResp2?.data?.success && Array.isArray(asgResp2.data.assignments)) refreshed = asgResp2.data.assignments;
+          else if (Array.isArray(asgResp2?.data)) refreshed = asgResp2.data;
+          else if (Array.isArray(asgResp2?.data?.data)) refreshed = asgResp2.data.data;
+          else if (asgResp2?.data?.assignment) refreshed = [asgResp2.data.assignment];
+          setAssignments(refreshed);
+        }
+      } catch {}
+
+      alert('Assignment submitted successfully!');
+
+      const userId3 = localStorage.getItem('userId');
+      await fetchResultForView(userId3, activeAssignment._id);
+
+      setAnswers({});
+
+      // If sub-assignments exist, move or close
+      if (activeSubAssignment && (activeAssignment.subAssignments || []).length > 0) {
+        const idx = activeAssignment.subAssignments.findIndex((sub) => String(sub._id) === String(activeSubAssignment._id));
+        if (idx < activeAssignment.subAssignments.length - 1) {
+          setActiveSubAssignment({ ...activeAssignment.subAssignments[idx + 1], isCompleted: false });
+          setTimeout(() => { questionsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 150);
+        } else {
+          setActiveSubAssignment(null); setActiveAssignment(null);
+        }
+      }
+
+    } catch (err) {
+      alert('Error: ' + err.message);
+    } finally { setSubmitting(false); }
+  };
+
+  const handleAnswerChange = (key, value) => setAnswers((p) => ({ ...p, [key]: value }));
+
+  // ----- pick the correct block for current view (single vs multi) -----
+  const pickResultBlock = (target) => {
+    if (!viewResult || !viewResult.data) return null;
+    const type = viewResult.assignmentType || 'single';
+    if (type === 'single') return viewResult.data;
+    if (!activeSubAssignment) return null;
+    const arr = Array.isArray(viewResult.data) ? viewResult.data : [];
+    let blk = arr.find(b => String(b?.submitted?.subAssignmentId) === String(activeSubAssignment._id));
+    if (!blk) blk = arr.find(b => (b?.subModuleName || '').toLowerCase() === (activeSubAssignment?.subModuleName || '').toLowerCase());
+    return blk || null;
+  };
+
+  // ---------- RESULTS RENDERERS ----------
+  const renderDynamicViewOnly = (resultBlock) => {
+    if (!resultBlock) return null;
+    const submittedDyn = resultBlock.submitted?.dynamicQuestions || [];
+    const corrList = resultBlock.correctDynamicQuestions || [];
+    const correctMap = new Map(corrList.map(q => [q.questionText, q.answer]));
+
+    const toRender = submittedDyn.length ? submittedDyn : [];
+    return toRender.map((q, idx) => {
+      const qText = q.questionText;
+      const options = q.options || [];
+      const submittedAnswer = q.submittedAnswer ?? '';
+      const correctAnswer = correctMap.get(qText) ?? q.correctAnswer ?? '';
+      const isCorrect = String(submittedAnswer) === String(correctAnswer);
+      return (
+        <div key={idx} className="q-block">
+          <p className="q-title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            {qText}
+            {isCorrect ? chip('Correct', 'good', 'Your answer is correct') : chip('Wrong', 'bad', 'Your answer is wrong')}
+          </p>
+          <div className="q-options">
+            {options.map((opt, i) => {
+              const selected = String(opt) === String(submittedAnswer);
+              const isTheCorrect = String(opt) === String(correctAnswer);
+              let outline = '#d1d5db';
+              let title = '';
+              let icon = null;
+              if (isTheCorrect) { outline = '#10b981'; title = 'Correct answer'; icon = <FiCheck aria-hidden />; }
+              if (selected && !isTheCorrect) { outline = '#ef4444'; title = 'Your selected (incorrect)'; icon = <FiX aria-hidden />; }
+              if (selected && isTheCorrect) { title = 'You selected (correct)'; }
+              return (
+                <label key={i} className="q-option" title={title} style={{ borderColor: outline }}>
+                  <input type="radio" name={`q${idx}`} value={opt} checked={selected} readOnly disabled />
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>{opt} {icon}</span>
+                </label>
+              );
+            })}
+            {!options.length && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <input className="input" type="text" value={submittedAnswer || ''} readOnly disabled placeholder="Your answer" title={isCorrect ? 'Your answer is correct' : 'Your answer is wrong'} style={{ borderColor: isCorrect ? '#10b981' : '#ef4444' }} />
+                <div style={{ fontSize: 12 }}>{chip(`Correct: ${correctAnswer || '—'}`, isCorrect ? 'good' : 'neutral', 'Correct answer')}</div>
+              </div>
+            )}
+          </div>
+        </div>
+      );
+    });
+  };
+
+  const renderPredefinedViewOnly = (category, resultBlock) => {
+    if (!resultBlock) return null;
+    const submitted = resultBlock.submitted || {};
+    const key = resultBlock.correctAnswerKey || {};
+    const field = (label, yourVal, correctVal, isList = false) => {
+      const yourArr = isList ? asArray(yourVal) : (yourVal ? [yourVal] : []);
+      const correctArr = isList ? asArray(correctVal) : (correctVal ? [correctVal] : []);
+      const ok = arrEq(yourArr, correctArr);
+      return (
+        <div className="form-item">
+          <label className="label">{label}</label>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <div title="Your answer">
+              {chip('Your:', 'neutral')}
+              {yourArr.length ? yourArr.map((v, i) => chip(v, ok ? 'good' : 'neutral')) : chip('—', 'neutral')}
+            </div>
+            <div title="Correct answer">
+              {chip('Correct:', 'neutral')}
+              {correctArr.length ? correctArr.map((v, i) => chip(v, 'good')) : chip('—', 'neutral')}
+            </div>
+          </div>
+        </div>
+      );
+    };
+    const show = (f) => showField(category, f) || f === 'notes' || f === 'adx';
+    return (
+      <div className="form-grid">
+        {show('patientName') && field('Patient Name', submitted.patientName, key.patientName, false)}
+        {show('ageOrDob') && field('Age / DOB', submitted.ageOrDob, key.ageOrDob, false)}
+        {show('icdCodes') && field('ICD (Pdx)', submitted.icdCodes, key.icdCodes, true)}
+        {show('cptCodes') && field('CPT Codes', submitted.cptCodes, key.cptCodes, true)}
+        {show('pcsCodes') && field('PCS Codes', submitted.pcsCodes, key.pcsCodes, true)}
+        {show('hcpcsCodes') && field('HCPCS Codes', submitted.hcpcsCodes, key.hcpcsCodes, true)}
+        {show('drgValue') && field('DRG Value', submitted.drgValue, key.drgValue, false)}
+        {show('modifiers') && field('Modifiers', submitted.modifiers, key.modifiers, true)}
+        {field('Adx', submitted.adx, key.adx, false)}
+        {field('Notes', submitted.notes, key.notes, false)}
+      </div>
+    );
+  };
+
+  const renderQuestions = (target) => {
+    if (!target) return null;
+    const isCompleted = target.isCompleted;
+    const qs = target.questions || [];
+    const dynamicQs = qs.filter((q) => q.type === 'dynamic');
+    const category = activeAssignment?.category;
+
+    if (isCompleted && viewResult) {
+      const block = pickResultBlock(target);
+      if (!block) return <p className="muted">No results for this section.</p>;
+      const hasDyn = (block.submitted?.dynamicQuestions || []).length > 0 || (block.correctDynamicQuestions || []).length > 0 || dynamicQs.length > 0;
+      return hasDyn ? renderDynamicViewOnly(block) : renderPredefinedViewOnly(category, block);
+    }
+
+    const readOnly = submitting;
+
+    if (dynamicQs.length > 0) {
+      return dynamicQs.map((q, idx) => {
+        const key = `dynamic-${idx}`;
+        const options = q.options || [];
+        return (
+          <div key={idx} className="q-block">
+            <p className="q-title">{q.questionText}</p>
+            {options.length > 0 ? (
+              <div className="q-options">
+                {options.map((opt, i) => (
+                  <label key={i} className="q-option">
+                    <input type="radio" name={`q${idx}`} value={opt} checked={answers[key] === opt} onChange={(e) => handleAnswerChange(key, e.target.value)} disabled={readOnly} />
+                    <span>{opt}</span>
+                  </label>
+                ))}
+              </div>
+            ) : (
+              <input className="input" type="text" placeholder="Type your answer" value={answers[key] || ''} onChange={(e) => handleAnswerChange(key, e.target.value)} disabled={readOnly} />
+            )}
+          </div>
+        );
+      });
+    }
+
+    const predefined = qs.find((q) => q.type === 'predefined');
+    if (predefined && predefined.answerKey) {
+      return (
+        <div className="form-grid">
+          {showField(category, 'patientName') && (
+            <div className="form-item">
+              <label className="label">Patient Name</label>
+              <input className="input" type="text" value={answers.patientName || ''} onChange={(e) => handleAnswerChange('patientName', e.target.value)} disabled={readOnly} />
+            </div>
+          )}
+          {showField(category, 'ageOrDob') && (
+            <div className="form-item">
+              <label className="label">Age / DOB</label>
+              <input className="input" type="text" value={answers.ageOrDob || ''} onChange={(e) => handleAnswerChange('ageOrDob', e.target.value)} disabled={readOnly} />
+            </div>
+          )}
+          {showField(category, 'icdCodes') && (
+            <div className="form-item">
+              <label className="label">ICD (Pdx)</label>
+              <input className="input" type="text" value={answers.icdCodes || ''} onChange={(e) => handleAnswerChange('icdCodes', e.target.value)} placeholder="Comma separated" disabled={readOnly} />
+            </div>
+          )}
+          {showField(category, 'cptCodes') && (
+            <div className="form-item">
+              <label className="label">CPT Codes</label>
+              <input className="input" type="text" value={answers.cptCodes || ''} onChange={(e) => handleAnswerChange('cptCodes', e.target.value)} placeholder="Comma separated" disabled={readOnly} />
+            </div>
+          )}
+          {showField(category, 'pcsCodes') && (
+            <div className="form-item">
+              <label className="label">PCS Codes</label>
+              <input className="input" type="text" value={answers.pcsCodes || ''} onChange={(e) => handleAnswerChange('pcsCodes', e.target.value)} placeholder="Comma separated" disabled={readOnly} />
+            </div>
+          )}
+          {showField(category, 'hcpcsCodes') && (
+            <div className="form-item">
+              <label className="label">HCPCS Codes</label>
+              <input className="input" type="text" value={answers.hcpcsCodes || ''} onChange={(e) => handleAnswerChange('hcpcsCodes', e.target.value)} placeholder="Comma separated" disabled={readOnly} />
+            </div>
+          )}
+          {showField(category, 'drgValue') && (
+            <div className="form-item">
+              <label className="label">DRG Value</label>
+              <input className="input" type="text" value={answers.drgValue || ''} onChange={(e) => handleAnswerChange('drgValue', e.target.value)} placeholder="e.g. 470 or 470-xx" disabled={readOnly} />
+            </div>
+          )}
+          {showField(category, 'modifiers') && (
+            <div className="form-item">
+              <label className="label">Modifiers</label>
+              <input className="input" type="text" value={answers.modifiers || ''} onChange={(e) => handleAnswerChange('modifiers', e.target.value)} placeholder="Comma separated (e.g. 26, 59, LT)" disabled={readOnly} />
+            </div>
+          )}
+          <div className="form-item">
+            <label className="label">Adx</label>
+            <input className="input" type="text" value={answers.adx || ''} onChange={(e) => handleAnswerChange('adx', e.target.value)} placeholder="Adx (e.g., principal diagnosis / free text)" disabled={readOnly} />
+          </div>
+          <div className="form-item form-item--full">
+            <label className="label">Notes</label>
+            <textarea className="textarea" value={answers.notes || ''} onChange={(e) => handleAnswerChange('notes', e.target.value)} rows={4} disabled={readOnly} />
+          </div>
+        </div>
+      );
+    }
+
+    return <p className="muted">No questions available for this assignment.</p>;
+  };
+
+  if (loading) {
+    return (
+      <div className="container">
+        <div className="page-header">
+          <h2 className="title"><FiBook className="icon" /> New Assignments</h2>
+        </div>
+        <div className="skeleton-list">{[...Array(3)].map((_, i) => <div className="skeleton-card" key={i} />)}</div>
+      </div>
+    );
+  }
+
+  if (error && !activeAssignment) {
+    return (
+      <div className="container">
+        <div className="empty-state error">
+          <div className="empty-icon"><FiClock /></div>
+          <div>
+            <h3>Something went wrong</h3>
+            <p>{error}</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (activeAssignment) {
+    if (!activeSubAssignment && activeAssignment.subAssignments?.length > 0) {
+      return (
+        <div className="container">
+          <div className="page-header">
+            <button className="btn btn-ghost" onClick={() => { setActiveAssignment(null); }} disabled={submitting}>Back</button>
+            <h3 className="title-sm">{activeAssignment.moduleName}</h3>
+          </div>
+
+          <div className="grid">
+            {(activeAssignment.subAssignments || []).map((s, i) => {
+              const isStarting = startingId === `${activeAssignment._id}:${s._id}`;
+              const btnLabel = s.isCompleted ? 'View' : 'Start';
+              return (
+                <div key={i} className="card sub-card">
+                  <div className="card-head">
+                    <h4 className="card-title">{s.subModuleName}</h4>
+                    <span className={`badge ${s.isCompleted ? 'badge-success' : 'badge-pending'}`}>{s.isCompleted ? 'Completed' : 'Pending'}</span>
+                  </div>
+                  <div className="card-actions">
+                    <button className="btn" onClick={() => handleStart(activeAssignment._id, s._id)} disabled={submitting || isStarting}>
+                      {isStarting ? 'Opening…' : btnLabel}
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {submitting && <LoadingOverlay />}
+        </div>
+      );
+    }
+
+const pdfUrl = activeSubAssignment?.assignmentPdf || activeAssignment.assignmentPdf;
+    const questionSource = activeSubAssignment || activeAssignment;
+    const isCompleted = questionSource.isCompleted;
+
+    return (
+      <div className="container">
+        <div className="page-header">
+          <button
+            className="btn btn-ghost"
+            onClick={() => { activeSubAssignment ? setActiveSubAssignment(null) : setActiveAssignment(null); setViewResult(null); setResultError(''); setResultLoading(false); }}
+            disabled={submitting}
+          >
+            Back
+          </button>
+        <h3 className="title-sm">{activeSubAssignment?.subModuleName || activeAssignment.moduleName}</h3>
+          <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 10 }}>
+            {isCompleted && <span className="badge badge-success">Completed (View Only)</span>}
+          </div>
+        </div>
+
+        {pdfUrl && <PdfReader url={pdfUrl} height="60vh" watermark="" />}
+
+        <div ref={questionsRef} className="panel">
+          <div className="panel-head"><h4>Questions</h4></div>
+
+          {isCompleted && resultLoading && (
+            <div className="loading-container" style={{ marginTop: 8 }}>
+              <div className="loading-spinner" />
+              <p>Loading results…</p>
+            </div>
+          )}
+          {isCompleted && resultError && (
+            <div className="empty-state error" style={{ marginTop: 8 }}>
+              <div className="empty-icon"><FiX /></div>
+              <div>
+                <h3>Couldn’t load results</h3>
+                <p className="muted">{resultError}</p>
+              </div>
+            </div>
+          )}
+
+          <div className="panel-body">{renderQuestions(questionSource)}</div>
+
+          <div className="panel-actions">
+            {isCompleted ? (
+              <button className="btn" disabled>View Only</button>
+            ) : (
+              <button className="btn btn-primary" onClick={handleSubmit} disabled={submitting}>
+                {submitting ? 'Submitting…' : 'Submit Assignment'}
+              </button>
+            )}
+          </div>
+        </div>
+
+        {submitting && <LoadingOverlay />}
+      </div>
+    );
+  }
+
+  return (
+    <div className="container">
+      <div className="page-header">
+        <h2 className="title"><FiBook className="icon" /> New Assignments</h2>
+      </div>
+
+      <div className="panel" style={{ marginBottom: 16 }}>
+        <div className="panel-head" style={{ gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+          <h4 style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <FiSearch /> Search
+          </h4>
+          <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
+            <FiFilter />
+            <select className="input" value={sortOrder} onChange={(e) => setSortOrder(e.target.value)} style={{ width: 180 }} disabled={submitting}>
+              <option value="newest">Newest first</option>
+              <option value="oldest">Oldest first</option>
+            </select>
+          </div>
+        </div>
+        <div className="panel-body" style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+          <input type="text" className="input" value={search} onChange={(e) => { setSearch(e.target.value); setActiveAssignment(null); setActiveSubAssignment(null); }} placeholder="Search by module or section name…" style={{ maxWidth: 360 }} disabled={submitting} />
+          {search && <button className="btn btn-ghost" onClick={() => setSearch('')} disabled={submitting}>Clear</button>}
+          <span className="muted">Sort controls affect date; search filters the view.</span>
+        </div>
+      </div>
+
+      {sorted.length > 0 ? (
+        <div className="grid">
+          {sorted.map((assignment) => {
+            const allSubsCompleted = areAllSubAssignmentsCompleted(assignment);
+            const isStarting = startingId === `${assignment._id}:parent`;
+            const btnLabel = allSubsCompleted ? (assignment.subAssignments?.length > 0 ? 'View Sections' : 'View') : (assignment.subAssignments?.length > 0 ? 'View Sections' : 'Start');
+            return (
+              <div key={assignment._id} className="card">
+                <div className="card-head">
+                  <h3 className="card-title">{assignment.moduleName}</h3>
+                  <span className={`badge ${allSubsCompleted ? 'badge-success' : 'badge-pending'}`}>{allSubsCompleted ? 'Completed' : 'Assigned'}</span>
+                </div>
+
+                {assignment.subAssignments?.length > 0 && (
+                  <div className="meta">
+                    <span className="meta-key">Progress</span>
+                    <span className="meta-val">
+                      {assignment.subAssignments.filter((sub) => sub.isCompleted).length} / {assignment.subAssignments.length} completed
+                    </span>
+                  </div>
+                )}
+
+                <div className="card-actions">
+                  <button className="btn" onClick={() => handleStart(assignment._id)} disabled={submitting || isStarting}>
+                    {isStarting ? 'Opening…' : btnLabel}
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="empty-state">
+          <div className="empty-icon"><FiClock /></div>
+          <div>
+            <h3>No assignments found</h3>
+            <p className="muted">Try a different search.</p>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+const LoadingOverlay = () => (
+  <div style={{ position: 'fixed', inset: 0, background: 'rgba(255,255,255,0.7)', backdropFilter: 'blur(2px)', display: 'grid', placeItems: 'center', zIndex: 9999 }}>
+    <div style={{ padding: 16, borderRadius: 12, border: '1px solid #ddd', background: '#fff', minWidth: 220, textAlign: 'center' }}>
+      <div className="spinner" style={{ width: 28, height: 28, margin: '0 auto 10px', border: '3px solid #ddd', borderTopColor: '#333', borderRadius: '50%', animation: '1s linear infinite spin' }} />
+      <div style={{ fontWeight: 600 }}>Submitting…</div>
+      <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>Please wait</div>
+      <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+    </div>
+  </div>
+);
+
+export default NewAssignments;
