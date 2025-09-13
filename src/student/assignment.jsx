@@ -8,16 +8,15 @@ import './AssignmentFlow.css';
 
 const API_BASE = 'https://el-backend-ashen.vercel.app';
 
+
 const PdfReader = ({ url, height = '60vh', watermark = '' }) => {
   const [blobUrl, setBlobUrl] = useState('');
   const [err, setErr] = useState('');
   const [viewKey, setViewKey] = useState(0);
   const currentBlob = useRef('');
-  
   useEffect(() => {
     let abort = false;
     const ctrl = new AbortController();
-    
     (async () => {
       try {
         setErr(''); setBlobUrl(''); setViewKey((k) => k + 1);
@@ -28,20 +27,17 @@ const PdfReader = ({ url, height = '60vh', watermark = '' }) => {
         const blob = new Blob([buf], { type: 'application/pdf' });
         const bUrl = URL.createObjectURL(blob);
         currentBlob.current = bUrl; setBlobUrl(bUrl);
-      } catch (e) { 
-        if (e.name !== 'AbortError') setErr('Unable to load PDF'); 
-      }
+      } catch (e) { if (e.name !== 'AbortError') setErr('Unable to load PDF'); }
     })();
-    
     return () => {
       abort = true; ctrl.abort();
-      if (currentBlob.current) { 
-        URL.revokeObjectURL(currentBlob.current); 
-        currentBlob.current = ''; 
-      }
+      if (currentBlob.current) { URL.revokeObjectURL(currentBlob.current); currentBlob.current = ''; }
     };
   }, [url]);
-  
+
+
+
+
   return (
     <div style={{ position: 'relative', height, border: '1px solid #eee', borderRadius: 8, overflow: 'hidden', userSelect: 'none', WebkitTouchCallout: 'none', background: '#fff' }} onContextMenu={(e) => e.preventDefault()}>
       {watermark && (
