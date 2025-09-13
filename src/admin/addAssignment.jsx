@@ -282,6 +282,32 @@ export default function AddAssignment() {
               required
             />
           </div>
+{/* OPTIONAL time limit (minutes) */}
+<div className="form-group">
+  <label htmlFor="timeLimitMinutes">
+    Time limit (minutes) <span style={{ fontWeight: 400 }}>(optional)</span>
+  </label>
+  <input
+    id="timeLimitMinutes"
+    type="number"
+    inputMode="numeric"
+    min={1}
+    step={1}
+    placeholder="e.g., 30"
+    value={timeLimitMinutes}
+    onChange={(e) => {
+      // allow empty string = no limit
+      const v = e.target.value;
+      // guard against negatives, decimals, and non-digits
+      if (v === "" || (/^\d+$/.test(v) && Number(v) > 0)) {
+        setTimeLimitMinutes(v);
+      }
+    }}
+  />
+  <small>
+    Leave empty for no time limit. Must be a positive whole number if provided.
+  </small>
+</div>
 
           
 
