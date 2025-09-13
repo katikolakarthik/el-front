@@ -162,7 +162,7 @@ const NewAssignments = () => {
   const [search, setSearch] = useState('');
   const [sortOrder, setSortOrder] = useState('newest');
 
-  const [countdown, setCountdown] = useState(null);
+  const [countdown, setCountdown] = useState(null); // ms left; drives UI & fail-safe
   const [timerEndMs, setTimerEndMs] = useState(null);
   const timerRef = useRef(null);
   const autoSubmittingRef = useRef(false);
@@ -328,10 +328,9 @@ const NewAssignments = () => {
     const tick = () => {
       const left = endMs - Date.now();
       if (left <= 0) {
-        setCountdown(0);
+        setCountdown(0); // fail-safe effect will submit
         clearInterval(timerRef.current);
         timerRef.current = null;
-        triggerAutoSubmit(); // submit when time ends
       } else {
         setCountdown(left);
       }
@@ -344,6 +343,13 @@ const NewAssignments = () => {
   useEffect(() => {
     return () => clearCountdown();
   }, []);
+
+  // Failsafe: if countdown reaches zero for any reason, auto-submit once.
+  useEffect(() => {
+    if (countdown === 0) {
+      triggerAutoSubmit();
+    }
+  }, [countdown]); 
 
   const csvToArray = (str = '') => str.split(',').map((s) => s.trim()).filter(Boolean);
 
@@ -495,8 +501,8 @@ const NewAssignments = () => {
 
   const handleAnswerChange = (key, value) => setAnswers((p) => ({ ...p, [key]: value }));
 
-  const timerBadge = (a) => {
-    const minutes = getTimeLimitMinutes(a, null);
+  const timerBadge = (a, sub = null) => {
+    const minutes = getTimeLimitMinutes(a, sub);
     if (!minutes) return null;
     if (countdown === 0) return 'Time up';
     return `Timed (${minutes}m)`;
@@ -864,9 +870,8 @@ const NewAssignments = () => {
     const pdfUrl = activeSubAssignment?.assignmentPdf || activeAssignment.assignmentPdf;
     const questionSource = activeSubAssignment || activeAssignment;
     const isCompleted = questionSource.isCompleted;
-    const showCountdown = Number.isFinite(timerEndMs);
-    const timeLeft = showCountdown ? Math.max(0, timerEndMs - Date.now()) : null;
     const hasTimeLimit = Number.isFinite(getTimeLimitMinutes(activeAssignment, activeSubAssignment || null));
+    const showCountdown = Number.isFinite(countdown); // drive UI off countdown state
     
     return (
       <div className="container">
@@ -884,8 +889,8 @@ const NewAssignments = () => {
           <h3 className="title-sm">{activeSubAssignment?.subModuleName || activeAssignment.moduleName}</h3>
           
           <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 10 }}>
-            {timerBadge(activeAssignment)}
-            {showCountdown && <div className="countdown-chip"><FiClock /> <span>{fmtCountdown(timeLeft ?? countdown ?? 0)}</span></div>}
+            {timerBadge(activeAssignment, activeSubAssignment || null)}
+            {showCountdown && <div className="countdown-chip"><FiClock /> <span>{fmtCountdown(countdown ?? 0)}</span></div>}
             {isCompleted && <span className="badge badge-success">Completed (View Only)</span>}
           </div>
         </div>
