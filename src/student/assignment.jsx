@@ -108,6 +108,7 @@ const PdfReader = ({ url, height = '60vh', watermark = '' }) => {
   );
 };
 
+
 const normalizeAssignment = (raw) => {
   const norm = { ...raw };
   if (Array.isArray(norm.dynamicQuestions) && norm.dynamicQuestions.length > 0) {
@@ -117,7 +118,7 @@ const normalizeAssignment = (raw) => {
   } else {
     norm.questions = norm.questions || [];
   }
-  
+
   norm.subAssignments = (norm.subAssignments || []).map((sub) => {
     if (Array.isArray(sub.dynamicQuestions) && sub.dynamicQuestions.length > 0) {
       return { ...sub, questions: sub.dynamicQuestions.map((q) => ({ ...q, type: 'dynamic' })) };
@@ -126,7 +127,7 @@ const normalizeAssignment = (raw) => {
     }
     return { ...sub, questions: sub.questions || [] };
   });
-  
+
   return norm;
 };
 
@@ -147,9 +148,14 @@ const showField = (category, field) => {
   return true;
 };
 
+// ✅ FIXED: treat 0 or negative as "no time limit"
 const getTimeLimitMinutes = (assignment, sub) => {
-  if (sub && Number.isFinite(Number(sub.timeLimitMinutes))) return Number(sub.timeLimitMinutes);
-  if (Number.isFinite(Number(assignment?.timeLimitMinutes))) return Number(assignment.timeLimitMinutes);
+  if (sub && Number.isFinite(Number(sub.timeLimitMinutes)) && Number(sub.timeLimitMinutes) > 0) {
+    return Number(sub.timeLimitMinutes);
+  }
+  if (Number.isFinite(Number(assignment?.timeLimitMinutes)) && Number(assignment.timeLimitMinutes) > 0) {
+    return Number(assignment.timeLimitMinutes);
+  }
   return null;
 };
 
@@ -158,15 +164,15 @@ const makeTimerKey = (userId, assignmentId, subId) => `asgTimer:${userId}:${assi
 const getOrStartTimerEnd = (userId, assignment, sub) => {
   const minutes = getTimeLimitMinutes(assignment, sub);
   if (!minutes || minutes <= 0) return null;
-  
+
   const key = makeTimerKey(userId, assignment._id, sub?._id);
   const stored = localStorage.getItem(key);
-  
+
   if (stored) {
     const endMs = Number(stored);
     if (Number.isFinite(endMs) && endMs > 0) return endMs;
   }
-  
+
   const end = Date.now() + minutes * 60 * 1000;
   localStorage.setItem(key, String(end));
   return end;
@@ -190,7 +196,7 @@ const chip = (text, tone = 'neutral', title = '') => {
   const bg = tone === 'good' ? '#eaf7ed' : tone === 'bad' ? '#fdeceb' : '#f3f4f6';
   const bd = tone === 'good' ? '#bfe6c7' : tone === 'bad' ? '#f3c1bf' : '#e5e7eb';
   const col = tone === 'good' ? '#1b5e20' : tone === 'bad' ? '#7f1d1d' : '#374151';
-  
+
   return (
     <span title={title} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 8px', borderRadius: 999, fontSize: 12, background: bg, border: `1px solid ${bd}`, color: col, lineHeight: 1, marginRight: 6, marginBottom: 6 }}>
       {text}
